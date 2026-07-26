@@ -1,0 +1,24 @@
+# Local Godot editor/toolchain distributions
+/Godot_v*-stable_mono_win64/
+
+# Uncurated local asset vault (copy approved assets into the project)
+/raw base assets/
+
+# License-pending assets used only for local evaluation
+/dack/assets/quarantine/
+
+# Godot-generated project state
+**/.godot/
+**/.import/
+
+# C# and IDE-generated state
+**/bin/
+**/obj/
+.vs/
+.idea/
+
+# OS metadata
+.DS_Store
+._*
+Thumbs.db
+Desktop.ini

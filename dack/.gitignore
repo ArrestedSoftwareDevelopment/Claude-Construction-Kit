@@ -1,0 +1,7 @@
+# Godot 4+ specific ignores
+.godot/
+/android/
+
+# Project-local build caches used by automated validation
+/.cache/
+/.dotnet-cli/

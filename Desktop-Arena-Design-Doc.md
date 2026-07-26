@@ -106,12 +106,13 @@ The especially valuable lesson from manuals for **Combat**, **Adventure**, **Ast
 
 ### 5.2 Auto-Terrain Extraction (Screen-Based)
 
-Turning a screenshot into "this is a platform, this is a hazard, this is empty space" is layered so simpler heuristics run first and expensive ones only run if needed:
+Turning a screenshot into "this is a platform, this is a hazard, this is empty space" is layered so simpler heuristics run first and expensive ones only run if needed. The key platformer principle is that **visible text must be playable by itself**; ladders, ramps, elevators, conveyors, triggers, and checkpoints are editor-authored additions rather than prerequisites for basic traversal.
 
-1. **UI-chrome heuristics (cheap, high-value):** query the **Windows UI Automation (UIA) tree** for on-screen windows at capture time — real bounding boxes for title bars, scrollbars, the taskbar, window edges, buttons, and icons, with zero image processing.
-2. **Edge/contour detection (fallback):** for regions UIA can't describe (e.g., inside a canvas), run a lightweight edge-detection + rectangle-fit pass (OpenCV) to propose likely platform lines from high-contrast edges.
-3. **Player correction layer:** all auto-detected geometry is editable/deletable; nothing is baked until accepted in the Level Editor.
-4. **Manual-only fallback:** hand-paint collision directly onto the image, like a traditional tile editor.
+1. **Text-band heuristics (first platformer proof):** in a cloned framegrab, detect dark horizontal text bands and expose them as basic standable surfaces. This is not OCR; it is a cheap "the words are the floor" pass that proves documents can become platform levels without hand-placing every object.
+2. **UI-chrome heuristics (cheap, high-value):** query the **Windows UI Automation (UIA) tree** for on-screen windows at capture time — real bounding boxes for title bars, scrollbars, the taskbar, window edges, buttons, and icons, with zero image processing.
+3. **Edge/contour detection (fallback):** for regions UIA can't describe (e.g., inside a canvas), run a lightweight edge-detection + rectangle-fit pass (OpenCV) to propose likely platform lines from high-contrast edges.
+4. **Player correction layer:** all auto-detected geometry is editable/deletable; nothing is baked until accepted in the Level Editor.
+5. **Manual-only fallback:** hand-paint collision directly onto the image, like a traditional tile editor.
 
 ### 5.3 Four Modes of Level Sourcing, Delivered in Order
 
@@ -397,7 +398,7 @@ Toolkits expose curated subsets. The underlying runtime uses the same verbs ever
 
 - **Stage 0 — debug sticks:** lines, circles, arrows, bounding boxes, and flat shapes make AI intent, collision, and mechanics unmistakable.
 - **Stage 1 — authored stick figures:** recognizable poses, simple equipment/vehicles, readable team colors, hit reactions, and a small animation set. This is a valid public style, not an apology.
-- **Stage 2 — 32×32 sprite language:** user-authored characters and props preserve stick-figure clarity while adding personality.
+- **Stage 2 — constrained live sprite language:** user-authored characters and props use C64-scale canvas/palette profiles (24×21 and 32×32 for new work, plus a constrained 64×64 compatibility profile for the RAD stick-figure sheets) to preserve clarity while adding personality.
 - **Stage 3 — richer scalable skins:** move toward Lemmings/Lode Runner character-per-pixel readability and a Kingdom Rush-like ability to read both close skirmishes and the whole battlefield.
 
 Art advances only when a capability needs it. New mechanics first appear in the simplest visual form that makes them testable.
@@ -410,12 +411,19 @@ Art advances only when a capability needs it. New mechanics first appear in the 
 - **A "dress-up" pass for captured/semantic geometry.** Much terrain comes from window edges, image contours, glyph cells, or later validated document regions rather than hand-placed tiles, so the renderer needs a tileable reskinning layer that turns arbitrary regions into readable terrain automatically.
 - **Color-key transparency is mandatory at import.** The creator can choose a transparent color—white by default—with tolerance, edge cleanup, live checkerboard preview, and an undoable result. DACK converts the selected key to alpha only in its working clone; it never alters the source image.
 
-### 11.3 Aseprite Bridge & Integrated Sprite Pad
+### 11.3 Live-Linked Sprite Pad & Advanced Aseprite Bridge
 
-- **Aseprite is the preferred external pixel-art hook.** Its documented command-line interface can export sprite sheets plus JSON, split layers, select tagged frames, and run in batch. DACK should provide an optional adapter that launches a user-configured Aseprite executable, imports exported PNG/JSON into a clone, and refreshes the asset when the creator re-exports.
-- The bridge is a convenience integration, not a runtime dependency and not permission to redistribute Aseprite. Manual PNG/sprite-sheet import always works.
-- A tiny in-app **Sprite Pad** is desirable after the Aseprite/PNG loop is proven: 32×32 canvas, pencil, eraser, fill, line, color picker, onion-skin, frame tags, mirror, palette, transparent-key preview, and sprite-sheet export. It should not grow into an Aseprite replacement.
-- Stick figures and community skins keep art costs proportional to demonstrated engine value. A polished default skin can arrive after the mechanics and creator loop are fun.
+The in-app tool is not "junior Aseprite." It is a **glorified C64 sprite pad**: deliberately tiny, constrained, immediate, and inseparable from the construction-kit playfield.
+
+- **Primary path — live-linked sidebar pad.** Selecting an entity opens its sprite beside the playfield. Every pixel edit updates that entity in the editor and running preview immediately—no export, refresh, or re-import step. This applies §10.4's instant-feedback principle to art.
+- **Constraint is a feature.** Start with fixed profiles: C64-like 24×21, DACK 32×32, and a 64×64 compatibility profile for imported/RAD sheets. Each uses a small creator-selected palette, one transparent entry, and nearest-neighbor display zoom. These are aesthetic/product constraints, not an attempt to emulate Commodore hardware exactly.
+- **Small first toolset:** pencil, eraser, fill, line, picker, mirror, palette slots, transparent-color preview, undo/redo, clear, and duplicate. Animation timelines, layers, masks, scripting, and broad image manipulation stay out of the initial pad.
+- **Safe binding semantics:** the header always states whether the creator is editing the shared entity-type sprite or a per-instance fork. Choosing "Edit this one" clones the sprite before the first pixel change so a local tweak cannot silently alter every actor of that type.
+- **Play and edit concurrently.** Pixel changes propagate to idle, selected, and live test actors on the next render update. Collision remains a separate author-controlled shape so transparent-pixel edits do not unpredictably change physics.
+- **Advanced path — Aseprite.** Aseprite remains the right tool for serious frame-by-frame animation, layers, tags, timing, polished asset production, and sprite-sheet packing. DACK's optional bridge imports/refreshes exported PNG + JSON; manual PNG/sprite-sheet import always works.
+- **Independent implementation boundary.** Aseprite source may be studied for general behavior and interoperability, but DACK does not copy or redistribute Aseprite code, binaries, UI assets, or protected implementation. Aseprite's current source/release license restricts redistribution; provenance must be recorded for any separately licensed reusable module.
+
+The sidebar pad and Aseprite therefore serve different jobs: **fast in-context construction-kit play** versus **advanced external art production**. See ADR-0007.
 
 ---
 
@@ -497,6 +505,15 @@ Why this stack:
 - Native C++/GDExtension code is added only for a measured performance or API-access need. The first implementation should not split logic across three languages.
 - Pin a supported Godot minor version per release and upgrade deliberately. Godot's C# editor support is intentionally paired with an external IDE, and current Godot 4 C# builds support desktop targets; DACK remains Windows-first because of its OS integration.
 
+Current RAD environment:
+
+- Godot 4.7.1 Mono, stored locally as `Godot_v4.7.1-stable_mono_win64/`.
+- .NET SDK 10.0.302, targeting `net10.0`.
+- Godot C# SDK package `Godot.NET.Sdk/4.7.1`.
+- Prototype project root: `dack/project.godot`.
+- Local Godot package source: `Godot_v4.7.1-stable_mono_win64/GodotSharp/Tools/nupkgs`, with `nuget.org` as fallback.
+- The RAD uses direct PNG loading for selected assets and captured-page backgrounds so the prototype is not dependent on Godot's import cache for runtime smoke tests.
+
 Proposed solution boundaries:
 
 - `Dack.Core` — rules, mechanics vocabulary, data model, AI, deterministic simulation; as OS-agnostic as practical.
@@ -570,7 +587,7 @@ Proposed solution boundaries:
 - **Property inspector**: click any placed object → parameter panel, consistent "select and tweak" workflow, with live-updating previews (jump arcs, patrol/perception ranges) drawn directly on the canvas.
 - **One-click Test Play**: launches the level immediately without a separate export step.
 - **Ruleset presets**: ready-made rulesets per toolkit ("Word War," "Grow a Garden," and the earlier static presets) so a new player gets a working game before touching a slider.
-- **Sprite workflow:** transparent-color picker and preview in core; Aseprite export-refresh bridge next; compact 32×32 Sprite Pad later (§11.3).
+- **Sprite workflow:** selecting an entity opens the constrained live-linked sidebar pad; pixel edits appear on the playfield immediately. Aseprite export-refresh is the advanced animation path (§11.3).
 - **Boss Key settings:** visible during onboarding and in the title bar/tray menu, configurable, conflict-checked, and testable. The escape route must never be hidden inside a game-only screen.
 - **Playset packaging wizard:** shows every cloned frame/source/asset, license/share tag, sanitization result, and a mandatory preview before export (§16).
 
@@ -626,13 +643,13 @@ The MVP validates one proposition: **a safe clone of an ordinary Windows workspa
 
 1. Godot/.NET solution skeleton with clean `Core`, `Windows`, `Editor`, and `Player` boundaries (§13.1).
 2. **Snapshot Clone Mode:** capture monitor/window/region; import PNG/JPEG/BMP; create an immutable-source working clone.
-3. UIA + edge/rectangle detection, manual collision painting, and the shared environmental awareness map.
+3. Text-band platform detection for captured documents, UIA + edge/rectangle detection, manual collision painting, and the shared environmental awareness map.
 4. A small **top-down Action/ambient vertical slice**: stick-figure actors enter, wander, patrol, chase, take cover, shoot, ricochet, collect, and defend a simulated document/window objective.
 5. Keyboard/mouse controls, web-page-like menus, configurable and testable Boss Key, multi-monitor-safe teardown.
 6. Rule engine v0 with parameter sheets and a minimal event/condition/action grid built from the canonical vocabulary.
 7. AI v0 with Wander, Patrol, Chase, Flee, Defend, and Investigate presets; visible perception/path overlays.
 8. Plain-text/glyph map input and a **Document Dungeon** micro-level proving `W/#` walls, doors, actors, and text/world toggle.
-9. Transparent-color conversion on clones (white default), 32×32 logical sprite support, stick-figure asset set.
+9. Transparent-color conversion on clones (white default), 24×21/32×32 creation profiles plus 64×64 RAD compatibility, a collapsible live-linked sidebar pad, and the initial animated stick-figure asset set.
 10. Playset export containing framegrab/text map + `.dacklvl` + assets + manifest; mandatory preview and sanitized packaging.
 11. Minimal open-source Player and one end-to-end loop: capture/import → detect → edit → play → Boss Key → package → reload.
 
@@ -644,7 +661,7 @@ The MVP validates one proposition: **a safe clone of an ordinary Windows workspa
 - Ambient first-launch experience and intensity controls.
 - Full first pass of the **RPG/Roguelike Kit**: inventory, keys/doors, enemies, traps, procedural rooms/caves, fog of war, turn-based option.
 - Action Kit squad orders and light worker/gather/build mechanics inspired by Cannon Fodder, Syndicate, and Age of Empires.
-- Aseprite PNG/JSON export-refresh adapter; evaluate whether the compact Sprite Pad adds enough value to build.
+- Aseprite PNG/JSON export-refresh adapter for advanced animation and polished asset work; expand the live pad only where playtesting demonstrates high-value construction-kit operations.
 - Platformer movement primitives if the environmental map proves stable.
 
 ### Phase 3 — Activity-Reactive Presets & Toolkit Breadth
@@ -680,7 +697,7 @@ The MVP validates one proposition: **a safe clone of an ordinary Windows workspa
 - **Ambient is the first-run default; `Word War` defaults to Engaged.** Engaged has real simulated objectives and recoverable setbacks. Siege is opt-in. No intensity can harm the work.
 - **The Office add-in is back-burnered.** Capture, UIA window/text signals, and explicit open-format observation get the first opportunity to prove the concept.
 - **RPG/Roguelike creation is a required toolkit.** Glyph maps and Rogue/Hack-style systems are part of the planned product, with a small text dungeon proven in Phase 1 and the full kit prioritized in Phase 2.
-- **Art begins with evolving stick figures.** A 32×32 logical baseline, color-key transparency, and an optional Aseprite bridge precede richer skins.
+- **Art begins with evolving stick figures and a live-linked constrained pad.** C64-like 24×21, DACK 32×32, and RAD-compatible 64×64 profiles, small palettes, color-key transparency, and immediate entity binding are the primary in-app art path. Aseprite is the optional advanced animation path.
 - **Godot 4.x .NET + C# is the chosen implementation stack.** Visual Studio is the preferred IDE, but command-line builds and repository structure remain editor-neutral.
 
 ### 19.2 Open Questions to Resolve Next
@@ -690,14 +707,14 @@ The MVP validates one proposition: **a safe clone of an ordinary Windows workspa
 - Should non-hub share exports permit an advanced metadata-scrub opt-out, or should every DACK-labeled sharing workflow enforce the hub policy?
 - What exact behavior should dynamic platforms use when a source window minimizes or disappears: vanish, freeze, or remain solid until actors are clear?
 - Which glyph legend should ship as the beginner default, and how should proportional text be normalized into a grid without surprising the creator?
-- After the Aseprite bridge is tested, does a compact in-app Sprite Pad materially improve first-session creation, or duplicate an external tool too early?
+- Should a playset be allowed to mix the 24×21, 32×32, and 64×64 profiles freely, or should each toolkit declare one native profile and scale imported exceptions?
 - How deep should the "pop a slider into the grid" progressive-disclosure interaction go before it stops feeling seamless — worth an early usability spike with non-programmer testers, per the risk in §17.
 - Which toolkit follows the Phase 1 Action/RPG proofs first: Platformer for terrain validation, or Casual for the broadest office audience?
 
 ### 19.3 Research References
 
 - Godot: [C# basics and platform support](https://docs.godotengine.org/en/stable/tutorials/scripting/c_sharp/c_sharp_basics.html) and [release policy](https://docs.godotengine.org/en/stable/about/release_policy.html).
-- Aseprite: [command-line interface](https://www.aseprite.org/docs/cli/) and [sprite-sheet workflow](https://www.aseprite.org/docs/sprite-sheet/).
+- Aseprite: [command-line interface](https://www.aseprite.org/docs/cli/), [sprite-sheet workflow](https://www.aseprite.org/docs/sprite-sheet/), and [official licensing FAQ](https://www.aseprite.org/faq/).
 - Atari mechanics/manual references: [Combat](https://www.atariage.com/manual_html_page.php?SoftwareID=935), [Adventure](https://atariage.com/manual_html_page.php?SoftwareLabelID=1), [Asteroids](https://www.atariage.com/manual_html_page.php?SoftwareLabelID=8), [Breakout](https://www.atariage.com/manual_html_page.php?SoftwareID=889), [Missile Command](https://atariage.com/manual_html_page.php?SoftwareID=1154), and [Yars' Revenge](https://atariage.com/manual_html_page.php?SoftwareID=1452).
 
 ---
