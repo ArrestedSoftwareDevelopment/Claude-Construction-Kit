@@ -16,6 +16,7 @@ public partial class PlayfieldSurface : Control
     public float TextUnitPixels { get; set; } = 7f;
     public PlatformerMode Mode { get; set; } = PlatformerMode.Horizontal;
     public bool HasCapturedPage => _capturedPage is not null;
+    public Rect2 PlayBounds => _capturedPage is not null ? GetCapturedPageDrawRect(_capturedPage) : new Rect2(Vector2.Zero, Size);
     public float ElapsedSeconds
     {
         get => (float)_elapsed;
@@ -143,23 +144,10 @@ public partial class PlayfieldSurface : Control
         if (_capturedPage is null)
             return;
 
-        Rect2 sourceRegion = DisplayToSourceRect(_capturedPage, region).Grow(1.5f);
-        Color fill = SampleBackgroundColor(_capturedPage.OriginalImage, sourceRegion);
-        int minX = Mathf.Clamp(Mathf.FloorToInt(sourceRegion.Position.X), 0, _capturedPage.Image.GetWidth() - 1);
-        int minY = Mathf.Clamp(Mathf.FloorToInt(sourceRegion.Position.Y), 0, _capturedPage.Image.GetHeight() - 1);
-        int maxX = Mathf.Clamp(Mathf.CeilToInt(sourceRegion.End.X), 0, _capturedPage.Image.GetWidth() - 1);
-        int maxY = Mathf.Clamp(Mathf.CeilToInt(sourceRegion.End.Y), 0, _capturedPage.Image.GetHeight() - 1);
-
-        for (int y = minY; y <= maxY; y++)
-        {
-            for (int x = minX; x <= maxX; x++)
-            {
-                Color original = _capturedPage.OriginalImage.GetPixel(x, y);
-                Color current = _capturedPage.Image.GetPixel(x, y);
-                if (IsLikelyTextPixel(original) || IsLikelyInkEdge(original, fill) || IsLikelyTextPixel(current))
-                    _capturedPage.Image.SetPixel(x, y, fill);
-            }
-        }
+        Rect2 sourceRegion = DisplayToSourceRect(_capturedPage, region);
+        Color fill = SampleBackgroundColor(_capturedPage.OriginalImage, sourceRegion.Grow(4f));
+        FloodEraseConnectedInk(_capturedPage, sourceRegion, fill);
+        CleanupTinyInkSpecks(_capturedPage, sourceRegion.Grow(7f), fill);
 
         if (_capturedPage.Texture is ImageTexture imageTexture)
             imageTexture.Update(_capturedPage.Image);
@@ -312,11 +300,12 @@ public partial class PlayfieldSurface : Control
 
     private void DrawBackground()
     {
-        DrawRect(new Rect2(Vector2.Zero, Size), new Color("#D9E3EA"), true);
+        DrawRect(new Rect2(Vector2.Zero, Size), _capturedPage is not null ? new Color("#202A34") : new Color("#D9E3EA"), true);
 
         if (_capturedPage is not null)
         {
             DrawCapturedPage(_capturedPage);
+            DrawToolkitMargins(GetCapturedPageDrawRect(_capturedPage));
             return;
         }
 
@@ -379,13 +368,7 @@ public partial class PlayfieldSurface : Control
 
     private Rect2 GetCapturedPageDrawRect(CapturedPageFrame frame)
     {
-        Vector2 sourceSize = new(frame.PixelSize.X, frame.PixelSize.Y);
-        if (sourceSize.X <= 0 || sourceSize.Y <= 0 || Size.X <= 0 || Size.Y <= 0)
-            return new Rect2(Vector2.Zero, sourceSize);
-
-        float scale = Mathf.Max(Size.X / sourceSize.X, Size.Y / sourceSize.Y);
-        Vector2 drawSize = sourceSize * scale;
-        return new Rect2((Size - drawSize) * 0.5f, drawSize);
+        return new Rect2(Vector2.Zero, new Vector2(frame.PixelSize.X, frame.PixelSize.Y));
     }
 
     private Rect2 DisplayToSourceRect(CapturedPageFrame frame, Rect2 displayRegion)
@@ -447,11 +430,157 @@ public partial class PlayfieldSurface : Control
         return luminance < 0.38f;
     }
 
+    private static void FloodEraseConnectedInk(CapturedPageFrame frame, Rect2 sourceRegion, Color fill)
+    {
+        Rect2 seedRegion = sourceRegion.Grow(2.0f);
+        Rect2 floodRegion = sourceRegion.Grow(6f);
+        Rect2I floodBounds = ClampToImage(frame.Image, floodRegion);
+        Rect2I seedBounds = ClampToImage(frame.Image, seedRegion);
+        Queue<Vector2I> pending = [];
+        HashSet<int> visited = [];
+
+        for (int y = seedBounds.Position.Y; y < seedBounds.End.Y; y++)
+        {
+            for (int x = seedBounds.Position.X; x < seedBounds.End.X; x++)
+            {
+                Vector2I point = new(x, y);
+                if (IsEraseCandidate(frame, point, fill))
+                    Enqueue(point);
+            }
+        }
+
+        while (pending.Count > 0)
+        {
+            Vector2I point = pending.Dequeue();
+            frame.Image.SetPixel(point.X, point.Y, fill);
+
+            for (int dy = -1; dy <= 1; dy++)
+            {
+                for (int dx = -1; dx <= 1; dx++)
+                {
+                    if (dx == 0 && dy == 0)
+                        continue;
+
+                    Vector2I next = point + new Vector2I(dx, dy);
+                    if (!floodBounds.HasPoint(next) || !IsEraseCandidate(frame, next, fill))
+                        continue;
+
+                    Enqueue(next);
+                }
+            }
+        }
+
+        void Enqueue(Vector2I point)
+        {
+            int key = point.Y * frame.Image.GetWidth() + point.X;
+            if (!visited.Add(key))
+                return;
+
+            pending.Enqueue(point);
+        }
+    }
+
+    private static Rect2I ClampToImage(Image image, Rect2 region)
+    {
+        int minX = Mathf.Clamp(Mathf.FloorToInt(region.Position.X), 0, image.GetWidth() - 1);
+        int minY = Mathf.Clamp(Mathf.FloorToInt(region.Position.Y), 0, image.GetHeight() - 1);
+        int maxX = Mathf.Clamp(Mathf.CeilToInt(region.End.X) + 1, minX + 1, image.GetWidth());
+        int maxY = Mathf.Clamp(Mathf.CeilToInt(region.End.Y) + 1, minY + 1, image.GetHeight());
+        return new Rect2I(minX, minY, maxX - minX, maxY - minY);
+    }
+
+    private static bool IsEraseCandidate(CapturedPageFrame frame, Vector2I point, Color fill)
+    {
+        Color original = frame.OriginalImage.GetPixel(point.X, point.Y);
+        Color current = frame.Image.GetPixel(point.X, point.Y);
+
+        if (ColorDistance(current, fill) < 0.03f)
+            return false;
+
+        return IsLikelyTextPixel(original)
+            || IsLikelyInkEdge(original, fill)
+            || IsLikelyTextPixel(current)
+            || IsLikelyInkEdge(current, fill);
+    }
+
+    private static void CleanupTinyInkSpecks(CapturedPageFrame frame, Rect2 sourceRegion, Color fill)
+    {
+        Rect2I bounds = ClampToImage(frame.Image, sourceRegion);
+        HashSet<int> visited = [];
+        List<Vector2I> component = [];
+        Queue<Vector2I> pending = [];
+        const int maxSpeckPixels = 5;
+
+        for (int y = bounds.Position.Y; y < bounds.End.Y; y++)
+        {
+            for (int x = bounds.Position.X; x < bounds.End.X; x++)
+            {
+                Vector2I start = new(x, y);
+                int startKey = Key(start);
+                if (visited.Contains(startKey) || !IsRemainingInkSpeckCandidate(frame, start, fill))
+                    continue;
+
+                component.Clear();
+                pending.Clear();
+                visited.Add(startKey);
+                pending.Enqueue(start);
+
+                while (pending.Count > 0)
+                {
+                    Vector2I point = pending.Dequeue();
+                    component.Add(point);
+
+                    for (int dy = -1; dy <= 1; dy++)
+                    {
+                        for (int dx = -1; dx <= 1; dx++)
+                        {
+                            if (dx == 0 && dy == 0)
+                                continue;
+
+                            Vector2I next = point + new Vector2I(dx, dy);
+                            int nextKey = Key(next);
+                            if (!bounds.HasPoint(next) || visited.Contains(nextKey) || !IsRemainingInkSpeckCandidate(frame, next, fill))
+                                continue;
+
+                            visited.Add(nextKey);
+                            pending.Enqueue(next);
+                        }
+                    }
+                }
+
+                if (component.Count > maxSpeckPixels)
+                    continue;
+
+                foreach (Vector2I point in component)
+                    frame.Image.SetPixel(point.X, point.Y, fill);
+            }
+        }
+
+        int Key(Vector2I point) => point.Y * frame.Image.GetWidth() + point.X;
+    }
+
+    private static bool IsRemainingInkSpeckCandidate(CapturedPageFrame frame, Vector2I point, Color fill)
+    {
+        Color current = frame.Image.GetPixel(point.X, point.Y);
+        if (ColorDistance(current, fill) < 0.03f)
+            return false;
+
+        return IsLikelyTextPixel(current) || IsLikelyInkEdge(current, fill);
+    }
+
     private static bool IsLikelyInkEdge(Color pixel, Color background)
     {
         float luminance = pixel.R * 0.2126f + pixel.G * 0.7152f + pixel.B * 0.0722f;
         float backgroundLuminance = background.R * 0.2126f + background.G * 0.7152f + background.B * 0.0722f;
         return luminance < backgroundLuminance - 0.08f;
+    }
+
+    private static float ColorDistance(Color a, Color b)
+    {
+        float dr = a.R - b.R;
+        float dg = a.G - b.G;
+        float db = a.B - b.B;
+        return Mathf.Sqrt(dr * dr + dg * dg + db * db);
     }
 
     private static int QuantizeColor(Color pixel)
@@ -492,6 +621,37 @@ public partial class PlayfieldSurface : Control
                 Math.Max(1f, (float)(_a / Count))
             );
         }
+    }
+
+    private void DrawToolkitMargins(Rect2 documentRect)
+    {
+        Rect2 right = new(documentRect.End.X, 0, Mathf.Max(0, Size.X - documentRect.End.X), Size.Y);
+        Rect2 bottom = new(0, documentRect.End.Y, Mathf.Min(Size.X, documentRect.Size.X), Mathf.Max(0, Size.Y - documentRect.End.Y));
+
+        if (right.Size.X > 1f)
+            DrawToolkitPanel(right, "TOOLKIT MARGIN");
+
+        if (bottom.Size.Y > 1f)
+            DrawToolkitPanel(bottom, "STATUS / POWER-UPS");
+    }
+
+    private void DrawToolkitPanel(Rect2 rect, string label)
+    {
+        DrawRect(rect, new Color("#202A34"), true);
+        DrawRect(rect, new Color("#52606D"), false, 1f);
+
+        if (rect.Size.X < 90f || rect.Size.Y < 28f)
+            return;
+
+        DrawString(
+            ThemeDB.FallbackFont,
+            rect.Position + new Vector2(16, 28),
+            label,
+            HorizontalAlignment.Left,
+            rect.Size.X - 24,
+            13,
+            new Color("#D9E3EA", 0.72f)
+        );
     }
 
     private void DrawPlatform(Rect2 rect)

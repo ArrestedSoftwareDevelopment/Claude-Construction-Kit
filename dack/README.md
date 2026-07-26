@@ -33,7 +33,9 @@ dotnet build DACK.csproj
 - Choose **Pitfall** for horizontal platforming or **Climber** for vertical ladder play.
 - Adjust the character scale slider to match the apparent text size of the playfield; the demo defaults to a small but visible roughly 32 px-tall office-platformer character.
 - During gameplay, the Windows pointer is hidden. It reappears for the sprite pad and Boss Key screen.
+- Press **F1** to collapse or restore the floating toolbar. The pointer is visible while the toolbar is expanded and hidden when it is collapsed for play.
 - If the root screenshot test image is present, it is cloned into the playfield as a captured-page background and dark text bands become basic platforms.
+- Captured documents are displayed at native 1:1 pixel resolution. Extra fullscreen space is non-play toolkit/status margin, not scaled document terrain.
 - Endpoint-built ramps, conveyors, elevators, and ladders are live world objects for editor-authored additions; screenshot mode currently focuses on text-only terrain.
 - The prototype opens as playfield-only real estate; use the floating toolbar to restore the sprite pad or switch playsets.
 - The playable scout uses Stickman Pack idle, run, and jump animation frames.
@@ -57,6 +59,25 @@ These are first-pass mechanics for text-native Brickbat variants. They should re
 - **Bookmark**: drops a temporary checkpoint; if the ball is missed, it relaunches from that marked page position.
 - **Alliteration**: chains hits across nearby objects that start with the same detected letter once OCR/text identity exists.
 - **Marginalia**: creates a temporary side paddle in the margin for weird two-axis saves.
+
+## Semantic word-object concept
+
+The recurring DACK mechanic is that text can remain readable while also becoming gameplay.
+
+- Fast image analysis finds letters, words, lines, background regions, gutters, and margins without waiting for OCR.
+- Optional OCR can run later as a slow-reveal layer, highlighting meaningful words after play begins.
+- Words can become semantic objects:
+  - `TARPIT` becomes a sticky hazard.
+  - `LADDER` becomes a climbable tool.
+  - `BRIDGE` spans whitespace.
+  - `KEY` and `DOOR` become lock/unlock objects.
+  - `FOOTNOTE`, `BOOKMARK`, `DRAFT`, and `RED PEN` become literary power-ups.
+- Every semantic object should support text, graphic, or hybrid presentation.
+- A word can summon an editor tool without trapping the creator in the word's typography. For example, `LADDER` may start on the word, then expose draggable endpoints so it can be stretched, angled, offset, or detached while remaining linked to the source word.
+
+## Racing kit note
+
+Racing is a natural future toolkit because the minimum authoring model is small: draw or derive a track, place a starting point, and optionally add finish/checkpoints/laps. Tracks can come from creator splines, document margins, process diagrams, spreadsheet paths, presentation arrows, or semantic words such as `START`, `FINISH`, `CHECKPOINT`, `BOOST`, `OIL`, `TARPIT`, and `SHORTCUT`.
 
 ## Sprite scale note
 

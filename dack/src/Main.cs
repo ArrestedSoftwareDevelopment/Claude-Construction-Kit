@@ -86,6 +86,14 @@ public partial class Main : Control
             ToggleBossMode();
             GetViewport().SetInputAsHandled();
         }
+        else if (@event is InputEventKey toolbarKey
+                 && toolbarKey.Pressed
+                 && !toolbarKey.Echo
+                 && toolbarKey.Keycode == Key.F1)
+        {
+            TogglePlaysetToolbar();
+            GetViewport().SetInputAsHandled();
+        }
     }
 
     private void BuildInterface()
@@ -499,6 +507,7 @@ public partial class Main : Control
             _playsetToolbarRow.GetChild<Control>(i).Visible = !collapsed;
 
         _playsetToolbarToggle.Text = collapsed ? "+" : "-";
+        UpdateCursorMode();
     }
 
     private void SetPlaysetMode(PlaysetMode mode)
@@ -581,12 +590,13 @@ public partial class Main : Control
 
         Vector2 next = _playerPosition;
         next.X += _playerVelocity.X * dt;
-        next.X = Mathf.Clamp(next.X, 0, Mathf.Max(0, _playfield.Size.X - _player.Size.X));
+        Rect2 playBounds = _playfield.PlayBounds;
+        next.X = Mathf.Clamp(next.X, playBounds.Position.X, Mathf.Max(playBounds.Position.X, playBounds.End.X - _player.Size.X));
 
         next.Y += _playerVelocity.Y * dt;
         ResolveVerticalCollisions(ref next);
 
-        if (next.Y > _playfield.Size.Y + _player.Size.Y)
+        if (next.Y > playBounds.End.Y + _player.Size.Y)
         {
             SnapPlayerToStart();
             RefreshMotionText();
@@ -664,10 +674,20 @@ public partial class Main : Control
     private IEnumerable<Rect2> GetSolidSurfaces()
     {
         if (!_playfield.HasCapturedPage)
+        {
             yield return _playfield.GetFloor();
 
-        foreach (Rect2 platform in _playfield.GetPlatforms())
-            yield return platform;
+            foreach (Rect2 platform in _playfield.GetPlatforms())
+                yield return platform;
+
+            yield break;
+        }
+
+        foreach (Rect2 word in _playfield.GetTextObjectRegions(TextObjectGranularity.Word))
+            yield return new Rect2(
+                word.Position,
+                new Vector2(word.Size.X, Mathf.Max(2f, Mathf.Min(word.Size.Y, _textUnitPixels * 0.45f)))
+            );
     }
 
     private IEnumerable<WorldObject> GetLineSurfaces()
@@ -696,9 +716,14 @@ public partial class Main : Control
 
     private void UpdateCursorMode()
     {
-        Input.MouseMode = _bossMode || _sidebar.Visible
+        Input.MouseMode = _bossMode || _sidebar.Visible || IsPlaysetToolbarExpanded()
             ? Input.MouseModeEnum.Visible
             : Input.MouseModeEnum.Hidden;
+    }
+
+    private bool IsPlaysetToolbarExpanded()
+    {
+        return _playsetToolbarRow.GetChildCount() <= 1 || _playsetToolbarRow.GetChild<Control>(1).Visible;
     }
 
     private void SnapPlayerToStart()

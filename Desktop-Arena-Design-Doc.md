@@ -8,7 +8,7 @@
 
 ## 1. Executive Summary
 
-DACK is an **open-source, Windows-first office game and game-creation suite** in the lineage of **Shoot 'Em Up Construction Kit (SEUCK)** and **Adventure Construction Kit (ACK)**. It provides genre-specific toolkits (Action, RPG/Roguelike, Platformer, Space Shooter, Casual, Tower Defense) with data-driven rulesets and a level editor, aimed at hobbyists and everyday PC users rather than programmers or traditional controller-first players.
+DACK is an **open-source, Windows-first office game and game-creation suite** in the lineage of **Shoot 'Em Up Construction Kit (SEUCK)** and **Adventure Construction Kit (ACK)**. It provides genre-specific toolkits (Action, RPG/Roguelike, Platformer, Space Shooter, Casual, Racing, Tower Defense) with data-driven rulesets and a level editor, aimed at hobbyists and everyday PC users rather than programmers or traditional controller-first players.
 
 The twist: **the level geometry is a safe game clone of your actual desktop and documents — and it can keep changing as you keep working.** The universal path is visual capture: if Windows can display a file or app, DACK can clone its visible frame and make it playable without understanding the proprietary file format. Later, structured importers can add richer meaning. The most distinctive path is live play while the user works: windows become boundaries, text becomes terrain, and activity can drive game events. Little soldiers, vehicles, creatures, or workers may simply arrive and explore at low intensity; higher-intensity presets turn the same space into a battle, defense, or dungeon.
 
@@ -32,6 +32,7 @@ The result is part game engine, part desktop toybox, part document-to-level comp
 10. **Office-native controls.** Keyboard, mouse, and web-page-like UI are the required input surface. Game controllers are not a product priority. A configurable Boss Key is always available.
 11. **An RPG/Roguelike construction kit is required.** Rogue/Hack-style rooms, keys, doors, monsters, inventory, procedural layouts, and text/glyph maps are part of the product identity, not a distant genre add-on.
 12. **Open source and community-built, with narrow trust boundaries.** Core image/text imports stay deliberately small. Future executable importer plugins are isolated out of process and validated at the boundary.
+13. **Writing can become gameplay grammar.** Words are not merely painted scenery. A safe clone can turn written text into terrain, hazards, tools, bonuses, enemies, power-ups, and editor handles while still preserving the option to view the page as ordinary readable text.
 
 ---
 
@@ -88,6 +89,7 @@ The Atari 2600 is useful here because its best games express a complete play typ
 | **River Raid** | Navigate a narrowing corridor, shoot, refuel, scroll | Long documents, process maps, and vertically scrolling feeds become constrained routes |
 | **Kaboom!** | Track and catch accelerating falling objects | Notifications, falling file icons, review comments, or task cards become catch targets |
 | **Centipede** | Shoot a segmented threat whose path changes around obstacles | Cell grids and icon fields become reactive obstacle lattices |
+| **Racing / Slot-Car** | Follow a track, steer, drift, checkpoint, lap, time-trial | User-drawn tracks, document margins, flowcharts, process diagrams, spreadsheet paths, or semantic words become courses |
 | **Tower Defense** | Place, upgrade, route, slow, defend waves | Paragraph paths, spreadsheet lanes, process diagrams, and document outlines become enemy routes and tower sites |
 
 The especially valuable lesson from manuals for **Combat**, **Adventure**, **Asteroids**, **Breakout**, **Missile Command**, and **Yars' Revenge** is variation: maze shape, projectile behavior, visibility, speed, limited resources, and win condition can recombine into many games without creating a new engine system for every preset. DACK's vocabulary (§10.5) should work the same way.
@@ -114,6 +116,49 @@ Turning a screenshot into "this is a platform, this is a hazard, this is empty s
 3. **Edge/contour detection (fallback):** for regions UIA can't describe (e.g., inside a canvas), run a lightweight edge-detection + rectangle-fit pass (OpenCV) to propose likely platform lines from high-contrast edges.
 4. **Player correction layer:** all auto-detected geometry is editable/deletable; nothing is baked until accepted in the Level Editor.
 5. **Manual-only fallback:** hand-paint collision directly onto the image, like a traditional tile editor.
+
+### 5.2.1 Semantic Word-Objects
+
+The text pipeline has two layers that should remain separate:
+
+1. **Fast geometry layer:** image analysis finds text pixels, letters, words, lines, background regions, gutters, and margins without caring what the words mean. This layer powers immediate collision, Brickbat targets, platformer surfaces, erasure/mutation, and "white space is empty space" behavior.
+2. **Optional meaning layer:** OCR, UIA accessible text, or native importer text later labels the geometry with actual words, confidence scores, and semantic tags. This pass can happen after play begins; slow arrival is a feature, not merely latency.
+
+When enabled, OCR can become a play mechanic: the level starts with raw document physics, then words gradually become highlighted as the engine "reads" the page. Discovered terms can entice the player with bonuses, hazards, or transformations:
+
+- `TARPIT` → sticky hazard / slowing platform.
+- `LADDER` → climbable tool.
+- `BRIDGE` → connector over whitespace.
+- `DOOR` / `KEY` → lock-and-unlock pair.
+- `FIRE`, `ICE`, `BOUNCE`, `CONVEYOR`, `ELEVATOR` → physical modifiers.
+- `GHOST`, `GRUE`, `MONSTER`, or names/proper nouns → enemy spawns.
+- `FOOTNOTE`, `BOOKMARK`, `DRAFT`, `QUOTE`, `RED PEN` → literary power-ups.
+
+This creates a signature design promise: **the creator's writing is the map, the rules, and the monsters.** A sentence such as "The hero crossed the BRIDGE, avoided the TARPIT, climbed the LADDER, and found the KEY" can become a playable micro-level without the user writing code.
+
+Semantic objects must preserve a dual identity:
+
+- **Text face:** the original word remains readable and playable as text.
+- **Graphic face:** the word toggles into an equivalent sprite/tile/effect.
+- **Hybrid face:** the word remains readable while gaining visual behavior, such as tar bubbles behind `TARPIT` or rung handles over `LADDER`.
+
+The Boss Key and safe-preview modes can always force text/plain-document presentation. The transformation is applied to the DACK clone only; originals remain untouched.
+
+### 5.2.2 Word-Summoned, Editor-Authored Tools
+
+Semantic words should not trap the creator inside the typography. A word can summon a tool, while the editor lets the creator place that tool.
+
+Example: `LADDER`
+
+- Default behavior: the word itself is climbable.
+- Drag endpoints: the creator stretches the ladder between any two points, including arbitrary angle/length.
+- Presentation toggle: text, graphic ladder, or hybrid word-plus-rungs.
+- Binding mode:
+  - **Bound to word:** follows the source word exactly.
+  - **Offset from word:** behavior is moved but remains linked to the source word.
+  - **Detached but linked:** behavior becomes a normal placed tool with provenance back to the source word.
+
+The same pattern applies to `BRIDGE`, `CONVEYOR`, `ELEVATOR`, `DOOR`, `CHECKPOINT`, `TARPIT`, and other toolkit primitives. This is the bridge between automatic document magic and construction-kit authorship.
 
 ### 5.3 Four Modes of Level Sourcing, Delivered in Order
 
@@ -312,7 +357,16 @@ All toolkits share the **DACK Core** (rendering, physics, keyboard/mouse input, 
 - Params: ball speed, combo rules, track shape, color count.
 - **Featured preset: "Grow a Garden."** Live Document Mode ruleset where new writing sprouts decorative platforms/flora with no combat framing — the ambient, non-adversarial counterpart to "Word War."
 
-### 9.5 Tower Defense Kit
+### 9.5 Racing Kit
+
+- Minimal authoring requirement: define a track and a starting point. Optional finish line, checkpoints, lap count, timer, ghost car, hazards, boosts, and AI racers build from there.
+- Track sources: creator-drawn splines, hand-painted corridors, document margins, process diagrams, flowcharts, spreadsheet paths, presentation arrows, or text/word-object routes.
+- Track semantics: `START`, `FINISH`, `CHECKPOINT`, `BOOST`, `OIL`, `PIT`, `TARPIT`, `SLOW`, `JUMP`, and `SHORTCUT` can become suggested racing objects when OCR/semantic labels are enabled.
+- Params: steering model, acceleration, braking, drift, traction, off-track slowdown, collision bounce, lap rules, checkpoint order, timer, and ghost replay.
+- Office mappings: race through the gutters of a document, around the edge of a spreadsheet table, along a project workflow diagram, through slide connector arrows, or around a captured window layout.
+- Featured preset candidate: **"Margin Rally."** A tiny car races around a document's margins and paragraph corridors while semantic words become hazards, boosts, or checkpoints.
+
+### 9.6 Tower Defense Kit
 
 - Routes come from paragraph flow, document outlines, spreadsheet rows/columns, process diagrams, creator-drawn splines, or UIA text/region order.
 - Towers are placed on margins, headings, icons, table cells, comment balloons, or creator-painted anchor zones; upgrades use the same parameter-sheet + event-grid system as every toolkit.
@@ -321,7 +375,7 @@ All toolkits share the **DACK Core** (rendering, physics, keyboard/mouse input, 
 - Office mappings: defend the document title, a selected paragraph, a worksheet total, a project milestone, or a "home base" window while text/tiles advance along readable routes.
 - Featured preset candidate: **"Margin Defense."** Enemies march along text lines and outline paths while the player places simple towers in margins, headings, and whitespace.
 
-### 9.6 RPG/Roguelike Kit (Required)
+### 9.7 RPG/Roguelike Kit (Required)
 
 - Rogue/Hack-style grid or free-layout dungeons with rooms, corridors, doors, keys, locks, traps, items, inventory, monsters, stairs, fog of war, and turn-based or real-time movement.
 - **Glyph Map mode:** configurable character/word legend with synchronized text and world views (§6.3). A Word document can supply a copied monospaced map without a Word add-in or native `.docx` parser.
@@ -331,7 +385,7 @@ All toolkits share the **DACK Core** (rendering, physics, keyboard/mouse input, 
 - Office mappings: headings as floors, tables as rooms, cells as tiles, comments/markers as secrets, windows as buildings, and desktop icons as loot or portals.
 - Featured preset: **"Document Dungeon."** Toggle readable glyphs into dressed walls/floors, explore, then toggle back to inspect or edit the map.
 
-### 9.7 Shared Engine Services (DACK Core)
+### 9.8 Shared Engine Services (DACK Core)
 
 - Rendering: 2D sprite/tile renderer, camera, particle FX, transparent overlay rendering for Live Mode.
 - Physics: simple AABB/2D rigidbody suitable for platformer/action/casual; separate scrolling-shooter movement model for Space Shooter.
@@ -386,6 +440,7 @@ DACK needs a small, stable vocabulary of verbs that toolkits, AI behaviors, even
 | Locomotion | move, stop, patrol, chase, flee, wander, follow, orbit | speed, acceleration, friction, path cost, facing, formation |
 | Platforming | jump, fall, land, climb, hang, mantle, wall-slide, swing | gravity, impulse, air control, climb surface, ledge probe |
 | Vehicle/space | rotate, thrust, brake, drift, strafe, wrap, hyperspace | angular speed, thrust, drag, inertia, boundary behavior |
+| Racing/routes | steer, accelerate, brake, drift, checkpoint, lap, boost, go off-track | traction, turn rate, checkpoint order, lap count, best time, off-track penalty, ghost replay |
 | Combat | aim, shoot, burst, charge, melee, block, dodge, take cover | range, rate, spread, damage, ammo, cooldown, line of sight |
 | Projectile | travel, arc, home, bounce/ricochet, pierce, split, explode | velocity, lifetime, turn rate, bounce count, blast radius |
 | Terrain | dig, cut, build, repair, crumble, reveal, paint, transform | material, hardness, health, support, replacement tile/state |
@@ -594,6 +649,8 @@ Proposed solution boundaries:
 - **Activity Event Map editor** (§8.3): a simple grid—desktop/document event on one side, game reaction on the other—with an Ambient/Engaged/Siege intensity control and live preview of the active observation tier.
 - **Event/Condition/Action grid canvas** (§10.1): the same node-grid surface used for the Activity Event Map generalizes to any entity's behavior—poppable open from any parameter slider for players who want to go deeper.
 - **Auto-detect overlay toggle**: show/hide proposed auto-terrain outlines.
+- **Semantic word-object inspector:** detected words can be promoted into gameplay objects, assigned behaviors (`TARPIT`, `LADDER`, `KEY`, `BRIDGE`, etc.), and toggled between text, graphic, and hybrid presentation. OCR-discovered suggestions should arrive non-blockingly and be clearly marked as suggestions.
+- **Word-summoned tool handles:** semantic objects such as `LADDER`, `BRIDGE`, `CONVEYOR`, or `ELEVATOR` expose draggable endpoints/handles so the creator can stretch, rotate, detach, or rebind the generated tool instead of being limited to the word's original typography.
 - **Precision placement tools** (§10.2): pixel-nudge, optional snap-to-grid, alignment guides, and multi-select batch editing.
 - **Property inspector**: click any placed object → parameter panel, consistent "select and tweak" workflow, with live-updating previews (jump arcs, patrol/perception ranges) drawn directly on the canvas.
 - **One-click Test Play**: launches the level immediately without a separate export step.
@@ -654,7 +711,7 @@ The MVP validates one proposition: **a safe clone of an ordinary Windows workspa
 
 1. Godot/.NET solution skeleton with clean `Core`, `Windows`, `Editor`, and `Player` boundaries (§13.1).
 2. **Snapshot Clone Mode:** capture monitor/window/region; import PNG/JPEG/BMP; create an immutable-source working clone.
-3. Text-band platform detection for captured documents, UIA + edge/rectangle detection, manual collision painting, and the shared environmental awareness map.
+3. Text-object detection for captured documents (letters/words/lines), background-region/gutter detection, UIA + edge/rectangle detection, manual collision painting, and the shared environmental awareness map.
 4. A small **top-down Action/ambient vertical slice**: stick-figure actors enter, wander, patrol, chase, take cover, shoot, ricochet, collect, and defend a simulated document/window objective.
 5. Keyboard/mouse controls, web-page-like menus, configurable and testable Boss Key, multi-monitor-safe teardown.
 6. Rule engine v0 with parameter sheets and a minimal event/condition/action grid built from the canonical vocabulary.
@@ -674,13 +731,16 @@ The MVP validates one proposition: **a safe clone of an ordinary Windows workspa
 - Action Kit squad orders and light worker/gather/build mechanics inspired by Cannon Fodder, Syndicate, and Age of Empires.
 - Aseprite PNG/JSON export-refresh adapter for advanced animation and polished asset work; expand the live pad only where playtesting demonstrates high-value construction-kit operations.
 - Platformer movement primitives if the environmental map proves stable.
+- Optional local OCR label pass for captured text objects, used first as a slow-reveal suggestion layer rather than a blocking import step.
+- First semantic word-object tools: `LADDER`, `TARPIT`, `BRIDGE`, `KEY`, and `DOOR`, with text/graphic/hybrid toggles and draggable handles where appropriate.
 
 ### Phase 3 — Activity-Reactive Presets & Toolkit Breadth
 
 - UIA text/selection activity feed and the Activity Event Map—no Office add-in.
 - `Word War` (Engaged default), `Grow a Garden` (Ambient), and document-defense presets.
-- Platformer, Casual, and Space Shooter toolkit shells composed from the same vocabulary.
+- Platformer, Casual, Racing, and Space Shooter toolkit shells composed from the same vocabulary.
 - Rebuild/diff flow for recaptured frames and text maps.
+- Semantic word-object expansion across toolkits: literary Brickbat bonuses, platformer hazards/tools, RPG glyph/word actors, and tower-defense routes/towers derived from meaningful document text.
 - Camera/zoom LOD and first richer skin, while preserving stick-figure/debug visibility modes.
 
 ### Phase 4 — Structured Sources & Community, Only After Engine Proof
@@ -708,6 +768,7 @@ The MVP validates one proposition: **a safe clone of an ordinary Windows workspa
 - **Ambient is the first-run default; `Word War` defaults to Engaged.** Engaged has real simulated objectives and recoverable setbacks. Siege is opt-in. No intensity can harm the work.
 - **The Office add-in is back-burnered.** Capture, UIA window/text signals, and explicit open-format observation get the first opportunity to prove the concept.
 - **RPG/Roguelike creation is a required toolkit.** Glyph maps and Rogue/Hack-style systems are part of the planned product, with a small text dungeon proven in Phase 1 and the full kit prioritized in Phase 2.
+- **Semantic word-objects are a signature feature.** Fast image geometry makes text playable immediately; optional OCR/UIA/native text labels add meaning later. Words can stay text, become equivalent graphics, or run in hybrid presentation, and word-summoned tools can be edited with normal construction-kit handles.
 - **Art begins with evolving stick figures and a live-linked constrained pad.** C64-like 24×21, DACK 32×32, and RAD-compatible 64×64 profiles, small palettes, color-key transparency, and immediate entity binding are the primary in-app art path. Aseprite is the optional advanced animation path.
 - **Godot 4.x .NET + C# is the chosen implementation stack.** Visual Studio is the preferred IDE, but command-line builds and repository structure remain editor-neutral.
 

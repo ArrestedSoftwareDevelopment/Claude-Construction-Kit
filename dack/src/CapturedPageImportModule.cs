@@ -222,13 +222,13 @@ public static class CapturedPageImportModule
             }
             else if (inBand)
             {
-                AddTextRuns(words, image, bandStartY, y - 1, bandMinX, bandMaxX, bandDarkPixels, 8, 360);
+                AddTextRuns(words, image, bandStartY, y - 1, bandMinX, bandMaxX, bandDarkPixels, 3, 220);
                 inBand = false;
             }
         }
 
         if (inBand)
-            AddTextRuns(words, image, bandStartY, image.GetHeight() - 1, bandMinX, bandMaxX, bandDarkPixels, 8, 360);
+            AddTextRuns(words, image, bandStartY, image.GetHeight() - 1, bandMinX, bandMaxX, bandDarkPixels, 3, 220);
 
         return words.ToArray();
     }

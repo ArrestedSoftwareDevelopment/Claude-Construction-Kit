@@ -52,21 +52,23 @@ public partial class BrickbatOverlay : Control
 
         if (Playfield is not null)
         {
+            Rect2 playBounds = Playfield.PlayBounds;
             foreach (Rect2 platform in Playfield.GetTextObjectRegions(BrickGranularity))
             {
-                if (platform.Size.X >= 3f && platform.Position.Y > 40f && platform.Position.Y < Size.Y - 80f)
+                if (platform.Size.X >= 3f && platform.Position.Y > playBounds.Position.Y + 40f && platform.Position.Y < playBounds.End.Y - 80f)
                     _bricks.Add(platform);
             }
         }
 
+        Rect2 bounds = Playfield?.PlayBounds ?? new Rect2(Vector2.Zero, Size);
         if (SidePaddle)
         {
-            _ballPosition = new Vector2(Size.X - 86f, Size.Y * 0.5f);
+            _ballPosition = new Vector2(bounds.End.X - 86f, bounds.GetCenter().Y);
             _ballVelocity = new Vector2(-260f, -70f);
         }
         else
         {
-            _ballPosition = new Vector2(Size.X * 0.5f, Size.Y - 96f);
+            _ballPosition = new Vector2(bounds.GetCenter().X, bounds.End.Y - 96f);
             _ballVelocity = new Vector2(220f, -190f);
         }
 
@@ -78,48 +80,50 @@ public partial class BrickbatOverlay : Control
     private void UpdatePaddle()
     {
         Vector2 mouse = GetLocalMousePosition();
+        Rect2 bounds = Playfield?.PlayBounds ?? new Rect2(Vector2.Zero, Size);
         if (SidePaddle)
         {
             float height = 96f;
-            float y = Mathf.Clamp(mouse.Y - height * 0.5f, 40f, Mathf.Max(40f, Size.Y - height - 12f));
-            _paddle = new Rect2(Size.X - 32f, y, 12f, height);
+            float y = Mathf.Clamp(mouse.Y - height * 0.5f, bounds.Position.Y + 40f, Mathf.Max(bounds.Position.Y + 40f, bounds.End.Y - height - 12f));
+            _paddle = new Rect2(bounds.End.X - 32f, y, 12f, height);
         }
         else
         {
             float width = 120f;
-            float x = Mathf.Clamp(mouse.X - width * 0.5f, 12f, Mathf.Max(12f, Size.X - width - 12f));
-            _paddle = new Rect2(x, Size.Y - 36f, width, 12f);
+            float x = Mathf.Clamp(mouse.X - width * 0.5f, bounds.Position.X + 12f, Mathf.Max(bounds.Position.X + 12f, bounds.End.X - width - 12f));
+            _paddle = new Rect2(x, bounds.End.Y - 36f, width, 12f);
         }
     }
 
     private void UpdateBall(float delta)
     {
+        Rect2 bounds = Playfield?.PlayBounds ?? new Rect2(Vector2.Zero, Size);
         _ballPosition += _ballVelocity * delta;
 
-        if (_ballPosition.X <= 5f)
+        if (_ballPosition.X <= bounds.Position.X + 5f)
         {
-            _ballPosition.X = 5f;
+            _ballPosition.X = bounds.Position.X + 5f;
             _ballVelocity.X = Mathf.Abs(_ballVelocity.X);
         }
-        else if (!SidePaddle && _ballPosition.X >= Size.X - 5f)
+        else if (!SidePaddle && _ballPosition.X >= bounds.End.X - 5f)
         {
-            _ballPosition.X = Size.X - 5f;
+            _ballPosition.X = bounds.End.X - 5f;
             _ballVelocity.X = -Mathf.Abs(_ballVelocity.X);
         }
 
-        if (SidePaddle && _ballPosition.Y >= Size.Y - 5f)
+        if (SidePaddle && _ballPosition.Y >= bounds.End.Y - 5f)
         {
-            _ballPosition.Y = Size.Y - 5f;
+            _ballPosition.Y = bounds.End.Y - 5f;
             _ballVelocity.Y = -Mathf.Abs(_ballVelocity.Y);
         }
 
-        if (_ballPosition.Y <= 35f)
+        if (_ballPosition.Y <= bounds.Position.Y + 35f)
         {
-            _ballPosition.Y = 35f;
+            _ballPosition.Y = bounds.Position.Y + 35f;
             _ballVelocity.Y = Mathf.Abs(_ballVelocity.Y);
         }
 
-        if ((SidePaddle && _ballPosition.X > Size.X + 24f) || (!SidePaddle && _ballPosition.Y > Size.Y + 24f))
+        if ((SidePaddle && _ballPosition.X > bounds.End.X + 24f) || (!SidePaddle && _ballPosition.Y > bounds.End.Y + 24f))
             ResetGame();
 
         Rect2 ball = new(_ballPosition - new Vector2(5, 5), new Vector2(10, 10));
@@ -132,7 +136,7 @@ public partial class BrickbatOverlay : Control
                 continue;
 
             BounceFrom(_bricks[i]);
-            Playfield.EraseDocumentText(_bricks[i]);
+            Playfield?.EraseDocumentText(_bricks[i]);
             _bricks.RemoveAt(i);
             break;
         }
