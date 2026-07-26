@@ -31,17 +31,36 @@ dotnet build DACK.csproj
 - Use left/right arrows or A/D to move the playable scout.
 - Press Space, W, or Up to jump.
 - Choose **Pitfall** for horizontal platforming or **Climber** for vertical ladder play.
-- Adjust the character scale slider to match the apparent text size of the playfield; the demo defaults extra tiny.
+- Adjust the character scale slider to match the apparent text size of the playfield; the demo defaults to a small but visible roughly 32 px-tall office-platformer character.
+- During gameplay, the Windows pointer is hidden. It reappears for the sprite pad and Boss Key screen.
 - If the root screenshot test image is present, it is cloned into the playfield as a captured-page background and dark text bands become basic platforms.
 - Endpoint-built ramps, conveyors, elevators, and ladders are live world objects for editor-authored additions; screenshot mode currently focuses on text-only terrain.
-- Use **Show Sprite Pad** / **Hide Sprite Pad** to restore or collapse the editor sidebar.
+- The prototype opens as playfield-only real estate; use the floating toolbar to restore the sprite pad or switch playsets.
 - The playable scout uses Stickman Pack idle, run, and jump animation frames.
+- Use the floating playset toolbar to switch between **Platformer** and **Brickbat**.
+- In Brickbat mode, detected letters or words become invisible collision objects; when struck, the cloned page visually erases that text object. The mouse controls the paddle.
 - Click one of the three actors to select it.
 - Paint on the 32 x 32 pad; every actor sharing that sprite changes instantly.
 - Right-click or choose **Erase** to make pixels transparent.
 - Choose **Fork Selected** to give the selected actor an independent sprite.
 - Choose **Reset Figure** to restore the simple procedural stick figure.
 - Press **Ctrl+Alt+B** for the Boss Key.
+
+## Brickbat literary power-up sketch
+
+These are first-pass mechanics for text-native Brickbat variants. They should read like document magic rather than arcade pickups pasted on top.
+
+- **Footnote**: widens the paddle and adds a small trailing citation mark. Useful, readable, and forgiving.
+- **Plot Twist**: sharply changes the ball's angle after the next paddle hit. Good for breaking stale rallies.
+- **Second Draft**: cancels one missed ball and rewrites it back into play from the paddle.
+- **Red Pen**: temporarily lets the ball erase every text object it grazes without bouncing off the first one.
+- **Bookmark**: drops a temporary checkpoint; if the ball is missed, it relaunches from that marked page position.
+- **Alliteration**: chains hits across nearby objects that start with the same detected letter once OCR/text identity exists.
+- **Marginalia**: creates a temporary side paddle in the margin for weird two-axis saves.
+
+## Sprite scale note
+
+The current platformer target should favor a 32 px-tall gameplay sprite tier. A 64 px source is still useful for richer future art and zoomed/detail views, but thin one-pixel stick limbs do not scale down cleanly to text-sized play without aliasing into broken dots. For the RAD prototype, 32 px is the better “office document creature” size; complexity can move into letters, enemies, power-ups, and higher-detail sprites once the camera/scale tiers are stable.
 
 ## Asset boundary
 

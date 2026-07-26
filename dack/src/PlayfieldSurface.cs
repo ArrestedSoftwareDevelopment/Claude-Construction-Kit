@@ -1,4 +1,6 @@
 using Godot;
+using System;
+using System.Collections.Generic;
 using System.IO;
 
 namespace Dack;
@@ -11,8 +13,9 @@ public partial class PlayfieldSurface : Control
     private CapturedPageFrame? _capturedPage;
     private double _elapsed;
 
-    public float TextUnitPixels { get; set; } = 2f;
+    public float TextUnitPixels { get; set; } = 7f;
     public PlatformerMode Mode { get; set; } = PlatformerMode.Horizontal;
+    public bool HasCapturedPage => _capturedPage is not null;
     public float ElapsedSeconds
     {
         get => (float)_elapsed;
@@ -38,13 +41,7 @@ public partial class PlayfieldSurface : Control
         DrawBackground();
 
         if (_capturedPage is not null)
-        {
-            DrawRect(new Rect2(0, 0, Size.X, 30), new Color("#26313C"), true);
-            DrawRect(new Rect2(14, 9, 12, 12), new Color("#FF5C35"), true);
-            DrawRect(new Rect2(34, 9, 12, 12), new Color("#F4C95D"), true);
-            DrawRect(new Rect2(54, 9, 12, 12), new Color("#5CB8A7"), true);
             return;
-        }
 
         float floorY = GetFloor().Position.Y;
         if (_platform is not null)
@@ -109,6 +106,82 @@ public partial class PlayfieldSurface : Control
             new Rect2(Size.X * 0.22f, Size.Y * 0.68f, unit * 13f, unit * 0.8f),
             new Rect2(Size.X * 0.58f, Size.Y * 0.50f, unit * 12f, unit * 0.8f)
         ];
+    }
+
+    public Rect2[] GetBrickRegions()
+    {
+        return GetTextObjectRegions(TextObjectGranularity.Letter);
+    }
+
+    public Rect2[] GetTextObjectRegions(TextObjectGranularity granularity)
+    {
+        if (_capturedPage is not null)
+        {
+            return granularity switch
+            {
+                TextObjectGranularity.Word => GetCapturedRects(_capturedPage, _capturedPage.TextWords),
+                TextObjectGranularity.Line => GetCapturedRects(_capturedPage, _capturedPage.TextLines),
+                _ => GetCapturedRects(_capturedPage, _capturedPage.TextBricks)
+            };
+        }
+
+        return GetPlatforms();
+    }
+
+    public Color GetDocumentBackgroundColor(Rect2 region)
+    {
+        if (_capturedPage is null)
+            return new Color("#FBFBF8");
+
+        Rect2 sourceRegion = DisplayToSourceRect(_capturedPage, region);
+
+        return SampleBackgroundColor(_capturedPage.OriginalImage, sourceRegion);
+    }
+
+    public void EraseDocumentText(Rect2 region)
+    {
+        if (_capturedPage is null)
+            return;
+
+        Rect2 sourceRegion = DisplayToSourceRect(_capturedPage, region).Grow(1.5f);
+        Color fill = SampleBackgroundColor(_capturedPage.OriginalImage, sourceRegion);
+        int minX = Mathf.Clamp(Mathf.FloorToInt(sourceRegion.Position.X), 0, _capturedPage.Image.GetWidth() - 1);
+        int minY = Mathf.Clamp(Mathf.FloorToInt(sourceRegion.Position.Y), 0, _capturedPage.Image.GetHeight() - 1);
+        int maxX = Mathf.Clamp(Mathf.CeilToInt(sourceRegion.End.X), 0, _capturedPage.Image.GetWidth() - 1);
+        int maxY = Mathf.Clamp(Mathf.CeilToInt(sourceRegion.End.Y), 0, _capturedPage.Image.GetHeight() - 1);
+
+        for (int y = minY; y <= maxY; y++)
+        {
+            for (int x = minX; x <= maxX; x++)
+            {
+                Color original = _capturedPage.OriginalImage.GetPixel(x, y);
+                Color current = _capturedPage.Image.GetPixel(x, y);
+                if (IsLikelyTextPixel(original) || IsLikelyInkEdge(original, fill) || IsLikelyTextPixel(current))
+                    _capturedPage.Image.SetPixel(x, y, fill);
+            }
+        }
+
+        if (_capturedPage.Texture is ImageTexture imageTexture)
+            imageTexture.Update(_capturedPage.Image);
+
+        QueueRedraw();
+    }
+
+    public void ResetDocumentImage()
+    {
+        if (_capturedPage is null)
+            return;
+
+        _capturedPage.Image.BlitRect(
+            _capturedPage.OriginalImage,
+            new Rect2I(Vector2I.Zero, _capturedPage.PixelSize),
+            Vector2I.Zero
+        );
+
+        if (_capturedPage.Texture is ImageTexture imageTexture)
+            imageTexture.Update(_capturedPage.Image);
+
+        QueueRedraw();
     }
 
     public WorldObject[] GetLadders()
@@ -206,10 +279,13 @@ public partial class PlayfieldSurface : Control
     {
         foreach (Rect2 platform in GetPlatforms())
         {
-            if (platform.Size.X < actorSize.X * 1.5f || platform.Position.Y < 48f)
+            if (platform.Size.X < actorSize.X * 1.5f || platform.Position.Y < 120f)
                 continue;
 
-            float x = Mathf.Clamp(platform.Position.X, 0, Mathf.Max(0, Size.X - actorSize.X));
+            if (platform.Position.X > Size.X - actorSize.X || platform.End.X < actorSize.X)
+                continue;
+
+            float x = Mathf.Clamp(platform.Position.X + 4f, 0, Mathf.Max(0, Size.X - actorSize.X));
             return new Vector2(x, platform.Position.Y - actorSize.Y);
         }
 
@@ -255,12 +331,7 @@ public partial class PlayfieldSurface : Control
 
     private void DrawCapturedPage(CapturedPageFrame frame)
     {
-        Vector2 imageSize = new(frame.PixelSize.X, frame.PixelSize.Y);
-        float scale = Mathf.Max(Size.X / imageSize.X, Size.Y / imageSize.Y);
-        Vector2 drawSize = imageSize * scale;
-        Vector2 drawPosition = (Size - drawSize) * 0.5f;
-        DrawTextureRect(frame.Texture, new Rect2(drawPosition, drawSize), false);
-        DrawRect(new Rect2(Vector2.Zero, Size), new Color(0, 0, 0, 0.08f), true);
+        DrawTextureRect(frame.Texture, GetCapturedPageDrawRect(frame), false);
     }
 
     private Rect2[] GetCapturedTextPlatforms(CapturedPageFrame frame)
@@ -282,13 +353,145 @@ public partial class PlayfieldSurface : Control
         return mapped;
     }
 
+    private Rect2[] GetCapturedTextBricks(CapturedPageFrame frame)
+    {
+        return GetCapturedRects(frame, frame.TextBricks);
+    }
+
+    private Rect2[] GetCapturedRects(CapturedPageFrame frame, Rect2[] sourceRects)
+    {
+        Rect2 imageRect = GetCapturedPageDrawRect(frame);
+        Vector2 sourceSize = new(frame.PixelSize.X, frame.PixelSize.Y);
+        float scale = imageRect.Size.X / sourceSize.X;
+        Rect2[] mapped = new Rect2[sourceRects.Length];
+
+        for (int i = 0; i < sourceRects.Length; i++)
+        {
+            Rect2 source = sourceRects[i];
+            mapped[i] = new Rect2(
+                imageRect.Position + source.Position * scale,
+                source.Size * scale
+            );
+        }
+
+        return mapped;
+    }
+
     private Rect2 GetCapturedPageDrawRect(CapturedPageFrame frame)
     {
-        Vector2 imageSize = new(frame.PixelSize.X, frame.PixelSize.Y);
-        float scale = Mathf.Max(Size.X / imageSize.X, Size.Y / imageSize.Y);
-        Vector2 drawSize = imageSize * scale;
-        Vector2 drawPosition = (Size - drawSize) * 0.5f;
-        return new Rect2(drawPosition, drawSize);
+        Vector2 sourceSize = new(frame.PixelSize.X, frame.PixelSize.Y);
+        if (sourceSize.X <= 0 || sourceSize.Y <= 0 || Size.X <= 0 || Size.Y <= 0)
+            return new Rect2(Vector2.Zero, sourceSize);
+
+        float scale = Mathf.Max(Size.X / sourceSize.X, Size.Y / sourceSize.Y);
+        Vector2 drawSize = sourceSize * scale;
+        return new Rect2((Size - drawSize) * 0.5f, drawSize);
+    }
+
+    private Rect2 DisplayToSourceRect(CapturedPageFrame frame, Rect2 displayRegion)
+    {
+        Rect2 imageRect = GetCapturedPageDrawRect(frame);
+        Vector2 sourceSize = new(frame.PixelSize.X, frame.PixelSize.Y);
+        float scale = imageRect.Size.X / sourceSize.X;
+        return new Rect2(
+            (displayRegion.Position - imageRect.Position) / scale,
+            displayRegion.Size / scale
+        );
+    }
+
+    private static Color SampleBackgroundColor(Image image, Rect2 sourceRegion)
+    {
+        float grow = Mathf.Max(8f, Mathf.Max(sourceRegion.Size.X, sourceRegion.Size.Y) * 0.75f);
+        Rect2 expanded = sourceRegion.Grow(grow);
+        int minX = Mathf.Clamp(Mathf.FloorToInt(expanded.Position.X), 0, image.GetWidth() - 1);
+        int minY = Mathf.Clamp(Mathf.FloorToInt(expanded.Position.Y), 0, image.GetHeight() - 1);
+        int maxX = Mathf.Clamp(Mathf.CeilToInt(expanded.End.X), 0, image.GetWidth() - 1);
+        int maxY = Mathf.Clamp(Mathf.CeilToInt(expanded.End.Y), 0, image.GetHeight() - 1);
+
+        Dictionary<int, ColorBucket> buckets = [];
+
+        for (int y = minY; y <= maxY; y++)
+        {
+            for (int x = minX; x <= maxX; x++)
+            {
+                Color pixel = image.GetPixel(x, y);
+                if (IsLikelyTextPixel(pixel))
+                    continue;
+
+                int key = QuantizeColor(pixel);
+                buckets.TryGetValue(key, out ColorBucket bucket);
+                bucket.Add(pixel);
+                buckets[key] = bucket;
+            }
+        }
+
+        if (buckets.Count == 0)
+            return new Color("#FBFBF8");
+
+        ColorBucket best = default;
+        foreach (ColorBucket bucket in buckets.Values)
+        {
+            if (bucket.Count > best.Count)
+                best = bucket;
+        }
+
+        return best.Average();
+    }
+
+    private static bool IsLikelyTextPixel(Color pixel)
+    {
+        if (pixel.A < 0.5f)
+            return false;
+
+        float luminance = pixel.R * 0.2126f + pixel.G * 0.7152f + pixel.B * 0.0722f;
+        return luminance < 0.38f;
+    }
+
+    private static bool IsLikelyInkEdge(Color pixel, Color background)
+    {
+        float luminance = pixel.R * 0.2126f + pixel.G * 0.7152f + pixel.B * 0.0722f;
+        float backgroundLuminance = background.R * 0.2126f + background.G * 0.7152f + background.B * 0.0722f;
+        return luminance < backgroundLuminance - 0.08f;
+    }
+
+    private static int QuantizeColor(Color pixel)
+    {
+        int r = Mathf.Clamp(Mathf.RoundToInt(pixel.R * 15f), 0, 15);
+        int g = Mathf.Clamp(Mathf.RoundToInt(pixel.G * 15f), 0, 15);
+        int b = Mathf.Clamp(Mathf.RoundToInt(pixel.B * 15f), 0, 15);
+        return (r << 8) | (g << 4) | b;
+    }
+
+    private struct ColorBucket
+    {
+        private double _r;
+        private double _g;
+        private double _b;
+        private double _a;
+
+        public int Count { get; private set; }
+
+        public void Add(Color color)
+        {
+            _r += color.R;
+            _g += color.G;
+            _b += color.B;
+            _a += color.A;
+            Count++;
+        }
+
+        public readonly Color Average()
+        {
+            if (Count == 0)
+                return new Color("#FBFBF8");
+
+            return new Color(
+                (float)(_r / Count),
+                (float)(_g / Count),
+                (float)(_b / Count),
+                Math.Max(1f, (float)(_a / Count))
+            );
+        }
     }
 
     private void DrawPlatform(Rect2 rect)

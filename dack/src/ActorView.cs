@@ -66,7 +66,6 @@ public partial class ActorView : Control
 
     public override void _Ready()
     {
-        CustomMinimumSize = new Vector2(104, 112);
         MouseDefaultCursorShape = CursorShape.PointingHand;
         TooltipText = $"Select {ActorName}";
     }
@@ -128,21 +127,14 @@ public partial class ActorView : Control
         if (_model is null)
             return;
 
-        Rect2 spriteArea = new(Vector2.Zero, Size);
-        if (!FacingRight)
-        {
-            spriteArea.Position = new Vector2(Size.X, 0);
-            spriteArea.Size = new Vector2(-Size.X, Size.Y);
-        }
-
         if (AnimationSet is not null)
         {
             SpriteFrame frame = AnimationSet.GetFrame(MotionState, AnimationClock);
-            DrawTextureRectRegion(frame.Texture, spriteArea, frame.SourceRegion);
+            DrawSpriteFrame(frame.Texture, frame.SourceRegion);
         }
         else
         {
-            DrawTextureRectRegion(_model.Texture, spriteArea, _model.GetOpaqueBounds(2));
+            DrawSpriteFrame(_model.Texture, _model.GetOpaqueBounds(2));
         }
 
         if (Selected)
@@ -157,6 +149,15 @@ public partial class ActorView : Control
                 2f
             );
         }
+    }
+
+    private void DrawSpriteFrame(Texture2D texture, Rect2 sourceRegion)
+    {
+        if (!FacingRight)
+            DrawSetTransform(new Vector2(Size.X, 0), 0, new Vector2(-1, 1));
+
+        DrawTextureRectRegion(texture, new Rect2(Vector2.Zero, Size), sourceRegion);
+        DrawSetTransform(Vector2.Zero, 0, Vector2.One);
     }
 
     private void OnModelChanged() => QueueRedraw();

@@ -26,6 +26,10 @@ public partial class Main : Control
     private HSlider _scaleSlider = null!;
     private PanelContainer _sidebar = null!;
     private Button _spritePanelButton = null!;
+    private PanelContainer _playsetToolbar = null!;
+    private HBoxContainer _playsetToolbarRow = null!;
+    private Button _playsetToolbarToggle = null!;
+    private BrickbatOverlay _brickbatOverlay = null!;
     private ActorView _selectedActor = null!;
     private ActorView _player = null!;
     private EditableSpriteModel _initialModel = null!;
@@ -35,7 +39,8 @@ public partial class Main : Control
     private Vector2 _playerVelocity;
     private bool _playerOnGround;
     private PlatformerMode _platformerMode = PlatformerMode.Horizontal;
-    private float _textUnitPixels = 2f;
+    private PlaysetMode _playsetMode = PlaysetMode.Platformer;
+    private float _textUnitPixels = 7f;
 
     public override void _Ready()
     {
@@ -44,6 +49,7 @@ public partial class Main : Control
         CreateActors();
         _playfield.Resized += OnPlayfieldResized;
         SelectActor(_actors[0]);
+        UpdateCursorMode();
         SetProcess(true);
     }
 
@@ -55,6 +61,9 @@ public partial class Main : Control
 
         for (int i = 1; i < _actors.Count; i++)
         {
+            if (!_actors[i].Visible)
+                continue;
+
             Vector2 anchor = _actorAnchors[i];
             Vector2 basePosition = new(
                 _playfield.Size.X * anchor.X - 52,
@@ -90,6 +99,7 @@ public partial class Main : Control
             CustomMinimumSize = new Vector2(0, 62)
         };
         header.AddThemeStyleboxOverride("panel", FlatStyle("#202A34"));
+        header.Visible = false;
         _workspace.AddChild(header);
 
         MarginContainer headerMargin = Margins(20, 14, 20, 12);
@@ -126,18 +136,18 @@ public partial class Main : Control
         HSplitContainer body = new()
         {
             SizeFlagsVertical = SizeFlags.ExpandFill,
-            SplitOffsets = [825]
+            SplitOffsets = [1280]
         };
         _workspace.AddChild(body);
 
         PanelContainer playfieldFrame = new()
         {
-            CustomMinimumSize = new Vector2(720, 0)
+            CustomMinimumSize = Vector2.Zero
         };
         playfieldFrame.AddThemeStyleboxOverride("panel", FlatStyle("#111820", 0));
         body.AddChild(playfieldFrame);
 
-        MarginContainer playfieldMargin = Margins(14, 14, 14, 14);
+        MarginContainer playfieldMargin = Margins(0, 0, 0, 0);
         playfieldFrame.AddChild(playfieldMargin);
         _playfield = new PlayfieldSurface
         {
@@ -146,6 +156,7 @@ public partial class Main : Control
             SizeFlagsVertical = SizeFlags.ExpandFill
         };
         playfieldMargin.AddChild(_playfield);
+        BuildPlaysetToolbar();
 
         _sidebar = new PanelContainer
         {
@@ -270,9 +281,9 @@ public partial class Main : Control
 
         _scaleSlider = new HSlider
         {
-            MinValue = 1.5,
-            MaxValue = 8,
-            Step = 0.5,
+            MinValue = 4,
+            MaxValue = 18,
+            Step = 1,
             Value = _textUnitPixels,
             TooltipText = "Match actor size to apparent text height."
         };
@@ -297,6 +308,82 @@ public partial class Main : Control
 
         _sidebar.Visible = false;
         BuildBossOverlay();
+    }
+
+    private void BuildPlaysetToolbar()
+    {
+        _brickbatOverlay = new BrickbatOverlay
+        {
+            Playfield = _playfield,
+            Visible = false
+        };
+        _brickbatOverlay.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+        _playfield.AddChild(_brickbatOverlay);
+
+        _playsetToolbar = new PanelContainer
+        {
+            Position = new Vector2(16, 42),
+            MouseFilter = MouseFilterEnum.Stop
+        };
+        _playsetToolbar.AddThemeStyleboxOverride("panel", FlatStyle("#F7F5EF", 6));
+        _playfield.AddChild(_playsetToolbar);
+
+        MarginContainer margin = Margins(8, 8, 8, 8);
+        _playsetToolbar.AddChild(margin);
+        _playsetToolbarRow = new HBoxContainer();
+        _playsetToolbarRow.AddThemeConstantOverride("separation", 6);
+        margin.AddChild(_playsetToolbarRow);
+
+        _playsetToolbarToggle = Button("-");
+        _playsetToolbarToggle.CustomMinimumSize = new Vector2(34, 32);
+        _playsetToolbarToggle.Pressed += TogglePlaysetToolbar;
+        _playsetToolbarRow.AddChild(_playsetToolbarToggle);
+
+        Button platformer = Button("PLATFORMER");
+        platformer.Pressed += () => SetPlaysetMode(PlaysetMode.Platformer);
+        _playsetToolbarRow.AddChild(platformer);
+
+        Button brickbat = Button("BRICKBAT");
+        brickbat.Pressed += () => SetPlaysetMode(PlaysetMode.Brickbat);
+        _playsetToolbarRow.AddChild(brickbat);
+
+        Button reset = Button("RESET");
+        reset.Pressed += () =>
+        {
+            if (_playsetMode == PlaysetMode.Brickbat)
+                _brickbatOverlay.ResetGame();
+            else
+                SnapPlayerToStart();
+        };
+        _playsetToolbarRow.AddChild(reset);
+
+        Button side = Button("SIDE PADDLE");
+        side.Pressed += () =>
+        {
+            _brickbatOverlay.SidePaddle = !_brickbatOverlay.SidePaddle;
+            side.Text = _brickbatOverlay.SidePaddle ? "BOTTOM PADDLE" : "SIDE PADDLE";
+            _brickbatOverlay.ResetGame();
+        };
+        _playsetToolbarRow.AddChild(side);
+
+        Button grain = Button("LETTER BRICKS");
+        grain.Pressed += () =>
+        {
+            _brickbatOverlay.BrickGranularity = _brickbatOverlay.BrickGranularity == TextObjectGranularity.Letter
+                ? TextObjectGranularity.Word
+                : TextObjectGranularity.Letter;
+            grain.Text = _brickbatOverlay.BrickGranularity == TextObjectGranularity.Letter ? "LETTER BRICKS" : "WORD BRICKS";
+            _brickbatOverlay.ResetGame();
+        };
+        _playsetToolbarRow.AddChild(grain);
+
+        Button spritePad = Button("SPRITE PAD");
+        spritePad.Pressed += ToggleSpritePanel;
+        _playsetToolbarRow.AddChild(spritePad);
+
+        Button boss = Button("BOSS");
+        boss.Pressed += ToggleBossMode;
+        _playsetToolbarRow.AddChild(boss);
     }
 
     private void BuildBossOverlay()
@@ -346,6 +433,9 @@ public partial class Main : Control
             actor.SelectionRequested += SelectActor;
             _actors.Add(actor);
             _playfield.AddChild(actor);
+
+            if (i > 0)
+                actor.Visible = false;
         }
 
         _player = _actors[0];
@@ -391,12 +481,39 @@ public partial class Main : Control
         _bossMode = !_bossMode;
         _workspace.Visible = !_bossMode;
         _bossOverlay.Visible = _bossMode;
+        UpdateCursorMode();
     }
 
     private void ToggleSpritePanel()
     {
         _sidebar.Visible = !_sidebar.Visible;
         _spritePanelButton.Text = _sidebar.Visible ? "HIDE SPRITE PAD" : "SHOW SPRITE PAD";
+        UpdateCursorMode();
+    }
+
+    private void TogglePlaysetToolbar()
+    {
+        bool collapsed = _playsetToolbarRow.GetChildCount() > 1 && _playsetToolbarRow.GetChild<Button>(1).Visible;
+
+        for (int i = 1; i < _playsetToolbarRow.GetChildCount(); i++)
+            _playsetToolbarRow.GetChild<Control>(i).Visible = !collapsed;
+
+        _playsetToolbarToggle.Text = collapsed ? "+" : "-";
+    }
+
+    private void SetPlaysetMode(PlaysetMode mode)
+    {
+        _playsetMode = mode;
+        bool brickbat = mode == PlaysetMode.Brickbat;
+        _player.Visible = !brickbat;
+        _brickbatOverlay.Visible = brickbat;
+
+        if (brickbat)
+            _brickbatOverlay.ResetGame();
+        else
+            SnapPlayerToStart();
+
+        UpdateCursorMode();
     }
 
     private void SetPlatformerMode(PlatformerMode mode)
@@ -411,7 +528,7 @@ public partial class Main : Control
 
     private void UpdatePlayer(double delta)
     {
-        if (_player is null || _bossMode)
+        if (_player is null || _bossMode || _playsetMode != PlaysetMode.Platformer)
             return;
 
         float dt = (float)delta;
@@ -468,6 +585,13 @@ public partial class Main : Control
 
         next.Y += _playerVelocity.Y * dt;
         ResolveVerticalCollisions(ref next);
+
+        if (next.Y > _playfield.Size.Y + _player.Size.Y)
+        {
+            SnapPlayerToStart();
+            RefreshMotionText();
+            return;
+        }
 
         _playerPosition = next;
         _player.Position = _playerPosition;
@@ -539,7 +663,8 @@ public partial class Main : Control
 
     private IEnumerable<Rect2> GetSolidSurfaces()
     {
-        yield return _playfield.GetFloor();
+        if (!_playfield.HasCapturedPage)
+            yield return _playfield.GetFloor();
 
         foreach (Rect2 platform in _playfield.GetPlatforms())
             yield return platform;
@@ -559,7 +684,7 @@ public partial class Main : Control
 
     private void ApplyActorScale()
     {
-        Vector2 playerSize = new(_textUnitPixels * 2.8f, _textUnitPixels * 3.7f);
+        Vector2 playerSize = new(Mathf.Round(_textUnitPixels * 3.0f), Mathf.Round(_textUnitPixels * 4.6f));
         Vector2 cardSize = new(_textUnitPixels * 6.5f, _textUnitPixels * 7f);
 
         for (int i = 0; i < _actors.Count; i++)
@@ -567,6 +692,13 @@ public partial class Main : Control
             _actors[i].Size = i == 0 ? playerSize : cardSize;
             _actors[i].CustomMinimumSize = _actors[i].Size;
         }
+    }
+
+    private void UpdateCursorMode()
+    {
+        Input.MouseMode = _bossMode || _sidebar.Visible
+            ? Input.MouseModeEnum.Visible
+            : Input.MouseModeEnum.Hidden;
     }
 
     private void SnapPlayerToStart()
@@ -638,7 +770,8 @@ public partial class Main : Control
         Button button = new()
         {
             Text = text,
-            CustomMinimumSize = new Vector2(0, 38)
+            CustomMinimumSize = new Vector2(0, 38),
+            FocusMode = FocusModeEnum.None
         };
         button.AddThemeFontSizeOverride("font_size", 12);
         return button;

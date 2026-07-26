@@ -8,7 +8,7 @@
 
 ## 1. Executive Summary
 
-DACK is an **open-source, Windows-first office game and game-creation suite** in the lineage of **Shoot 'Em Up Construction Kit (SEUCK)** and **Adventure Construction Kit (ACK)**. It provides genre-specific toolkits (Action, RPG/Roguelike, Platformer, Space Shooter, Casual) with data-driven rulesets and a level editor, aimed at hobbyists and everyday PC users rather than programmers or traditional controller-first players.
+DACK is an **open-source, Windows-first office game and game-creation suite** in the lineage of **Shoot 'Em Up Construction Kit (SEUCK)** and **Adventure Construction Kit (ACK)**. It provides genre-specific toolkits (Action, RPG/Roguelike, Platformer, Space Shooter, Casual, Tower Defense) with data-driven rulesets and a level editor, aimed at hobbyists and everyday PC users rather than programmers or traditional controller-first players.
 
 The twist: **the level geometry is a safe game clone of your actual desktop and documents — and it can keep changing as you keep working.** The universal path is visual capture: if Windows can display a file or app, DACK can clone its visible frame and make it playable without understanding the proprietary file format. Later, structured importers can add richer meaning. The most distinctive path is live play while the user works: windows become boundaries, text becomes terrain, and activity can drive game events. Little soldiers, vehicles, creatures, or workers may simply arrive and explore at low intensity; higher-intensity presets turn the same space into a battle, defense, or dungeon.
 
@@ -59,7 +59,7 @@ The result is part game engine, part desktop toybox, part document-to-level comp
 | Screen-capture/compositor tools (OBS, ShareX)                            | Desktop Duplication API-based capture pipeline                                                      |
 | Writing-sprint / focus tools (typing-streak games, Pomodoro apps)        | The idea that the act of producing text can drive a game loop, not just be interrupted by one       |
 | Atari 2600 design vocabulary                                            | Small sets of strong verbs, readable game states, and many variations produced by recombining a few mechanics (§4.1) |
-| Rogue / Hack                                                            | Text/glyph-authored dungeons, procedural rooms, inventory, keys, doors, risk, and emergent runs      |
+| Rogue / Hack                                                            | Text/glyph-authored dungeons, procedural rooms, inventory, keys, doors, terminal-style monster glyphs, risk, and emergent runs |
 | Cannon Fodder / Syndicate                                               | Small squads operating across readable tactical spaces; autonomous agents with direct intervention   |
 | Age of Empires                                                          | Workers, territory, gathering, construction, defense, and escalating activity on a living map        |
 | Open-source modding communities (Doom WADs, Tabletop Simulator workshop) | Community hub model: publish, browse, remix, credit the original author                             |
@@ -88,6 +88,7 @@ The Atari 2600 is useful here because its best games express a complete play typ
 | **River Raid** | Navigate a narrowing corridor, shoot, refuel, scroll | Long documents, process maps, and vertically scrolling feeds become constrained routes |
 | **Kaboom!** | Track and catch accelerating falling objects | Notifications, falling file icons, review comments, or task cards become catch targets |
 | **Centipede** | Shoot a segmented threat whose path changes around obstacles | Cell grids and icon fields become reactive obstacle lattices |
+| **Tower Defense** | Place, upgrade, route, slow, defend waves | Paragraph paths, spreadsheet lanes, process diagrams, and document outlines become enemy routes and tower sites |
 
 The especially valuable lesson from manuals for **Combat**, **Adventure**, **Asteroids**, **Breakout**, **Missile Command**, and **Yars' Revenge** is variation: maze shape, projectile behavior, visibility, speed, limited resources, and win condition can recombine into many games without creating a new engine system for every preset. DACK's vocabulary (§10.5) should work the same way.
 
@@ -311,16 +312,26 @@ All toolkits share the **DACK Core** (rendering, physics, keyboard/mouse input, 
 - Params: ball speed, combo rules, track shape, color count.
 - **Featured preset: "Grow a Garden."** Live Document Mode ruleset where new writing sprouts decorative platforms/flora with no combat framing — the ambient, non-adversarial counterpart to "Word War."
 
-### 9.5 RPG/Roguelike Kit (Required)
+### 9.5 Tower Defense Kit
+
+- Routes come from paragraph flow, document outlines, spreadsheet rows/columns, process diagrams, creator-drawn splines, or UIA text/region order.
+- Towers are placed on margins, headings, icons, table cells, comment balloons, or creator-painted anchor zones; upgrades use the same parameter-sheet + event-grid system as every toolkit.
+- Enemy waves can be timed, document-triggered, or glyph-born from visible letters/words. A wave might crawl out of repeated `e`s, headings, TODO markers, tracked changes, or section labels.
+- Params: route branching, wave composition, tower range/rate/effect, projectile behavior, slowdown fields, resource income, objective health, and escalation curve.
+- Office mappings: defend the document title, a selected paragraph, a worksheet total, a project milestone, or a "home base" window while text/tiles advance along readable routes.
+- Featured preset candidate: **"Margin Defense."** Enemies march along text lines and outline paths while the player places simple towers in margins, headings, and whitespace.
+
+### 9.6 RPG/Roguelike Kit (Required)
 
 - Rogue/Hack-style grid or free-layout dungeons with rooms, corridors, doors, keys, locks, traps, items, inventory, monsters, stairs, fog of war, and turn-based or real-time movement.
 - **Glyph Map mode:** configurable character/word legend with synchronized text and world views (§6.3). A Word document can supply a copied monospaced map without a Word add-in or native `.docx` parser.
+- **Glyph-born actors:** letters can become actor silhouettes before they become polished sprites. A `G` can be a terminal-style monster, `S` can slither, `O` can roll, `T` can march like a hammer, and `W/#` can remain walls or evolve into wall-creatures. This preserves the Rogue/Hack feel while making the document appear to generate its own ecology.
 - Generators: room-and-corridor, cellular cave, maze, office-floorplan, and "trace captured boundaries."
 - Rules: permadeath toggle, hunger/clock toggle, procedural loot tables, encounter tables, status effects, line of sight, and save policy.
 - Office mappings: headings as floors, tables as rooms, cells as tiles, comments/markers as secrets, windows as buildings, and desktop icons as loot or portals.
 - Featured preset: **"Document Dungeon."** Toggle readable glyphs into dressed walls/floors, explore, then toggle back to inspect or edit the map.
 
-### 9.6 Shared Engine Services (DACK Core)
+### 9.7 Shared Engine Services (DACK Core)
 
 - Rendering: 2D sprite/tile renderer, camera, particle FX, transparent overlay rendering for Live Mode.
 - Physics: simple AABB/2D rigidbody suitable for platformer/action/casual; separate scrolling-shooter movement model for Space Shooter.
