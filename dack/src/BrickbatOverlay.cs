@@ -15,6 +15,8 @@ public partial class BrickbatOverlay : Control
     private int _hits;
     private int _bonusEvery = 18;
     private double _laserFlashSeconds;
+    private double _laserDelaySeconds = -1;
+    private readonly RandomNumberGenerator _random = new();
 
     public PlayfieldSurface Playfield { get; set; } = null!;
     public bool SidePaddle { get; set; }
@@ -23,6 +25,7 @@ public partial class BrickbatOverlay : Control
     public override void _Ready()
     {
         MouseFilter = MouseFilterEnum.Ignore;
+        _random.Randomize();
         Resized += ResetGame;
     }
 
@@ -45,6 +48,7 @@ public partial class BrickbatOverlay : Control
         if (!Visible)
             return;
 
+        DrawDeadZoneCover();
         DrawRect(_paddle, new Color("#202A34"), true);
         DrawRect(_paddle, new Color("#F7F5EF"), false, 2f);
 
@@ -54,8 +58,14 @@ public partial class BrickbatOverlay : Control
             DrawCircle(ballPosition, 5f, new Color("#202A34"), false, 1.5f);
         }
 
-        if (_laserFlashSeconds > 0)
-            DrawLine(_paddle.GetCenter(), _paddle.GetCenter() - new Vector2(0, 180), new Color("#FF5C35", 0.65f), 2f);
+        if (_laserFlashSeconds > 0 && Playfield is not null)
+        {
+            Vector2 start = _paddle.GetCenter();
+            Vector2 end = SidePaddle
+                ? new Vector2(Playfield.PlayBounds.Position.X, start.Y)
+                : new Vector2(start.X, Playfield.PlayBounds.Position.Y);
+            DrawLine(start, end, new Color("#FF5C35", 0.75f), 3f);
+        }
 
         DrawHud();
 
@@ -77,6 +87,12 @@ public partial class BrickbatOverlay : Control
                 if (platform.Size.X >= 3f && platform.Position.Y > playBounds.Position.Y + 40f && platform.Position.Y < playBounds.End.Y - 80f)
                     _bricks.Add(platform);
             }
+
+            foreach (Rect2 anchor in Playfield.GetTextObjectRegions(TextObjectGranularity.BonusAnchor))
+            {
+                if (anchor.Position.Y > playBounds.Position.Y + 30f && anchor.Position.Y < playBounds.End.Y - 70f)
+                    _bricks.Add(anchor);
+            }
         }
 
         Rect2 bounds = Playfield?.PlayBounds ?? new Rect2(Vector2.Zero, Size);
@@ -92,10 +108,12 @@ public partial class BrickbatOverlay : Control
             _ballPositions.Add(new Vector2(bounds.GetCenter().X, bounds.End.Y - 96f));
             _ballVelocities.Add(new Vector2(220f, -190f));
         }
+        ApplyBallSpeedTiers();
 
         _score = 0;
         _hits = 0;
         _laserFlashSeconds = 0;
+        _laserDelaySeconds = -1;
         UpdatePaddle();
         _initialized = true;
         QueueRedraw();
@@ -158,7 +176,10 @@ public partial class BrickbatOverlay : Control
 
             Rect2 ball = new(ballPosition - new Vector2(5, 5), new Vector2(10, 10));
             if (ball.Intersects(_paddle, true))
+            {
                 BounceFrom(_paddle, ref ballPosition, ref ballVelocity);
+                ApplyBallSpeedTiers();
+            }
 
             for (int i = _bricks.Count - 1; i >= 0; i--)
             {
@@ -197,8 +218,7 @@ public partial class BrickbatOverlay : Control
     private void HitBrick(int brickIndex, Vector2 hitPosition)
     {
         Rect2 brick = _bricks[brickIndex];
-        Playfield?.EraseDocumentText(brick);
-        _bricks.RemoveAt(brickIndex);
+        RemoveBrickCluster(brickIndex, brick.Grow(4f));
 
         int points = BrickGranularity == TextObjectGranularity.Word ? 50 : 10;
         _score += points;
@@ -218,23 +238,25 @@ public partial class BrickbatOverlay : Control
         }
         else
         {
-            _laserFlashSeconds = 0.35f;
-            _floatingTexts.Add(new FloatingText("LASER READY", position + new Vector2(0, -18), new Color("#FF5C35"), 1.25f));
+            _laserDelaySeconds = _random.RandfRange(0.55f, 1.8f);
+            _floatingTexts.Add(new FloatingText("LASER ARMING", position + new Vector2(0, -18), new Color("#FF5C35"), 1.25f));
         }
     }
 
     private void SpawnMultiball()
     {
-        if (_ballPositions.Count == 0 || _ballPositions.Count >= 4)
+        if (_ballPositions.Count == 0 || _ballPositions.Count >= 3)
             return;
 
         int existing = _ballPositions.Count;
-        for (int i = 0; i < existing && _ballPositions.Count < 4; i++)
+        for (int i = 0; i < existing && _ballPositions.Count < 3; i++)
         {
             Vector2 velocity = _ballVelocities[i].Rotated(i % 2 == 0 ? 0.35f : -0.35f);
             _ballPositions.Add(_ballPositions[i] + new Vector2(8f, -8f));
             _ballVelocities.Add(velocity);
         }
+
+        ApplyBallSpeedTiers();
     }
 
     private void RemoveBall(int index)
@@ -246,6 +268,12 @@ public partial class BrickbatOverlay : Control
     private void UpdateEffects(float delta)
     {
         _laserFlashSeconds = Mathf.Max(0, _laserFlashSeconds - delta);
+        if (_laserDelaySeconds > 0)
+        {
+            _laserDelaySeconds -= delta;
+            if (_laserDelaySeconds <= 0)
+                FireLaser();
+        }
 
         for (int i = _floatingTexts.Count - 1; i >= 0; i--)
         {
@@ -262,13 +290,100 @@ public partial class BrickbatOverlay : Control
     private void DrawHud()
     {
         Rect2 bounds = Playfield?.PlayBounds ?? new Rect2(Vector2.Zero, Size);
-        Rect2 hud = GetHudRect(bounds);
+        Rect2 hud = Playfield?.FindWhitespaceRect(new Vector2(150, 92)) ?? GetHudRect(bounds);
         DrawRect(hud, new Color("#202A34", 0.88f), true);
         DrawRect(hud, new Color("#D9E3EA", 0.65f), false, 1f);
         DrawString(ThemeDB.FallbackFont, hud.Position + new Vector2(12, 22), $"SCORE  {_score}", HorizontalAlignment.Left, hud.Size.X - 24, 15, new Color("#F7F5EF"));
         DrawString(ThemeDB.FallbackFont, hud.Position + new Vector2(12, 42), $"HITS   {_hits}", HorizontalAlignment.Left, hud.Size.X - 24, 13, new Color("#D9E3EA"));
         DrawString(ThemeDB.FallbackFont, hud.Position + new Vector2(12, 60), $"LEFT   {_bricks.Count}", HorizontalAlignment.Left, hud.Size.X - 24, 13, new Color("#D9E3EA"));
         DrawString(ThemeDB.FallbackFont, hud.Position + new Vector2(12, 78), $"BALLS  {_ballPositions.Count}", HorizontalAlignment.Left, hud.Size.X - 24, 13, new Color("#D9E3EA"));
+    }
+
+    private void DrawDeadZoneCover()
+    {
+        if (Playfield is null || SidePaddle)
+            return;
+
+        Rect2 bounds = Playfield.PlayBounds;
+        Rect2 cover = new(bounds.Position.X, _paddle.End.Y + 4f, bounds.Size.X, Mathf.Max(0, bounds.End.Y - _paddle.End.Y - 4f));
+        if (cover.Size.Y <= 0)
+            return;
+
+        DrawRect(cover, new Color("#202A34", 0.96f), true);
+        for (float x = cover.Position.X; x < cover.End.X; x += 18f)
+            DrawLine(new Vector2(x, cover.Position.Y), new Vector2(x + cover.Size.Y, cover.End.Y), new Color("#52606D", 0.35f), 1f);
+    }
+
+    private void RemoveBrickCluster(int brickIndex, Rect2 blastRegion)
+    {
+        if (brickIndex >= 0 && brickIndex < _bricks.Count)
+        {
+            Playfield?.EraseDocumentText(_bricks[brickIndex]);
+            _bricks.RemoveAt(brickIndex);
+        }
+
+        for (int i = _bricks.Count - 1; i >= 0; i--)
+        {
+            if (!_bricks[i].Intersects(blastRegion, true))
+                continue;
+
+            Playfield?.EraseDocumentText(_bricks[i]);
+            _bricks.RemoveAt(i);
+        }
+    }
+
+    private void ApplyBallSpeedTiers()
+    {
+        float targetSpeed = _ballPositions.Count switch
+        {
+            >= 3 => 520f,
+            2 => 455f,
+            _ => 385f
+        };
+
+        for (int i = 0; i < _ballVelocities.Count; i++)
+        {
+            if (_ballVelocities[i].LengthSquared() <= 0.01f)
+                continue;
+
+            _ballVelocities[i] = _ballVelocities[i].Normalized() * targetSpeed;
+        }
+    }
+
+    private void FireLaser()
+    {
+        if (Playfield is null)
+            return;
+
+        _laserFlashSeconds = 0.45f;
+        Rect2 beam = SidePaddle
+            ? new Rect2(Playfield.PlayBounds.Position.X, _paddle.GetCenter().Y - 4f, _paddle.Position.X - Playfield.PlayBounds.Position.X, 8f)
+            : new Rect2(_paddle.GetCenter().X - 4f, Playfield.PlayBounds.Position.Y, 8f, _paddle.Position.Y - Playfield.PlayBounds.Position.Y);
+
+        int destroyed = 0;
+        for (int i = _bricks.Count - 1; i >= 0 && destroyed < 5; i--)
+        {
+            if (!_bricks[i].Intersects(beam, true))
+                continue;
+
+            Playfield.EraseDocumentText(_bricks[i]);
+            _bricks.RemoveAt(i);
+            destroyed++;
+        }
+
+        if (destroyed > 0)
+        {
+            int points = destroyed * (BrickGranularity == TextObjectGranularity.Word ? 50 : 10);
+            _score += points;
+            _hits += destroyed;
+            _floatingTexts.Add(new FloatingText($"LASER +{points}", _paddle.GetCenter() + new Vector2(0, -32), new Color("#FF5C35"), 1.25f));
+        }
+        else
+        {
+            _floatingTexts.Add(new FloatingText("LASER MISS", _paddle.GetCenter() + new Vector2(0, -32), new Color("#FF5C35"), 1f));
+        }
+
+        _laserDelaySeconds = -1;
     }
 
     private Rect2 GetHudRect(Rect2 bounds)

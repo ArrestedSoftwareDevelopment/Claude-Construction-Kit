@@ -11,6 +11,7 @@ public partial class PlayfieldSurface : Control
     private Texture2D? _platform;
     private Texture2D? _window;
     private CapturedPageFrame? _capturedPage;
+    private Vector2[] _playerShotPositions = [];
     private double _elapsed;
 
     public float TextUnitPixels { get; set; } = 7f;
@@ -42,7 +43,10 @@ public partial class PlayfieldSurface : Control
         DrawBackground();
 
         if (_capturedPage is not null)
+        {
+            DrawPlayerShots();
             return;
+        }
 
         float floorY = GetFloor().Position.Y;
         if (_platform is not null)
@@ -74,6 +78,8 @@ public partial class PlayfieldSurface : Control
 
         foreach (WorldObject elevator in GetElevators())
             DrawElevator(elevator);
+
+        DrawPlayerShots();
 
         DrawRect(new Rect2(0, 0, Size.X, 30), new Color("#26313C"), true);
         DrawRect(new Rect2(14, 9, 12, 12), new Color("#FF5C35"), true);
@@ -120,6 +126,7 @@ public partial class PlayfieldSurface : Control
         {
             Rect2[] sourceRects = granularity switch
             {
+                TextObjectGranularity.BonusAnchor => _capturedPage.BonusAnchors,
                 TextObjectGranularity.Word => _capturedPage.TextWords,
                 TextObjectGranularity.Line => _capturedPage.TextLines,
                 _ => _capturedPage.TextBricks
@@ -205,6 +212,23 @@ public partial class PlayfieldSurface : Control
         if (_capturedPage.Texture is ImageTexture imageTexture)
             imageTexture.Update(_capturedPage.Image);
 
+        QueueRedraw();
+    }
+
+    public void SetPlayerShotPositions(IReadOnlyList<Vector2> positions)
+    {
+        if (positions.Count == 0)
+        {
+            _playerShotPositions = [];
+            QueueRedraw();
+            return;
+        }
+
+        Vector2[] copy = new Vector2[positions.Count];
+        for (int i = 0; i < positions.Count; i++)
+            copy[i] = positions[i];
+
+        _playerShotPositions = copy;
         QueueRedraw();
     }
 
@@ -378,6 +402,15 @@ public partial class PlayfieldSurface : Control
     private void DrawCapturedPage(CapturedPageFrame frame)
     {
         DrawTextureRect(frame.Texture, GetCapturedPageDrawRect(frame), false);
+    }
+
+    private void DrawPlayerShots()
+    {
+        foreach (Vector2 position in _playerShotPositions)
+        {
+            DrawCircle(position, 3.8f, new Color("#FFF0A8"));
+            DrawCircle(position, 1.7f, new Color("#FF5C35"));
+        }
     }
 
     private Rect2[] GetCapturedTextPlatforms(CapturedPageFrame frame)

@@ -4,5 +4,6 @@ public enum TextObjectGranularity
 {
     Letter,
     Word,
-    Line
+    Line,
+    BonusAnchor
 }

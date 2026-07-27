@@ -8,6 +8,7 @@ namespace Dack;
 public partial class Main : Control
 {
     private readonly List<ActorView> _actors = [];
+    private readonly List<PlayerShot> _playerShots = [];
     private readonly Vector2[] _actorAnchors =
     [
         new(0.16f, 0.66f),
@@ -38,6 +39,7 @@ public partial class Main : Control
     private Vector2 _playerPosition;
     private Vector2 _playerVelocity;
     private bool _playerOnGround;
+    private bool _platformerSafetyFloor = true;
     private PlatformerMode _platformerMode = PlatformerMode.Horizontal;
     private PlaysetMode _playsetMode = PlaysetMode.Platformer;
     private float _textUnitPixels = 7f;
@@ -365,6 +367,15 @@ public partial class Main : Control
         };
         _playsetToolbarRow.AddChild(reset);
 
+        Button floor = Button("FLOOR ON");
+        floor.Pressed += () =>
+        {
+            _platformerSafetyFloor = !_platformerSafetyFloor;
+            floor.Text = _platformerSafetyFloor ? "FLOOR ON" : "FLOOR OFF";
+            SnapPlayerToStart();
+        };
+        _playsetToolbarRow.AddChild(floor);
+
         Button side = Button("SIDE PADDLE");
         side.Pressed += () =>
         {
@@ -516,6 +527,7 @@ public partial class Main : Control
         bool brickbat = mode == PlaysetMode.Brickbat;
         _player.Visible = !brickbat;
         _brickbatOverlay.Visible = brickbat;
+        ClearPlayerShots();
 
         if (brickbat)
             _brickbatOverlay.ResetGame();
@@ -545,6 +557,7 @@ public partial class Main : Control
         float motionUnit = Mathf.Max(unit, 10f);
         float inputX = Input.GetAxis("dack_left", "dack_right");
         bool jumpPressed = Input.IsActionJustPressed("dack_jump");
+        bool shootPressed = Input.IsActionJustPressed("dack_shoot");
         bool upHeld = Input.IsActionPressed("dack_up");
         bool downHeld = Input.IsActionPressed("dack_down");
         Rect2 actorBounds = new(_playerPosition, _player.Size);
@@ -602,15 +615,94 @@ public partial class Main : Control
         if (next.Y > playBounds.End.Y + _player.Size.Y)
         {
             SnapPlayerToStart();
+            ClearPlayerShots();
             RefreshMotionText();
             return;
         }
 
         _playerPosition = next;
         _player.Position = _playerPosition;
+        if (shootPressed)
+            FirePlayerShot();
+
+        UpdatePlayerShots(dt);
         UpdatePlayerAnimation(inputX, crawlingText);
         _player.QueueRedraw();
         RefreshMotionText();
+    }
+
+    private void FirePlayerShot()
+    {
+        const int maxPlayerShots = 4;
+        if (_playerShots.Count >= maxPlayerShots)
+            return;
+
+        Vector2 direction = _player.FacingRight ? Vector2.Right : Vector2.Left;
+        Vector2 origin = _playerPosition + new Vector2(
+            _player.FacingRight ? _player.Size.X + 2f : -2f,
+            _player.Size.Y * 0.42f
+        );
+        float shotSpeed = Mathf.Max(_textUnitPixels * 44f, 300f);
+
+        _playerShots.Add(new PlayerShot(origin, direction * shotSpeed, 1.35f));
+        PushShotPositionsToPlayfield();
+    }
+
+    private void UpdatePlayerShots(float dt)
+    {
+        if (_playerShots.Count == 0)
+            return;
+
+        Rect2 playBounds = _playfield.PlayBounds.Grow(12f);
+        for (int i = _playerShots.Count - 1; i >= 0; i--)
+        {
+            PlayerShot shot = _playerShots[i];
+            shot.Position += shot.Velocity * dt;
+            shot.Life -= dt;
+
+            Rect2 shotBounds = new(shot.Position - new Vector2(4f, 4f), new Vector2(8f, 8f));
+            if (shot.Life <= 0f || !playBounds.HasPoint(shot.Position) || TryHitTextObject(shotBounds))
+                _playerShots.RemoveAt(i);
+            else
+                _playerShots[i] = shot;
+        }
+
+        PushShotPositionsToPlayfield();
+    }
+
+    private bool TryHitTextObject(Rect2 shotBounds)
+    {
+        if (!_playfield.HasCapturedPage)
+            return false;
+
+        foreach (Rect2 letter in _playfield.GetTextObjectRegions(TextObjectGranularity.Letter))
+        {
+            if (!shotBounds.Intersects(letter))
+                continue;
+
+            _playfield.EraseDocumentText(letter.Grow(1.5f));
+            return true;
+        }
+
+        return false;
+    }
+
+    private void ClearPlayerShots()
+    {
+        if (_playerShots.Count == 0)
+            return;
+
+        _playerShots.Clear();
+        PushShotPositionsToPlayfield();
+    }
+
+    private void PushShotPositionsToPlayfield()
+    {
+        Vector2[] positions = new Vector2[_playerShots.Count];
+        for (int i = 0; i < _playerShots.Count; i++)
+            positions[i] = _playerShots[i].Position;
+
+        _playfield.SetPlayerShotPositions(positions);
     }
 
     private void UpdatePlayerAnimation(float inputX, bool crawlingText)
@@ -692,11 +784,14 @@ public partial class Main : Control
             yield break;
         }
 
-        foreach (Rect2 word in _playfield.GetTextObjectRegions(TextObjectGranularity.Word))
+        foreach (Rect2 word in _playfield.GetTextObjectRegions(TextObjectGranularity.Letter))
             yield return new Rect2(
                 word.Position + new Vector2(0, 2f),
                 new Vector2(word.Size.X, Mathf.Max(2f, Mathf.Min(word.Size.Y, _textUnitPixels * 0.45f)))
             );
+
+        if (_platformerSafetyFloor)
+            yield return new Rect2(_playfield.PlayBounds.Position.X, _playfield.PlayBounds.End.Y - 4f, _playfield.PlayBounds.Size.X, 4f);
     }
 
     private IEnumerable<WorldObject> GetLineSurfaces()
@@ -749,6 +844,7 @@ public partial class Main : Control
         _player.Position = _playerPosition;
         _playerVelocity = Vector2.Zero;
         _playerOnGround = true;
+        ClearPlayerShots();
     }
 
     private void OnPlayfieldResized()
@@ -774,6 +870,7 @@ public partial class Main : Control
         EnsureAction("dack_up", Key.W, Key.Up);
         EnsureAction("dack_down", Key.S, Key.Down);
         EnsureAction("dack_jump", Key.Space, Key.W, Key.Up);
+        EnsureAction("dack_shoot", Key.J, Key.X);
     }
 
     private static void EnsureAction(string actionName, params Key[] keys)
@@ -832,5 +929,12 @@ public partial class Main : Control
             CornerRadiusBottomRight = cornerRadius
         };
         return style;
+    }
+
+    private struct PlayerShot(Vector2 position, Vector2 velocity, float life)
+    {
+        public Vector2 Position = position;
+        public Vector2 Velocity = velocity;
+        public float Life = life;
     }
 }

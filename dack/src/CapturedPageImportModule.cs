@@ -14,7 +14,8 @@ public sealed record CapturedPageFrame(
     Rect2[] TextPlatforms,
     Rect2[] TextBricks,
     Rect2[] TextWords,
-    Rect2[] TextLines
+    Rect2[] TextLines,
+    Rect2[] BonusAnchors
 );
 
 public static class CapturedPageImportModule
@@ -64,7 +65,8 @@ public static class CapturedPageImportModule
                 DetectTextPlatforms(original),
                 DetectTextBricks(original),
                 DetectTextWords(original),
-                DetectTextLines(original)
+                DetectTextLines(original),
+                DetectBonusAnchors(original)
             );
         }
 
@@ -88,7 +90,7 @@ public static class CapturedPageImportModule
 
             for (int x = 0; x < image.GetWidth(); x++)
             {
-                if (!IsDarkTextPixel(image.GetPixel(x, y)))
+                if (!IsTextInkPixel(image, x, y))
                     continue;
 
                 rowDarkPixels++;
@@ -142,7 +144,7 @@ public static class CapturedPageImportModule
 
             for (int x = 0; x < image.GetWidth(); x++)
             {
-                if (!IsDarkTextPixel(image.GetPixel(x, y)))
+                if (!IsTextInkPixel(image, x, y))
                     continue;
 
                 rowDarkPixels++;
@@ -196,7 +198,7 @@ public static class CapturedPageImportModule
 
             for (int x = 0; x < image.GetWidth(); x++)
             {
-                if (!IsDarkTextPixel(image.GetPixel(x, y)))
+                if (!IsTextInkPixel(image, x, y))
                     continue;
 
                 rowDarkPixels++;
@@ -250,7 +252,7 @@ public static class CapturedPageImportModule
 
             for (int x = 0; x < image.GetWidth(); x++)
             {
-                if (!IsDarkTextPixel(image.GetPixel(x, y)))
+                if (!IsTextInkPixel(image, x, y))
                     continue;
 
                 rowDarkPixels++;
@@ -320,7 +322,7 @@ public static class CapturedPageImportModule
             bool darkColumn = false;
             for (int y = startY; y <= endY; y++)
             {
-                if (!IsDarkTextPixel(image.GetPixel(x, y)))
+                if (!IsTextInkPixel(image, x, y))
                     continue;
 
                 darkColumn = true;
@@ -368,7 +370,7 @@ public static class CapturedPageImportModule
         {
             for (int x = startX; x <= endX; x++)
             {
-                if (!IsDarkTextPixel(image.GetPixel(x, y)))
+                if (!IsTextInkPixel(image, x, y))
                     continue;
 
                 exactMinX = Math.Min(exactMinX, x);
@@ -401,12 +403,131 @@ public static class CapturedPageImportModule
         lines.Add(new Rect2(minX - 1, startY - 1, width + 2, Math.Max(6, height + 2)));
     }
 
+    private static Rect2[] DetectBonusAnchors(Image image)
+    {
+        List<Rect2> anchors = [];
+        bool[,] visited = new bool[image.GetWidth(), image.GetHeight()];
+
+        for (int y = 0; y < image.GetHeight(); y += 2)
+        {
+            for (int x = 0; x < image.GetWidth(); x += 2)
+            {
+                if (visited[x, y] || !IsBonusAnchorPixel(image.GetPixel(x, y)))
+                    continue;
+
+                Rect2I component = FloodComponent(image, visited, new Vector2I(x, y), IsBonusAnchorPixel);
+                if (component.Size.X is < 8 or > 220 || component.Size.Y is < 8 or > 80)
+                    continue;
+
+                float ratio = component.Size.X / (float)Math.Max(1, component.Size.Y);
+                if (ratio < 0.7f || ratio > 8f)
+                    continue;
+
+                anchors.Add(new Rect2(component.Position, component.Size));
+            }
+        }
+
+        return anchors.ToArray();
+    }
+
+    private static Rect2I FloodComponent(Image image, bool[,] visited, Vector2I start, Func<Color, bool> predicate)
+    {
+        Queue<Vector2I> pending = [];
+        pending.Enqueue(start);
+        visited[start.X, start.Y] = true;
+        int minX = start.X;
+        int minY = start.Y;
+        int maxX = start.X;
+        int maxY = start.Y;
+
+        while (pending.Count > 0)
+        {
+            Vector2I point = pending.Dequeue();
+            minX = Math.Min(minX, point.X);
+            minY = Math.Min(minY, point.Y);
+            maxX = Math.Max(maxX, point.X);
+            maxY = Math.Max(maxY, point.Y);
+
+            for (int dy = -1; dy <= 1; dy++)
+            {
+                for (int dx = -1; dx <= 1; dx++)
+                {
+                    if (Math.Abs(dx) + Math.Abs(dy) != 1)
+                        continue;
+
+                    Vector2I next = point + new Vector2I(dx, dy);
+                    if (next.X < 0 || next.Y < 0 || next.X >= image.GetWidth() || next.Y >= image.GetHeight())
+                        continue;
+
+                    if (visited[next.X, next.Y] || !predicate(image.GetPixel(next.X, next.Y)))
+                        continue;
+
+                    visited[next.X, next.Y] = true;
+                    pending.Enqueue(next);
+                }
+            }
+        }
+
+        return new Rect2I(minX, minY, maxX - minX + 1, maxY - minY + 1);
+    }
+
+    private static bool IsTextInkPixel(Image image, int x, int y)
+    {
+        return IsDarkTextPixel(image.GetPixel(x, y)) || HasLocalContrast(image, x, y);
+    }
+
     private static bool IsDarkTextPixel(Color pixel)
     {
         if (pixel.A < 0.5f)
             return false;
 
         float luminance = pixel.R * 0.2126f + pixel.G * 0.7152f + pixel.B * 0.0722f;
-        return luminance < 0.33f;
+        float chroma = Math.Max(pixel.R, Math.Max(pixel.G, pixel.B)) - Math.Min(pixel.R, Math.Min(pixel.G, pixel.B));
+        return luminance < 0.55f && (luminance < 0.42f || chroma < 0.18f);
+    }
+
+    private static bool HasLocalContrast(Image image, int x, int y)
+    {
+        Color pixel = image.GetPixel(x, y);
+        if (pixel.A < 0.5f)
+            return false;
+
+        float pixelLuminance = Luminance(pixel);
+        float backgroundLuminance = 0;
+        int samples = 0;
+
+        for (int dy = -4; dy <= 4; dy += 4)
+        {
+            for (int dx = -4; dx <= 4; dx += 4)
+            {
+                if (dx == 0 && dy == 0)
+                    continue;
+
+                int sx = Math.Clamp(x + dx, 0, image.GetWidth() - 1);
+                int sy = Math.Clamp(y + dy, 0, image.GetHeight() - 1);
+                backgroundLuminance += Luminance(image.GetPixel(sx, sy));
+                samples++;
+            }
+        }
+
+        if (samples == 0)
+            return false;
+
+        return backgroundLuminance / samples - pixelLuminance > 0.16f;
+    }
+
+    private static bool IsBonusAnchorPixel(Color pixel)
+    {
+        if (pixel.A < 0.5f)
+            return false;
+
+        float luminance = Luminance(pixel);
+        float chroma = Math.Max(pixel.R, Math.Max(pixel.G, pixel.B)) - Math.Min(pixel.R, Math.Min(pixel.G, pixel.B));
+        return chroma > 0.18f && luminance > 0.18f && luminance < 0.92f;
+    }
+
+    private static float Luminance(Color pixel)
+    {
+        return pixel.R * 0.2126f + pixel.G * 0.7152f + pixel.B * 0.0722f;
     }
 }

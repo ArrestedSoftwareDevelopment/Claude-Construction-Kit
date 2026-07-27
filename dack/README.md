@@ -30,6 +30,7 @@ dotnet build DACK.csproj
 
 - Use left/right arrows or A/D to move the playable scout.
 - Press Space, W, or Up to jump.
+- Press J or X to shoot in Platformer mode. Shots travel in the scout's facing direction and erase captured-page letters on impact.
 - Choose **Pitfall** for horizontal platforming or **Climber** for vertical ladder play.
 - In Climber mode, dense captured text can act as a crawl surface prototype: hold Up/Down while touching single-spaced text to crawl through the text row. Dedicated crawl art is still needed.
 - Adjust the character scale slider to match the apparent text size of the playfield; the demo defaults to a small but visible roughly 32 px-tall office-platformer character.
@@ -41,6 +42,7 @@ dotnet build DACK.csproj
 - The prototype opens as playfield-only real estate; use the floating toolbar to restore the sprite pad or switch playsets.
 - The playable scout uses Stickman Pack idle, run, and jump animation frames.
 - Use the floating playset toolbar to switch between **Platformer** and **Brickbat**.
+- Use **Floor On/Off** to toggle the platformer safety floor. Floor On keeps a bottom catch surface; Floor Off allows death-plunge levels.
 - In Brickbat mode, detected letters or words become invisible collision objects; when struck, the cloned page visually erases that text object. The mouse controls the paddle.
 - Brickbat tracks score, hits, remaining targets, and balls. Early bonus hooks include Multiball and Laser-style visual effects.
 - Click one of the three actors to select it.
@@ -62,11 +64,35 @@ These are first-pass mechanics for text-native Brickbat variants. They should re
 - **Alliteration**: chains hits across nearby objects that start with the same detected letter once OCR/text identity exists.
 - **Marginalia**: creates a temporary side paddle in the margin for weird two-axis saves.
 
+Approach:
+
+1. Geometry bonuses work without OCR: hit count, word length, paragraph region, punctuation density, or target grain can trigger Multiball, Laser, Red Pen, Bookmark, etc.
+2. OCR bonuses layer on later: words such as `draft`, `quote`, `footnote`, `bookmark`, `edit`, `revise`, or `chapter` can become named targets once the slow-reveal OCR pass labels them.
+3. Literary bonuses should visibly alter the cloned document: underlines, marginal notes, strike-throughs, citation marks, bookmarks, red-pen beams, or shrapnel letters.
+4. Every bonus should have a quiet document-world explanation, not just arcade fireworks.
+
+Word-shrapnel algorithm sketch:
+
+1. When a word target is destroyed, retrieve its child letter rectangles from the text-object map.
+2. For each letter, copy its current pixels from the cloned page into a small particle image.
+3. Erase the original word using the connected-ink eraser.
+4. Spawn each letter particle from the word center with velocity based on:
+   - distance from impact point
+   - letter order in the word
+   - a small random angular spread
+5. Simulate letter particles briefly as shrapnel:
+   - collide with nearby text targets
+   - fade or settle into the margin
+   - optionally count as secondary hits for Red Pen / Plot Twist variants
+6. Cleanup tiny leftover ink specks after the explosion pass.
+
 ## Semantic word-object concept
 
 The recurring DACK mechanic is that text can remain readable while also becoming gameplay.
 
 - Fast image analysis finds letters, words, lines, background regions, gutters, and margins without waiting for OCR.
+- The detector should find light/colored sub-headers as text when they contrast with the page, not only dark body text.
+- Non-text UI/document objects such as icons, pillboxes, badges, buttons, and colored labels are bonus anchors: ideal places to attach power-ups, targets, or semantic behaviors.
 - Optional OCR can run later as a slow-reveal layer, highlighting meaningful words after play begins.
 - Words can become semantic objects:
   - `TARPIT` becomes a sticky hazard.
