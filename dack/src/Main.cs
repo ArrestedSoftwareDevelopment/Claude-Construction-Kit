@@ -529,9 +529,7 @@ public partial class Main : Control
         _brickbatOverlay.Visible = brickbat;
         ClearPlayerShots();
 
-        if (brickbat)
-            _brickbatOverlay.ResetGame();
-        else
+        if (!brickbat)
             SnapPlayerToStart();
 
         UpdateCursorMode();

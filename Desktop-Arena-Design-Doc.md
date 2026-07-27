@@ -8,7 +8,7 @@
 
 ## 1. Executive Summary
 
-DACK is an **open-source, Windows-first office game and game-creation suite** in the lineage of **Shoot 'Em Up Construction Kit (SEUCK)** and **Adventure Construction Kit (ACK)**. It provides genre-specific toolkits (Action, RPG/Roguelike, Platformer, Space Shooter, Casual, Racing, Tower Defense) with data-driven rulesets and a level editor, aimed at hobbyists and everyday PC users rather than programmers or traditional controller-first players.
+DACK is an **open-source, Windows-first office game and game-creation suite** in the lineage of **Shoot 'Em Up Construction Kit (SEUCK)** and **Adventure Construction Kit (ACK)**. It provides genre-specific toolkits (Action, RPG/Roguelike, Platformer, Space Shooter, Casual, Racing, Tower Defense, Pinball) with data-driven rulesets and a level editor, aimed at hobbyists and everyday PC users rather than programmers or traditional controller-first players.
 
 The twist: **the level geometry is a safe game clone of your actual desktop and documents — and it can keep changing as you keep working.** The universal path is visual capture: if Windows can display a file or app, DACK can clone its visible frame and make it playable without understanding the proprietary file format. Later, structured importers can add richer meaning. The most distinctive path is live play while the user works: windows become boundaries, text becomes terrain, and activity can drive game events. Little soldiers, vehicles, creatures, or workers may simply arrive and explore at low intensity; higher-intensity presets turn the same space into a battle, defense, or dungeon.
 
@@ -91,6 +91,7 @@ The Atari 2600 is useful here because its best games express a complete play typ
 | **Centipede** | Shoot a segmented threat whose path changes around obstacles | Cell grids and icon fields become reactive obstacle lattices |
 | **Racing / Slot-Car** | Follow a track, steer, drift, checkpoint, lap, time-trial | User-drawn tracks, document margins, flowcharts, process diagrams, spreadsheet paths, or semantic words become courses |
 | **Tower Defense** | Place, upgrade, route, slow, defend waves | Paragraph paths, spreadsheet lanes, process diagrams, and document outlines become enemy routes and tower sites |
+| **Pinball** | Launch, flip, bump, roll, nudge, drain, multiball, jackpot | Paragraph gutters become lanes; headings/icons/pillboxes become bumpers, rollovers, targets, kickers, and bonus inserts |
 
 The especially valuable lesson from manuals for **Combat**, **Adventure**, **Asteroids**, **Breakout**, **Missile Command**, and **Yars' Revenge** is variation: maze shape, projectile behavior, visibility, speed, limited resources, and win condition can recombine into many games without creating a new engine system for every preset. DACK's vocabulary (§10.5) should work the same way.
 
@@ -123,6 +124,8 @@ The text pipeline has two layers that should remain separate:
 
 1. **Fast geometry layer:** image analysis finds text pixels, letters, words, lines, background regions, gutters, and margins without caring what the words mean. This layer powers immediate collision, Brickbat targets, platformer surfaces, erasure/mutation, and "white space is empty space" behavior.
 2. **Optional meaning layer:** OCR, UIA accessible text, or native importer text later labels the geometry with actual words, confidence scores, and semantic tags. This pass can happen after play begins; slow arrival is a feature, not merely latency.
+
+Platformer projectiles exposed an important general rule: any gameplay verb that can hit text should be able to publish a **text mutation event** against the working clone. A bullet, ball, laser, drill, spell, pinball bumper, or explosion may remove letters/words, weaken terrain, reveal background, create gaps, or trigger semantic effects. This is not limited to Brickbat; it is part of the shared terrain/deformation vocabulary.
 
 When enabled, OCR can become a play mechanic: the level starts with raw document physics, then words gradually become highlighted as the engine "reads" the page. Discovered terms can entice the player with bonuses, hazards, or transformations:
 
@@ -166,6 +169,8 @@ The same pattern applies to `BRIDGE`, `CONVEYOR`, `ELEVATOR`, `DOOR`, `CHECKPOIN
 - **Live Desktop Mode (second):** DACK renders a cloned playfield beside the desktop or a transparent overlay above it. Geometry re-samples on window-move events so actors understand moving/resizing window boundaries. The game may *simulate* a window being breached, disabled, or closed inside the clone; it never sends that action to the real window.
 - **Native Document Mode (later):** a supported, sandboxed importer derives geometry from a cloned file's structure. This is enhancement, not the universal compatibility layer.
 - **Live Document Mode (later, no add-in required):** DACK observes accessible text, selection, save, and layout signals and updates the cloned level in near-real time. The game never writes into the document. An app-specific add-in is considered only after a demonstrated use case cannot be served by capture/UIA.
+
+RAD milestone note: the static screenshot prototype has achieved its purpose. It proved text-as-platform, text-as-target, clone-only erasure, cross-playset deformation, reusable projectiles, and reusable effects. It should remain a deterministic smoke-test path, but it is no longer enough to validate the product. The next implementation plateau is **Live Desktop Mode plus the real editor shell**: dynamic capture, window/desktop awareness, asset placement, and toolkit authoring.
 
 ---
 
@@ -257,6 +262,19 @@ When a creator recaptures a changed source or updates an included text/source cl
 
 This on-demand action never modifies or overwrites the originating file. It is the manual, discrete cousin of live modes, which update the playfield clone continuously.
 
+### 7.6 Cross-Playset Deformation as a Feature
+
+The cloned playfield is not merely a resettable background; it can become a shared mutable stage across toolkit modes. A Brickbat session can erase letters, burn columns, or otherwise deform the cloned document, and then Platformer, Racing, Tower Defense, RPG, or Action modes can inherit that changed terrain. This makes "play one game to alter the level for another game" a first-class design possibility.
+
+Default behavior for the editor/RAD prototype: switching playsets preserves the current cloned-page state. Pressing **Reset** or explicitly starting a new configured game restores the clone from its immutable source capture. Later save/export flows should let creators package either the pristine clone, the deformed clone, or both as named level variants.
+
+Design implications:
+
+- The environmental awareness map must distinguish **source geometry** from **current mutable geometry**.
+- Text erasure, laser cuts, pixel damage, explosions, terrain painting, and semantic transformations should publish change events into the shared level state.
+- Playsets need a clear persistence policy: "shared damage," "reset on mode switch," "per-level snapshot," or "save deformation as remix."
+- The UI should treat deformed clones like normal creative artifacts: previewable, undoable where practical, resettable, and exportable with the same metadata/privacy rules as any other clone.
+
 ---
 
 ## 8. Live Document Mode: Adaptive & Reactive Gameplay
@@ -334,6 +352,7 @@ All toolkits share the **DACK Core** (rendering, physics, keyboard/mouse input, 
 - Terrain from window edges/taskbar, image contours, glyph maps, creator painting, or later validated structured regions.
 - Paragraph/text tools include **slant paragraph**, **raise/lower line**, and **stagger rows** operations so creators can turn ordinary text blocks into Donkey Kong-style diagonal ramps while preserving native document readability in the clone. The tool stores a transform/physics overlay, not a mutation of the original source.
 - Single-spaced text can act as a crawl/climb surface in Climber mode: the character should be able to crawl up or down dense rows of text with a distinct crawl animation, separate from ladder climbing.
+- Action verbs include shoot and dig. Shooting removes/mutates text regions at range; digging removes/mutates terrain locally over time. Both operate only on the cloned playfield and publish deformation events that other playsets can inherit.
 - Entities: player, patrol enemies, collectibles (icons or images), hazards, moving platforms, goal flag.
 - Win conditions: reach exit, collect N items, survive timer, or (Live Document Mode) reach a word-count goal.
 
@@ -387,7 +406,22 @@ All toolkits share the **DACK Core** (rendering, physics, keyboard/mouse input, 
 - Office mappings: headings as floors, tables as rooms, cells as tiles, comments/markers as secrets, windows as buildings, and desktop icons as loot or portals.
 - Featured preset: **"Document Dungeon."** Toggle readable glyphs into dressed walls/floors, explore, then toggle back to inspect or edit the map.
 
-### 9.8 Shared Engine Services (DACK Core)
+### 9.8 Pinball Kit
+
+- Core authoring model: place a plunger/launch lane, flippers, bumpers, slingshots, rollover lanes, drop targets, gates, ramps, kickers, drains, outlanes, bonus inserts, and score rules on top of the cloned document.
+- Natural document mappings: paragraph gutters become lanes, heading blocks become bumpers, bullet lists become drop targets, icons/pillboxes become lit inserts, margins become outlanes, tables become rollover grids, and semantic words become missions or jackpot targets.
+- Table geometry rules: document/page bounds, gutters, detected text blocks, creator-painted rails, one-way gates, ramp splines, holes, kickers, lanes, outlanes, drain zones, safe launch lanes, and optional invisible guide walls.
+- Ball rules: ball count, launch force, gravity/table tilt, elasticity, friction, spin/english, max speed, stuck-ball rescue, multiball cap, and whether ball impacts deform the shared clone.
+- Flipper rules: left/right/custom flippers, strength, return speed, angle limits, cooldown, keyboard/mouse binding, and visible sweep-preview handles.
+- Target rules: bumpers, rollovers, drop targets, word targets, letter banks, headings, icons, pillboxes, tables/cells, and manually painted targets. Targets can be lit/unlit, timed, chained, completed as banks, or promoted from semantic words.
+- Scoring rules: base target value, combos, lane completion, word completion, multipliers, jackpots, hurry-up timers, end-of-ball bonus count-up, and table-clear bonuses.
+- Mission rules: semantic words can become modes such as `JACKPOT`, `LOCK`, `MULTIBALL`, `BONUS`, `DRAIN`, `SAVE`, `RAMP`, or `TILT`. The creator can keep the word visible, replace it with an insert/target graphic, or show a hybrid.
+- Nudge/tilt rules: nudge strength, cooldown, accumulated tilt meter, warning effects, lockout duration, and accessibility-friendly alternatives for users who dislike reflex-heavy nudging.
+- Construction UI: drag handles for flipper arcs, bumper radii, ramp splines, gate direction, plunger lane force, drain width, insert lighting, and target bank grouping.
+- Visual identity: pinball is a perfect home for the reusable effects deck — flashing inserts, jackpot banners, word explosions, laser-like lane lights, analog score reels, and ridiculous neon typography.
+- Featured preset candidate: **"Document Pinball."** Launch a ball through text gutters, bounce off headings/icons, light target words, and drain into the page margin while the cloned document keeps its scars for other toolkits.
+
+### 9.9 Shared Engine Services (DACK Core)
 
 - Rendering: 2D sprite/tile renderer, camera, particle FX, transparent overlay rendering for Live Mode.
 - Physics: simple AABB/2D rigidbody suitable for platformer/action/casual; separate scrolling-shooter movement model for Space Shooter.
@@ -443,9 +477,10 @@ DACK needs a small, stable vocabulary of verbs that toolkits, AI behaviors, even
 | Platforming | jump, fall, land, climb, hang, mantle, wall-slide, swing | gravity, impulse, air control, climb surface, ledge probe |
 | Vehicle/space | rotate, thrust, brake, drift, strafe, wrap, hyperspace | angular speed, thrust, drag, inertia, boundary behavior |
 | Racing/routes | steer, accelerate, brake, drift, checkpoint, lap, boost, go off-track | traction, turn rate, checkpoint order, lap count, best time, off-track penalty, ghost replay |
+| Pinball | launch, flip, bump, nudge, tilt, rollover, drain, lock, jackpot | table tilt, flipper arc/force, bumper force, lane state, tilt meter, ball save, bonus count |
 | Combat | aim, shoot, burst, charge, melee, block, dodge, take cover | range, rate, spread, damage, ammo, cooldown, line of sight |
 | Projectile | travel, arc, home, bounce/ricochet, pierce, split, explode | velocity, lifetime, turn rate, bounce count, blast radius |
-| Terrain | dig, cut, build, repair, crumble, reveal, paint, transform | material, hardness, health, support, replacement tile/state |
+| Terrain / mutation | dig, cut, build, repair, crumble, reveal, paint, transform, erase text, deform clone | material, hardness, health, support, replacement tile/state, source/current geometry delta |
 | Object handling | collect, carry, drop, push, pull, throw, consume, equip | capacity, weight, slot, ownership, stack, use action |
 | Access/progression | unlock, open, activate, teleport, checkpoint, exit | key/tag, state, destination, requirement, persistence |
 | Defense/tactics | defend, escort, intercept, capture, claim, surround | objective health, zone, threat, formation, reinforcement rule |
@@ -456,7 +491,7 @@ DACK needs a small, stable vocabulary of verbs that toolkits, AI behaviors, even
 | Office/activity | type, add, delete, select, focus, idle, open, move, resize | threshold, debounce, region anchor, privacy scope, intensity |
 | Presentation | animate, emote, speak, highlight, shake, play sound | duration, layer, volume, accessibility alternative |
 
-Toolkits expose curated subsets. The underlying runtime uses the same verbs everywhere, so "bounce" can describe a Breakout ball, a Combat ricochet, or a thrown RPG object; "dig" can modify a tile dungeon, a spreadsheet grid, or creator-painted terrain.
+Toolkits expose curated subsets. The underlying runtime uses the same verbs everywhere, so "bounce" can describe a Brickbat ball, a pinball bumper rebound, a Combat ricochet, or a thrown RPG object; "dig" can modify a tile dungeon, a spreadsheet grid, creator-painted terrain, or text-bearing regions in a cloned document. Mutation verbs publish source/current geometry deltas so later playsets can inherit, reset, undo, or save the deformed clone deliberately.
 
 ---
 
@@ -645,7 +680,21 @@ Proposed solution boundaries:
 
 ## 15. Editor UX Notes
 
-- **Large genre-specific toolkit overlay**: the small floating toolbar is only the quick mode switcher. Each toolkit also has an expandable overlay/panel with its own tools, presets, meters, and authoring handles. Platformer shows text ramps, crawl surfaces, ladders, checkpoints, moving platforms, slides, elevators, and enemy spawns; Brickbat shows letter/word grain, paddle orientation, scoring, power-ups, multiball/laser tuning, and target filters; Racing shows track drawing, start/finish/checkpoints, lap rules, boosts, and hazards.
+- **Editor shell over game HUD.** The current floating toolbar is a RAD switcher, not the product UI. The real editor needs a persistent construction shell with three jobs: choose the source/live capture, place assets/tools on the playfield, and tune selected objects/rules. Gameplay can still collapse to full-screen playfield, but authoring requires shelves, inspectors, drag handles, and preview overlays.
+
+- **Asset shelf / parts palette.** Every toolkit gets a shelf of draggable assets and tools. The shelf behaves like a construction-kit toybox: thumbnail, name, source/license badge, category, and drag preview. Dragging an item onto the playfield creates a placed object with immediate handles and a property sheet. Shelf contents include built-in primitives, curated third-party assets, user sprites, semantic word tools, invisible triggers, and generated objects from auto-detection.
+
+- **Shelf categories.** Suggested top-level categories: Actors, Terrain, Motion Tools, Hazards, Pickups, Triggers, Effects, Text/Semantic Tools, Invisible Logic, and Toolkit Parts. Pinball adds Flippers, Balls, Plungers, Bumpers, Ramps, Gates, Rollovers, Inserts, Drains, Nudges, and Score/Mission Logic. Brickbat adds Paddles, Ball Rules, Target Recipes, Powerups, Lasers, Scoring, and Persistence. Platformer adds Platforms, Ladders, Slides, Conveyors, Elevators, Checkpoints, Diggable Terrain, Enemies, and Projectiles.
+
+- **Drag-create-edit loop.** Shelf interaction must be one fluid gesture: drag from shelf → preview snaps/aligns on playfield → release to place → handles appear → inspector opens. Handles are direct manipulation first (flipper sweep arcs, ramp splines, ladder endpoints, bumper radius, laser beam width, spawn range, patrol path) with numeric fields as backup.
+
+- **Live Desktop pivot.** The editor should treat static captures as one source provider and Live Desktop as the main engine validation path. Live Desktop needs a source/capture panel for monitor/window/region selection, resample/freeze controls, geometry-update policy, overlay vs. two-monitor clone staging, and a visible "live source active" indicator. Snapshot Clone Mode remains valuable for reproducible tests and shareable playsets, but it cannot be the only authoring surface.
+
+- **Large genre-specific toolkit overlay**: the small floating toolbar is only the quick mode switcher. Each toolkit also has an expandable overlay/panel with its own tools, presets, meters, and authoring handles. Platformer shows text ramps, crawl surfaces, ladders, checkpoints, moving platforms, slides, elevators, and enemy spawns; Brickbat shows letter/word grain, paddle orientation, scoring, power-ups, multiball/laser tuning, and target filters; Racing shows track drawing, start/finish/checkpoints, lap rules, boosts, and hazards; Pinball shows flippers, plunger lanes, bumpers, rollovers, gates, drains, nudges, inserts, multipliers, and jackpot/multiball rules.
+
+- **Brickbat builder overlay**: Brickbat should expose a full construction-kit layer, not just a fixed arcade mode. Creator controls include ball count and launch randomness; bottom/side/top paddle orientation; curved/sticky/AI paddle options; target recipes for letters, words, lines, headings, OCR terms, icons, pillboxes, colors, and manually painted regions; a bonus deck for literary/arcade effects; laser/beam settings for strength, width, delay, direction, scoring, and whether beams cut, score, reveal, or transform text; and a persistence policy for whether deformation carries into other playsets, resets on new game, or saves as a named variant. The visual style presets should range from quiet office markup to full neon/Jeff-Minter analog typography.
+
+- **Reusable effects deck**: visual feedback should be a modular engine service, not per-toolkit one-off drawing. The first deck includes score captions, impact bursts, shock rings, sparks, paddle flashes, multiball blooms, laser charge/fire effects, round banners, and word/letter shard explosions with spline-like motion paths. Toolkits call named effects and can swap palettes/intensity presets: quiet office annotation, red-pen markup, monochrome terminal, arcade neon, or full Jeff-Minter overkill. Effects should be usable for Brickbat hits, platformer shots, RPG spells, tower-defense impacts, racing crashes, document-change events, and live-mode alarms.
 
 - **Toolbox sidebar** per toolkit (platform brush, ladder brush, enemy stamp, item stamp) — same interaction model as ACK/SEUCK's tile/sprite pickers.
 - **Source switcher:** "Capture Desktop / Capture Window or Region / Use Image / Use Text Grid," with Live Desktop and structured modes appearing only when available.
@@ -711,7 +760,7 @@ Captures can expose private information even without a native file, and live obs
 
 The MVP validates one proposition: **a safe clone of an ordinary Windows workspace becomes fun because actors understand and interact with its boundaries.**
 
-### Phase 1 — Engine Sandbox & Snapshot Clone
+### Phase 1 — Engine Sandbox & Snapshot Clone RAD
 
 1. Godot/.NET solution skeleton with clean `Core`, `Windows`, `Editor`, and `Player` boundaries (§13.1).
 2. **Snapshot Clone Mode:** capture monitor/window/region; import PNG/JPEG/BMP; create an immutable-source working clone.
@@ -725,11 +774,14 @@ The MVP validates one proposition: **a safe clone of an ordinary Windows workspa
 10. Playset export containing framegrab/text map + `.dacklvl` + assets + manifest; mandatory preview and sanitized packaging.
 11. Minimal open-source Player and one end-to-end loop: capture/import → detect → edit → play → Boss Key → package → reload.
 
+**RAD status:** the current Godot proof has already validated the screenshot-side premise strongly enough to move on: captured-page text can become platform terrain, Brickbat targets, destructible/deformable clone content, platformer projectile targets, and shared cross-playset terrain; reusable effects and basic sprite editing are also proven. Snapshot Clone Mode remains required as a deterministic test/share path, but further product validation should prioritize the editor shell and Live Desktop path.
+
 **Exit criterion:** a casual PC user can turn any visible office file into a playable level in minutes, understand what is interactive, and exit instantly without DACK touching the original.
 
 ### Phase 2 — Living Desktop & Required RPG Kit
 
 - Live Desktop Mode with dynamic window-boundary re-planning and work+clone two-monitor staging.
+- First real editor shell: source/live-capture panel, draggable asset shelf, toolkit-specific parts palette, property inspector, direct manipulation handles, and one-click test/play collapse.
 - Ambient first-launch experience and intensity controls.
 - Full first pass of the **RPG/Roguelike Kit**: inventory, keys/doors, enemies, traps, procedural rooms/caves, fog of war, turn-based option.
 - Action Kit squad orders and light worker/gather/build mechanics inspired by Cannon Fodder, Syndicate, and Age of Empires.
@@ -742,7 +794,7 @@ The MVP validates one proposition: **a safe clone of an ordinary Windows workspa
 
 - UIA text/selection activity feed and the Activity Event Map—no Office add-in.
 - `Word War` (Engaged default), `Grow a Garden` (Ambient), and document-defense presets.
-- Platformer, Casual, Racing, and Space Shooter toolkit shells composed from the same vocabulary.
+- Platformer, Casual, Racing, Pinball, and Space Shooter toolkit shells composed from the same vocabulary.
 - Rebuild/diff flow for recaptured frames and text maps.
 - Semantic word-object expansion across toolkits: literary Brickbat bonuses, platformer hazards/tools, RPG glyph/word actors, and tower-defense routes/towers derived from meaningful document text.
 - Camera/zoom LOD and first richer skin, while preserving stick-figure/debug visibility modes.
