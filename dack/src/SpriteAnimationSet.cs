@@ -31,6 +31,9 @@ public sealed class SpriteAnimationSet
         if (!frames.ContainsKey(ActorMotionState.Run))
             frames[ActorMotionState.Run] = frames[ActorMotionState.Idle];
 
+        if (!frames.ContainsKey(ActorMotionState.Crawl))
+            frames[ActorMotionState.Crawl] = frames[ActorMotionState.Run];
+
         if (!frames.ContainsKey(ActorMotionState.JumpUp))
             frames[ActorMotionState.JumpUp] = frames[ActorMotionState.Idle];
 
@@ -46,7 +49,7 @@ public sealed class SpriteAnimationSet
             ? stateFrames
             : _frames[ActorMotionState.Idle];
 
-        float framesPerSecond = state == ActorMotionState.Run ? 12f : 6f;
+        float framesPerSecond = state is ActorMotionState.Run or ActorMotionState.Crawl ? 12f : 6f;
         int index = Mathf.FloorToInt((float)clock * framesPerSecond) % frames.Length;
         return frames[index];
     }

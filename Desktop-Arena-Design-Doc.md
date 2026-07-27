@@ -332,6 +332,8 @@ All toolkits share the **DACK Core** (rendering, physics, keyboard/mouse input, 
 
 - Physics params: gravity, jump height/count (incl. double-jump), run speed, friction, wall-jump toggle.
 - Terrain from window edges/taskbar, image contours, glyph maps, creator painting, or later validated structured regions.
+- Paragraph/text tools include **slant paragraph**, **raise/lower line**, and **stagger rows** operations so creators can turn ordinary text blocks into Donkey Kong-style diagonal ramps while preserving native document readability in the clone. The tool stores a transform/physics overlay, not a mutation of the original source.
+- Single-spaced text can act as a crawl/climb surface in Climber mode: the character should be able to crawl up or down dense rows of text with a distinct crawl animation, separate from ladder climbing.
 - Entities: player, patrol enemies, collectibles (icons or images), hazards, moving platforms, goal flag.
 - Win conditions: reach exit, collect N items, survive timer, or (Live Document Mode) reach a word-count goal.
 
@@ -642,6 +644,8 @@ Proposed solution boundaries:
 ---
 
 ## 15. Editor UX Notes
+
+- **Large genre-specific toolkit overlay**: the small floating toolbar is only the quick mode switcher. Each toolkit also has an expandable overlay/panel with its own tools, presets, meters, and authoring handles. Platformer shows text ramps, crawl surfaces, ladders, checkpoints, moving platforms, slides, elevators, and enemy spawns; Brickbat shows letter/word grain, paddle orientation, scoring, power-ups, multiball/laser tuning, and target filters; Racing shows track drawing, start/finish/checkpoints, lap rules, boosts, and hazards.
 
 - **Toolbox sidebar** per toolkit (platform brush, ladder brush, enemy stamp, item stamp) — same interaction model as ACK/SEUCK's tile/sprite pickers.
 - **Source switcher:** "Capture Desktop / Capture Window or Region / Use Image / Use Text Grid," with Live Desktop and structured modes appearing only when available.

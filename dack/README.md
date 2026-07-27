@@ -31,6 +31,7 @@ dotnet build DACK.csproj
 - Use left/right arrows or A/D to move the playable scout.
 - Press Space, W, or Up to jump.
 - Choose **Pitfall** for horizontal platforming or **Climber** for vertical ladder play.
+- In Climber mode, dense captured text can act as a crawl surface prototype: hold Up/Down while touching single-spaced text to crawl through the text row. Dedicated crawl art is still needed.
 - Adjust the character scale slider to match the apparent text size of the playfield; the demo defaults to a small but visible roughly 32 px-tall office-platformer character.
 - During gameplay, the Windows pointer is hidden. It reappears for the sprite pad and Boss Key screen.
 - Press **F1** to collapse or restore the floating toolbar. The pointer is visible while the toolbar is expanded and hidden when it is collapsed for play.
@@ -41,6 +42,7 @@ dotnet build DACK.csproj
 - The playable scout uses Stickman Pack idle, run, and jump animation frames.
 - Use the floating playset toolbar to switch between **Platformer** and **Brickbat**.
 - In Brickbat mode, detected letters or words become invisible collision objects; when struck, the cloned page visually erases that text object. The mouse controls the paddle.
+- Brickbat tracks score, hits, remaining targets, and balls. Early bonus hooks include Multiball and Laser-style visual effects.
 - Click one of the three actors to select it.
 - Paint on the 32 x 32 pad; every actor sharing that sprite changes instantly.
 - Right-click or choose **Erase** to make pixels transparent.
@@ -74,6 +76,10 @@ The recurring DACK mechanic is that text can remain readable while also becoming
   - `FOOTNOTE`, `BOOKMARK`, `DRAFT`, and `RED PEN` become literary power-ups.
 - Every semantic object should support text, graphic, or hybrid presentation.
 - A word can summon an editor tool without trapping the creator in the word's typography. For example, `LADDER` may start on the word, then expose draggable endpoints so it can be stretched, angled, offset, or detached while remaining linked to the source word.
+
+## Toolkit overlay note
+
+The floating toolbar is only the quick switcher. Each genre needs a larger expandable toolkit overlay: Platformer gets text ramps, paragraph slanting, crawl surfaces, ladders, checkpoints, elevators, slides, and enemy tools; Brickbat gets scoring, target grain, power-ups, multiball/laser tuning, and target filters; Racing gets track drawing, start/finish/checkpoints, laps, boosts, and hazards.
 
 ## Racing kit note
 

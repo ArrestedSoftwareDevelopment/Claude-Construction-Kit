@@ -568,10 +568,13 @@ public partial class Main : Control
             _playerVelocity.X = Mathf.MoveToward(_playerVelocity.X, 0, friction * dt);
         }
 
+        bool crawlingText = _platformerMode == PlatformerMode.Vertical && _playfield.HasCapturedPage && onLadder && (upHeld || downHeld);
         if (_platformerMode == PlatformerMode.Vertical && onLadder && (upHeld || downHeld))
         {
             float climb = (downHeld ? 1f : 0f) - (upHeld ? 1f : 0f);
             _playerVelocity.Y = climb * motionUnit * 11f;
+            if (crawlingText)
+                _playerVelocity.X = Mathf.MoveToward(_playerVelocity.X, inputX * motionUnit * 6f, acceleration * 0.5f * dt);
             _playerOnGround = false;
         }
         else
@@ -605,14 +608,20 @@ public partial class Main : Control
 
         _playerPosition = next;
         _player.Position = _playerPosition;
-        UpdatePlayerAnimation(inputX);
+        UpdatePlayerAnimation(inputX, crawlingText);
         _player.QueueRedraw();
         RefreshMotionText();
     }
 
-    private void UpdatePlayerAnimation(float inputX)
+    private void UpdatePlayerAnimation(float inputX, bool crawlingText)
     {
         _player.AnimationClock = _elapsed;
+
+        if (crawlingText)
+        {
+            _player.MotionState = ActorMotionState.Crawl;
+            return;
+        }
 
         if (!_playerOnGround)
         {
@@ -685,7 +694,7 @@ public partial class Main : Control
 
         foreach (Rect2 word in _playfield.GetTextObjectRegions(TextObjectGranularity.Word))
             yield return new Rect2(
-                word.Position,
+                word.Position + new Vector2(0, 2f),
                 new Vector2(word.Size.X, Mathf.Max(2f, Mathf.Min(word.Size.Y, _textUnitPixels * 0.45f)))
             );
     }

@@ -118,15 +118,51 @@ public partial class PlayfieldSurface : Control
     {
         if (_capturedPage is not null)
         {
-            return granularity switch
+            Rect2[] sourceRects = granularity switch
             {
-                TextObjectGranularity.Word => GetCapturedRects(_capturedPage, _capturedPage.TextWords),
-                TextObjectGranularity.Line => GetCapturedRects(_capturedPage, _capturedPage.TextLines),
-                _ => GetCapturedRects(_capturedPage, _capturedPage.TextBricks)
+                TextObjectGranularity.Word => _capturedPage.TextWords,
+                TextObjectGranularity.Line => _capturedPage.TextLines,
+                _ => _capturedPage.TextBricks
             };
+
+            return GetCapturedRects(_capturedPage, sourceRects, activeOnly: true);
         }
 
         return GetPlatforms();
+    }
+
+    public Rect2 FindWhitespaceRect(Vector2 desiredSize)
+    {
+        Rect2 fallback = new(Mathf.Max(0, Size.X - desiredSize.X - 16f), 16f, desiredSize.X, desiredSize.Y);
+        if (_capturedPage is null)
+            return fallback;
+
+        Rect2 document = PlayBounds;
+        Rect2[] candidates =
+        [
+            new Rect2(document.End.X + 14f, document.Position.Y + 18f, desiredSize.X, desiredSize.Y),
+            new Rect2(document.Position.X + 14f, document.End.Y + 10f, desiredSize.X, desiredSize.Y),
+            new Rect2(document.End.X - desiredSize.X - 18f, document.End.Y - desiredSize.Y - 18f, desiredSize.X, desiredSize.Y),
+            new Rect2(document.Position.X + 18f, document.End.Y - desiredSize.Y - 18f, desiredSize.X, desiredSize.Y),
+            new Rect2(document.End.X - desiredSize.X - 18f, document.Position.Y + 18f, desiredSize.X, desiredSize.Y)
+        ];
+
+        Rect2 best = fallback;
+        float bestScore = float.NegativeInfinity;
+        foreach (Rect2 candidate in candidates)
+        {
+            if (candidate.End.X > Size.X || candidate.End.Y > Size.Y || candidate.Position.X < 0 || candidate.Position.Y < 0)
+                continue;
+
+            float score = ScoreWhitespace(candidate);
+            if (score > bestScore)
+            {
+                bestScore = score;
+                best = candidate;
+            }
+        }
+
+        return best;
     }
 
     public Color GetDocumentBackgroundColor(Rect2 region)
@@ -147,7 +183,7 @@ public partial class PlayfieldSurface : Control
         Rect2 sourceRegion = DisplayToSourceRect(_capturedPage, region);
         Color fill = SampleBackgroundColor(_capturedPage.OriginalImage, sourceRegion.Grow(4f));
         FloodEraseConnectedInk(_capturedPage, sourceRegion, fill);
-        CleanupTinyInkSpecks(_capturedPage, sourceRegion.Grow(7f), fill);
+        CleanupTinyInkSpecks(_capturedPage, sourceRegion.Grow(9f), fill);
 
         if (_capturedPage.Texture is ImageTexture imageTexture)
             imageTexture.Update(_capturedPage.Image);
@@ -229,12 +265,33 @@ public partial class PlayfieldSurface : Control
 
     public bool IsTouchingLadder(Rect2 actorBounds)
     {
+        if (_capturedPage is not null)
+            return IsTouchingTextCrawlSurface(actorBounds);
+
         if (Mode != PlatformerMode.Vertical)
             return false;
 
         foreach (WorldObject ladder in GetLadders())
         {
             if (ladder.Bounds(TextUnitPixels, ElapsedSeconds).Intersects(actorBounds, true))
+                return true;
+        }
+
+        return false;
+    }
+
+    private bool IsTouchingTextCrawlSurface(Rect2 actorBounds)
+    {
+        if (Mode != PlatformerMode.Vertical)
+            return false;
+
+        Rect2 probe = actorBounds.Grow(TextUnitPixels * 0.6f);
+        foreach (Rect2 line in GetTextObjectRegions(TextObjectGranularity.Line))
+        {
+            if (line.Size.Y > TextUnitPixels * 2.2f)
+                continue;
+
+            if (line.Intersects(probe, true))
                 return true;
         }
 
@@ -347,23 +404,26 @@ public partial class PlayfieldSurface : Control
         return GetCapturedRects(frame, frame.TextBricks);
     }
 
-    private Rect2[] GetCapturedRects(CapturedPageFrame frame, Rect2[] sourceRects)
+    private Rect2[] GetCapturedRects(CapturedPageFrame frame, Rect2[] sourceRects, bool activeOnly = false)
     {
         Rect2 imageRect = GetCapturedPageDrawRect(frame);
         Vector2 sourceSize = new(frame.PixelSize.X, frame.PixelSize.Y);
         float scale = imageRect.Size.X / sourceSize.X;
-        Rect2[] mapped = new Rect2[sourceRects.Length];
+        List<Rect2> mapped = [];
 
         for (int i = 0; i < sourceRects.Length; i++)
         {
             Rect2 source = sourceRects[i];
-            mapped[i] = new Rect2(
+            if (activeOnly && !HasCurrentInkInRegion(frame, source.Grow(1f)))
+                continue;
+
+            mapped.Add(new Rect2(
                 imageRect.Position + source.Position * scale,
                 source.Size * scale
-            );
+            ));
         }
 
-        return mapped;
+        return mapped.ToArray();
     }
 
     private Rect2 GetCapturedPageDrawRect(CapturedPageFrame frame)
@@ -432,8 +492,8 @@ public partial class PlayfieldSurface : Control
 
     private static void FloodEraseConnectedInk(CapturedPageFrame frame, Rect2 sourceRegion, Color fill)
     {
-        Rect2 seedRegion = sourceRegion.Grow(2.0f);
-        Rect2 floodRegion = sourceRegion.Grow(6f);
+        Rect2 seedRegion = sourceRegion.Grow(2.5f);
+        Rect2 floodRegion = sourceRegion.Grow(8f);
         Rect2I floodBounds = ClampToImage(frame.Image, floodRegion);
         Rect2I seedBounds = ClampToImage(frame.Image, seedRegion);
         Queue<Vector2I> pending = [];
@@ -501,6 +561,51 @@ public partial class PlayfieldSurface : Control
             || IsLikelyInkEdge(original, fill)
             || IsLikelyTextPixel(current)
             || IsLikelyInkEdge(current, fill);
+    }
+
+    private static bool HasCurrentInkInRegion(CapturedPageFrame frame, Rect2 sourceRegion)
+    {
+        Rect2I bounds = ClampToImage(frame.Image, sourceRegion);
+        int inkPixels = 0;
+        for (int y = bounds.Position.Y; y < bounds.End.Y; y++)
+        {
+            for (int x = bounds.Position.X; x < bounds.End.X; x++)
+            {
+                if (!IsLikelyTextPixel(frame.Image.GetPixel(x, y)))
+                    continue;
+
+                inkPixels++;
+                if (inkPixels >= 2)
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
+    private float ScoreWhitespace(Rect2 displayRegion)
+    {
+        if (_capturedPage is null || !PlayBounds.Intersects(displayRegion, true))
+            return 10_000f;
+
+        Rect2 sourceRegion = DisplayToSourceRect(_capturedPage, displayRegion);
+        Rect2I bounds = ClampToImage(_capturedPage.Image, sourceRegion);
+        int ink = 0;
+        int samples = 0;
+        int step = 4;
+
+        for (int y = bounds.Position.Y; y < bounds.End.Y; y += step)
+        {
+            for (int x = bounds.Position.X; x < bounds.End.X; x += step)
+            {
+                samples++;
+                if (IsLikelyTextPixel(_capturedPage.Image.GetPixel(x, y)))
+                    ink++;
+            }
+        }
+
+        float lowerRightBias = displayRegion.GetCenter().X * 0.001f + displayRegion.GetCenter().Y * 0.001f;
+        return samples == 0 ? lowerRightBias : -((float)ink / samples) + lowerRightBias;
     }
 
     private static void CleanupTinyInkSpecks(CapturedPageFrame frame, Rect2 sourceRegion, Color fill)

@@ -4,6 +4,7 @@ public enum ActorMotionState
 {
     Idle,
     Run,
+    Crawl,
     JumpUp,
     JumpDown
 }
