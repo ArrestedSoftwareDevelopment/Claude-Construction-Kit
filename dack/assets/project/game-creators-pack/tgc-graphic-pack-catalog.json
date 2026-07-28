@@ -1,0 +1,122 @@
+{
+  "format": "dack-asset-catalog",
+  "version": 1,
+  "sourceCredit": {
+    "source": "The Game Creator's Pack / Graphic Pack",
+    "licenseStatus": "cleared by project owner; credit in final credits bundle",
+    "rawRoot": "raw base assets/The Game Creator's Pack/The Game Creator's Pack/Graphic Pack"
+  },
+  "characters": [
+    {
+      "id": "tgc-orange-worker",
+      "name": "Orange Worker",
+      "role": ["enemy", "simple-player"],
+      "runtimePath": "res://assets/project/game-creators-pack/platformer-spritesheet.png",
+      "sourcePath": "raw base assets/The Game Creator's Pack/The Game Creator's Pack/Graphic Pack/Platformer_SpriteSheet.png",
+      "frameSource": "blob-range",
+      "recommendedLabels": {
+        "idle": [0, 5],
+        "run": [13, 18],
+        "fall": [0, 0],
+        "death": null
+      }
+    },
+    {
+      "id": "tgc-red-runner",
+      "name": "Red Runner",
+      "role": ["enemy", "simple-player"],
+      "runtimePath": "res://assets/project/game-creators-pack/platformer-spritesheet.png",
+      "frameSource": "blob-range",
+      "recommendedLabels": {
+        "idle": [6, 12],
+        "run": [19, 23],
+        "fall": [6, 6],
+        "death": null
+      }
+    },
+    {
+      "id": "tgc-blue-guard",
+      "name": "Blue Guard",
+      "role": ["enemy"],
+      "runtimePath": "res://assets/project/game-creators-pack/platformer-spritesheet.png",
+      "frameSource": "blob-range",
+      "recommendedLabels": {
+        "idle": [28, 34],
+        "run": [40, 44],
+        "fall": [28, 28],
+        "death": null
+      }
+    },
+    {
+      "id": "tgc-green-crawler",
+      "name": "Green Crawler",
+      "role": ["enemy"],
+      "runtimePath": "res://assets/project/game-creators-pack/platformer-spritesheet.png",
+      "frameSource": "blob-range",
+      "recommendedLabels": {
+        "idle": [35, 39],
+        "run": [45, 50],
+        "crawl": [53, 65],
+        "fall": [35, 35],
+        "death": null
+      }
+    },
+    {
+      "id": "tgc-shooter-boss",
+      "name": "Shooter Boss",
+      "role": ["enemy", "boss", "pinball-toy", "brickbat-hazard"],
+      "runtimePath": "res://assets/project/game-creators-pack/shooter-boss-sprite.png",
+      "frameSource": "single",
+      "recommendedLabels": {
+        "idle": [0, 0],
+        "shoot": [0, 0],
+        "death": null
+      }
+    },
+    {
+      "id": "tgc-shooter-fleet",
+      "name": "Shooter Fleet",
+      "role": ["enemy", "simple-player", "overhead"],
+      "runtimePath": "res://assets/project/game-creators-pack/shooter-spritesheet.png",
+      "frameSource": "atlas",
+      "recommendedLabels": {
+        "idle": null,
+        "shoot": null,
+        "death": null
+      }
+    }
+  ],
+  "levelObjects": [
+    {
+      "id": "tgc-red-girder",
+      "name": "Red Girder",
+      "kind": "platform",
+      "runtimePath": "res://assets/project/game-creators-pack/platformer-spritesheet.png",
+      "atlasRegionHint": [133, 104, 84, 16],
+      "usage": ["platform", "bridge", "pinball-wall"]
+    },
+    {
+      "id": "tgc-gray-blocks",
+      "name": "Gray Blocks",
+      "kind": "solid-block",
+      "runtimePath": "res://assets/project/game-creators-pack/platformer-spritesheet.png",
+      "atlasRegionHint": [48, 121, 84, 33],
+      "usage": ["wall", "crate", "breakable-block"]
+    },
+    {
+      "id": "tgc-orange-bricks",
+      "name": "Orange Bricks",
+      "kind": "solid-block",
+      "runtimePath": "res://assets/project/game-creators-pack/platformer-spritesheet.png",
+      "atlasRegionHint": [133, 121, 84, 33],
+      "usage": ["wall", "floor", "brickbat-brick", "pinball-wall"]
+    },
+    {
+      "id": "tgc-retro-puzzle-blocks",
+      "name": "Retro Puzzle Blocks",
+      "kind": "tile-set",
+      "runtimePath": "res://assets/project/game-creators-pack/retro-puzzle-sample.png",
+      "usage": ["puzzle", "wall", "bonus-panel"]
+    }
+  ]
+}

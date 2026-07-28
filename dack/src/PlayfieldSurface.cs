@@ -10,9 +10,13 @@ public partial class PlayfieldSurface : Control
     private Texture2D? _brick;
     private Texture2D? _platform;
     private Texture2D? _window;
+    private Texture2D? _fireballExplosion;
     private CapturedPageFrame? _capturedPage;
+    private readonly PsychedelicEffects _letterEffects = new();
     private readonly List<WorldObject> _placedWorldObjects = [];
     private Vector2[] _playerShotPositions = [];
+    private Vector2[] _enemyShotPositions = [];
+    private EffectVisual[] _impactEffects = [];
     private int _selectedWorldObjectIndex = -1;
     private int _draggedHandle = -1;
     private Vector2 _dragBodyOffset;
@@ -23,6 +27,7 @@ public partial class PlayfieldSurface : Control
     public LazyOcrService Ocr { get; } = new();
     public bool HasCapturedPage => _capturedPage is not null;
     public bool ShowEditorOnlyObjects { get; set; }
+    public bool EditorMode { get; set; } = true;
     public bool TextCrawlEnabled { get; set; } = true;
     public Rect2 PlayBounds => _capturedPage is not null ? GetCapturedPageDrawRect(_capturedPage) : new Rect2(Vector2.Zero, Size);
     public event Action<string>? WorldObjectSelectionChanged;
@@ -43,12 +48,24 @@ public partial class PlayfieldSurface : Control
         _brick = LoadPng("res://assets/third_party/8-bit-dungeon/brick-solid.png");
         _platform = LoadPng("res://assets/third_party/8-bit-dungeon/platform.png");
         _window = LoadPng("res://assets/third_party/8-bit-dungeon/window-2.png");
+        _fireballExplosion = LoadPng("res://assets/project/effects/fireball-impact-explosion.png");
         _capturedPage = CapturedPageImportModule.TryLoadDefault();
         Resized += QueueRedraw;
+        SetProcess(true);
+    }
+
+    public override void _Process(double delta)
+    {
+        _letterEffects.Update((float)delta);
+        if (_letterEffects.HasActiveEffects)
+            QueueRedraw();
     }
 
     public override void _GuiInput(InputEvent inputEvent)
     {
+        if (!EditorMode)
+            return;
+
         if (inputEvent is InputEventMouseButton mouseButton && mouseButton.ButtonIndex == MouseButton.Left)
         {
             if (mouseButton.Pressed)
@@ -277,6 +294,40 @@ public partial class PlayfieldSurface : Control
         QueueRedraw();
     }
 
+    public void SetEnemyShotPositions(IReadOnlyList<Vector2> positions)
+    {
+        if (positions.Count == 0)
+        {
+            _enemyShotPositions = [];
+            QueueRedraw();
+            return;
+        }
+
+        Vector2[] copy = new Vector2[positions.Count];
+        for (int i = 0; i < positions.Count; i++)
+            copy[i] = positions[i];
+
+        _enemyShotPositions = copy;
+        QueueRedraw();
+    }
+
+    public void SetImpactEffects(IReadOnlyList<EffectVisual> effects)
+    {
+        if (effects.Count == 0)
+        {
+            _impactEffects = [];
+            QueueRedraw();
+            return;
+        }
+
+        EffectVisual[] copy = new EffectVisual[effects.Count];
+        for (int i = 0; i < effects.Count; i++)
+            copy[i] = effects[i];
+
+        _impactEffects = copy;
+        QueueRedraw();
+    }
+
     public void AddPlacedObject(WorldObjectKind kind)
     {
         Rect2 bounds = PlayBounds;
@@ -288,10 +339,11 @@ public partial class PlayfieldSurface : Control
             WorldObjectKind.Ladder => new WorldObject(kind, center + new Vector2(-unit * 2f, unit * 8f), center + new Vector2(-unit * 2f, -unit * 8f), 1.2f),
             WorldObjectKind.Ramp => new WorldObject(kind, center + new Vector2(-unit * 12f, unit * 5f), center + new Vector2(unit * 12f, -unit * 4f), 0.9f),
             WorldObjectKind.Slide => new WorldObject(kind, center + new Vector2(-unit * 12f, -unit * 4f), center + new Vector2(unit * 12f, unit * 5f), 0.9f, 7f),
-            WorldObjectKind.Conveyor => new WorldObject(kind, center + new Vector2(-unit * 13f, unit * 10f), center + new Vector2(unit * 13f, unit * 10f), 0.9f, 6f),
+            WorldObjectKind.Conveyor => new WorldObject(kind, center + new Vector2(-unit * 13f, unit * 10f), center + new Vector2(unit * 13f, unit * 10f), 0.9f, 14f),
             WorldObjectKind.Elevator => new WorldObject(kind, center + new Vector2(-unit * 8f, unit * 2f), center + new Vector2(unit * 8f, unit * 2f), 0.9f, 1.6f, _placedWorldObjects.Count * 0.45f),
             WorldObjectKind.Checkpoint => CreateMarker(center, unit, MarkerRole.Midpoint, true),
             WorldObjectKind.StartPoint => CreateMarker(center, unit, MarkerRole.Start, false),
+            WorldObjectKind.GoalPoint => CreateMarker(center, unit, MarkerRole.End, true),
             WorldObjectKind.HiddenSwitch => CreateMarker(center, unit, MarkerRole.Switch, false),
             WorldObjectKind.PinballFlipper => new WorldObject(kind, center + new Vector2(-unit * 8f, unit * 12f), center + new Vector2(unit * 10f, unit * 9f), 1.25f, 12f, 0f, 5f, MarkerRole.None, true, false, default, 0.92f),
             WorldObjectKind.PinballBumper => new WorldObject(kind, center, center + new Vector2(unit * 5f, 0), 1.2f, 0f, 0f, 5f, MarkerRole.None, true, false, default, 0.92f),
@@ -322,7 +374,13 @@ public partial class PlayfieldSurface : Control
 
     private static WorldObject CreateMarker(Vector2 center, float unit, MarkerRole role, bool visibleInPlay)
     {
-        WorldObjectKind kind = role == MarkerRole.Switch ? WorldObjectKind.HiddenSwitch : WorldObjectKind.Checkpoint;
+        WorldObjectKind kind = role switch
+        {
+            MarkerRole.Switch => WorldObjectKind.HiddenSwitch,
+            MarkerRole.Start => WorldObjectKind.StartPoint,
+            MarkerRole.End => WorldObjectKind.GoalPoint,
+            _ => WorldObjectKind.Checkpoint
+        };
         return new WorldObject(
             kind,
             center + new Vector2(0, unit * 6f),
@@ -382,7 +440,7 @@ public partial class PlayfieldSurface : Control
         List<WorldObject> conveyors = ObjectsOfKind(WorldObjectKind.Conveyor);
 
         if (_capturedPage is null)
-            conveyors.Add(new WorldObject(WorldObjectKind.Conveyor, new Vector2(Size.X * 0.66f, Size.Y * 0.78f), new Vector2(Size.X * 0.85f, Size.Y * 0.78f), 0.9f, Mode == PlatformerMode.Horizontal ? -6f : 6f));
+            conveyors.Add(new WorldObject(WorldObjectKind.Conveyor, new Vector2(Size.X * 0.66f, Size.Y * 0.78f), new Vector2(Size.X * 0.85f, Size.Y * 0.78f), 0.9f, Mode == PlatformerMode.Horizontal ? -14f : 14f));
 
         return conveyors.ToArray();
     }
@@ -492,6 +550,22 @@ public partial class PlayfieldSurface : Control
         return _placedWorldObjects[_selectedWorldObjectIndex];
     }
 
+    public WorldObject[] GetPlacedWorldObjects()
+    {
+        return _placedWorldObjects.ToArray();
+    }
+
+    public void SetPlacedWorldObjects(IEnumerable<WorldObject> objects)
+    {
+        _placedWorldObjects.Clear();
+        _placedWorldObjects.AddRange(objects);
+        _selectedWorldObjectIndex = _placedWorldObjects.Count > 0 ? _placedWorldObjects.Count - 1 : -1;
+        _draggedHandle = -1;
+        _dragBodyOffset = Vector2.Zero;
+        PublishWorldObjectSelection();
+        QueueRedraw();
+    }
+
     public void SetSelectedSpeed(float speedUnits)
     {
         UpdateSelected(selected => selected with { SpeedUnits = speedUnits });
@@ -529,7 +603,7 @@ public partial class PlayfieldSurface : Control
         UpdateSelected(selected =>
         {
             if (selected.Kind == WorldObjectKind.Conveyor)
-                return selected with { SpeedUnits = Mathf.Abs(selected.SpeedUnits) < 0.001f ? -6f : -selected.SpeedUnits };
+                return selected with { SpeedUnits = Mathf.Abs(selected.SpeedUnits) < 0.001f ? -14f : -selected.SpeedUnits };
 
             return selected with { Start = selected.End, End = selected.Start };
         });
@@ -626,6 +700,47 @@ public partial class PlayfieldSurface : Control
             DrawCircle(position, 3.8f, new Color("#FFF0A8"));
             DrawCircle(position, 1.7f, new Color("#FF5C35"));
         }
+
+        foreach (Vector2 position in _enemyShotPositions)
+        {
+            DrawProjectileFrame(position, 0, 0.72f);
+        }
+
+        foreach (EffectVisual effect in _impactEffects)
+            DrawProjectileFrame(effect.Position, effect.Frame, 1.0f);
+
+        _letterEffects.Draw(this);
+    }
+
+    public void ThrowRandomLetters(Vector2 position, int count)
+    {
+        if (count <= 0)
+            return;
+
+        const string alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+        string letters = "";
+        int seed = Mathf.Abs(Mathf.RoundToInt(position.X * 17f + position.Y * 31f + ElapsedSeconds * 101f));
+        for (int i = 0; i < Mathf.Min(count, 12); i++)
+            letters += alphabet[(seed + i * 7) % alphabet.Length];
+
+        _letterEffects.ExplodeWord(letters, position, new Color("#FFF0A8"), Mathf.Clamp(0.85f + count * 0.08f, 0.9f, 1.8f));
+    }
+
+    private void DrawProjectileFrame(Vector2 position, int frame, float scale)
+    {
+        if (_fireballExplosion is null)
+        {
+            DrawCircle(position, 4.4f, new Color("#FF2BD6"));
+            DrawCircle(position, 2.0f, new Color("#202A34"));
+            return;
+        }
+
+        const int frameWidth = 80;
+        const int frameHeight = 48;
+        frame = Mathf.Clamp(frame, 0, 12);
+        Rect2 source = new(frame * frameWidth, 0, frameWidth, frameHeight);
+        Vector2 size = new Vector2(frameWidth, frameHeight) * scale;
+        DrawTextureRectRegion(_fireballExplosion, new Rect2(position - size * 0.5f, size), source);
     }
 
     private void DrawWorldObjects()
@@ -649,6 +764,9 @@ public partial class PlayfieldSurface : Control
 
         foreach (WorldObject checkpoint in ObjectsOfKind(WorldObjectKind.Checkpoint))
             DrawCheckpoint(checkpoint);
+
+        foreach (WorldObject goal in ObjectsOfKind(WorldObjectKind.GoalPoint))
+            DrawCheckpoint(goal);
 
         foreach (WorldObject start in ObjectsOfKind(WorldObjectKind.StartPoint))
             DrawEditorOnlyObject(start, "START", new Color("#B56CFF"));
@@ -1287,7 +1405,8 @@ public partial class PlayfieldSurface : Control
     {
         Vector2 basePoint = checkpoint.ResolvePoint(checkpoint.Start, TextUnitPixels, ElapsedSeconds);
         Vector2 topPoint = checkpoint.ResolvePoint(checkpoint.End, TextUnitPixels, ElapsedSeconds);
-        Color flag = checkpoint.Styled(new Color("#5CB8A7"));
+        Color defaultFlag = checkpoint.MarkerRole == MarkerRole.End ? new Color("#F4C95D") : new Color("#5CB8A7");
+        Color flag = checkpoint.Styled(defaultFlag);
         DrawLine(basePoint + new Vector2(2, 3), topPoint + new Vector2(2, 3), new Color(0, 0, 0, 0.22f), 3f);
         DrawLine(basePoint, topPoint, new Color("#202A34"), 3f);
         Vector2 flagA = topPoint;
@@ -1295,6 +1414,8 @@ public partial class PlayfieldSurface : Control
         Vector2 flagC = topPoint + new Vector2(0, TextUnitPixels * 2.8f);
         DrawColoredPolygon([flagA, flagB, flagC], flag);
         DrawPolyline([flagA, flagB, flagC, flagA], new Color("#F7F5EF"), 1.5f);
+        if (checkpoint.MarkerRole == MarkerRole.End)
+            DrawString(ThemeDB.FallbackFont, topPoint + new Vector2(TextUnitPixels * 1.0f, TextUnitPixels * 2.3f), "GOAL", HorizontalAlignment.Left, TextUnitPixels * 8f, 12, new Color("#202A34"));
     }
 
     private void DrawPinballFlipper(WorldObject flipper)

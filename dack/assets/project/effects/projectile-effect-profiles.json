@@ -1,0 +1,123 @@
+{
+  "format": "dack-projectile-effect-profiles",
+  "version": 1,
+  "sourceCredit": {
+    "source": "Itch.io explosion pack 1 / explosions pack 2",
+    "licenseStatus": "cleared by project owner; credit required in final credits bundle",
+    "rawRoot": "raw base assets/explosion pack 1/explosion pack 1"
+  },
+  "profiles": [
+    {
+      "id": "explosion-b-fireball-impact",
+      "name": "Fireball Impact Explosion B",
+      "runtimePath": "res://assets/project/effects/fireball-impact-explosion.png",
+      "rawPath": "raw base assets/explosion pack 1/explosion pack 1/Bonus/From explosions pack 2/explosion-b/explosion-b.png",
+      "frameWidth": 80,
+      "frameHeight": 48,
+      "frameCount": 13,
+      "projectileFrames": [0, 0],
+      "impactFrames": [1, 1],
+      "explosionFrames": [2, 12],
+      "defaultRadiusUnits": 4.8,
+      "textBlast": true
+    },
+    {
+      "id": "explosion-1-a",
+      "name": "Explosion 1 A",
+      "runtimePath": "res://assets/project/effects/explosion-1-a.png",
+      "rawPath": "raw base assets/explosion pack 1/explosion pack 1/Explosions pack/explosion-1-a/spritesheet.png",
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "frameCount": 8,
+      "projectileFrames": null,
+      "impactFrames": null,
+      "explosionFrames": [0, 7],
+      "defaultRadiusUnits": 3.0,
+      "textBlast": true
+    },
+    {
+      "id": "explosion-1-b",
+      "name": "Explosion 1 B",
+      "runtimePath": "res://assets/project/effects/explosion-1-b.png",
+      "rawPath": "raw base assets/explosion pack 1/explosion pack 1/Explosions pack/explosion-1-b/spritesheet.png",
+      "frameWidth": 64,
+      "frameHeight": 64,
+      "frameCount": 8,
+      "projectileFrames": null,
+      "impactFrames": null,
+      "explosionFrames": [0, 7],
+      "defaultRadiusUnits": 4.0,
+      "textBlast": true
+    },
+    {
+      "id": "explosion-1-c",
+      "name": "Explosion 1 C",
+      "runtimePath": "res://assets/project/effects/explosion-1-c.png",
+      "rawPath": "raw base assets/explosion pack 1/explosion pack 1/Explosions pack/explosion-1-c/spritesheet.png",
+      "frameWidth": 80,
+      "frameHeight": 80,
+      "frameCount": 16,
+      "projectileFrames": null,
+      "impactFrames": null,
+      "explosionFrames": [0, 15],
+      "defaultRadiusUnits": 5.0,
+      "textBlast": true
+    },
+    {
+      "id": "explosion-1-d",
+      "name": "Explosion 1 D",
+      "runtimePath": "res://assets/project/effects/explosion-1-d.png",
+      "rawPath": "raw base assets/explosion pack 1/explosion pack 1/Explosions pack/explosion-1-d/spritsheet.png",
+      "frameWidth": 128,
+      "frameHeight": 128,
+      "frameCount": 12,
+      "projectileFrames": null,
+      "impactFrames": null,
+      "explosionFrames": [0, 11],
+      "defaultRadiusUnits": 6.5,
+      "textBlast": true
+    },
+    {
+      "id": "explosion-1-e",
+      "name": "Explosion 1 E",
+      "runtimePath": "res://assets/project/effects/explosion-1-e.png",
+      "rawPath": "raw base assets/explosion pack 1/explosion pack 1/Explosions pack/explosion-1-e/explosion-5.png",
+      "frameWidth": 192,
+      "frameHeight": 192,
+      "frameCount": 22,
+      "projectileFrames": null,
+      "impactFrames": null,
+      "explosionFrames": [0, 21],
+      "defaultRadiusUnits": 8.0,
+      "textBlast": true
+    },
+    {
+      "id": "explosion-1-f",
+      "name": "Explosion 1 F",
+      "runtimePath": "res://assets/project/effects/explosion-1-f.png",
+      "rawPath": "raw base assets/explosion pack 1/explosion pack 1/Explosions pack/explosion-1-f/Sprites.png",
+      "frameWidth": 48,
+      "frameHeight": 48,
+      "frameCount": 8,
+      "projectileFrames": null,
+      "impactFrames": null,
+      "explosionFrames": [0, 7],
+      "defaultRadiusUnits": 3.5,
+      "textBlast": true
+    },
+    {
+      "id": "explosion-1-g",
+      "name": "Explosion 1 G",
+      "runtimePath": "res://assets/project/effects/explosion-1-g.png",
+      "rawPath": "raw base assets/explosion pack 1/explosion pack 1/Explosions pack/explosion-1-g/spritesheet.png",
+      "frameWidth": 48,
+      "frameHeight": 48,
+      "frameCount": 7,
+      "projectileFrames": null,
+      "impactFrames": null,
+      "explosionFrames": [0, 6],
+      "defaultRadiusUnits": 3.5,
+      "textBlast": true
+    }
+  ]
+}

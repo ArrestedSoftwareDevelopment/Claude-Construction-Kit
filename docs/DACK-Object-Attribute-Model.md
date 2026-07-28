@@ -185,19 +185,25 @@ Grid/Text:
 
 Common:
 
+- character name
 - faction/team
+- locomotion class: grounded, flying, swimming, crawling, climbing, turret/static, vehicle/ball
 - behavior preset
 - perception radius
 - line of sight
 - hearing/noise sensitivity
 - memory duration
 - patrol route
+- home/anchor point
 - target priority
 - attack pattern
+- projectile profile
 - flee/chase/scatter state
 - health/damage/resistance
 - text capability flags
 - source binding / spawn marker
+- manual placement / authored position
+- scale multiplier or explicit size
 - loot/drop behavior
 - visual style/tint/opacity
 
@@ -208,11 +214,36 @@ Behavior families:
 - flanker/pincer
 - erratic/patrol-biased
 - turret/guard
+- hovering flyer / sine-wave flyer
 - wanderer/forager
 - flee-from-player
 - swarm/follow-leader
 - worker/carry/build/repair
 - RPG talk/shop/quest
+
+First enemy slice:
+
+- Sunny Dragon is the first imported animated enemy.
+- Its source animation is flying/hovering, so it should default to `locomotion = flying`, `behavior = patrol/guard`, and `attack = none` until projectiles are explicitly enabled.
+- Enemy actors can now be dragged directly on the playfield and scaled with the same 1/2x, 1x, 2x vocabulary used for actor sizing.
+- The first implemented combat rule is intentionally simple: enemy contact kills the player, enemy shots can kill the player, and player shots award score on enemy hit.
+- Sunny Dragon's first AI is a hover/patrol guard around its authored home position. Dragging the enemy redefines that home position; this lets creators block a route without opening a full AI graph.
+- Enemy tracking is a basic toggle before a full AI editor: tracking on means patrol/facing/projectile aim bias toward the player; tracking off means patrol/guard motion with shots fired along current facing.
+- Projectile/explosion assets should be assignable profiles, not hardcoded dots. The first imported profile is `explosion-b`: frame 0 is the projectile, frame 1 is the impact flash, and frames 2+ are the explosion bloom. A profile should eventually define projectile frame/range, impact frame/range, explosion frame/range, speed, radius, damage rules, text-destruction rules, sound, and credit/provenance.
+- Explosions can cheaply affect document terrain without OCR: active letter regions inside the blast radius can be randomly erased, scored, and thrown as letter-shard visual effects. The current rule throws the same number of random letters as the blast destroys.
+- Grounded enemies need terrain-following, gap handling, ladders/slopes permissions, and jump/drop rules.
+- Flying enemies need altitude bands, patrol bounds, obstacle avoidance, and optional swoop/projectile behavior.
+- Projectile-firing enemies need shot cadence, aim style, range, projectile collision profile, and whether their shots affect text/terrain.
+
+First complete test level recipe:
+
+1. Place a `Start Point`.
+2. Place a visible `Checkpoint` / midpoint.
+3. Place a visible `Goal`.
+4. Add text terrain plus one or two authored tools such as a ladder, ramp, conveyor, or elevator.
+5. Add Sunny Dragon as a flying guard between midpoint and goal.
+6. Assign one simple AI preset: hover patrol, chase in radius, or guard goal.
+7. Win condition: player reaches Goal after crossing the midpoint; reset condition: fall death or enemy contact.
 
 ## Obstacles and interactive world objects
 
@@ -272,4 +303,3 @@ Next useful inspector controls:
 - per-object collision/material type
 - per-actor text capability flags
 - sprite/graphic/text/hybrid presentation toggle
-

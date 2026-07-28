@@ -309,3 +309,12 @@ Minimum viable Snapshot save:
 
 Once this round-trips, DACK has a real level format instead of a demo screenshot.
 
+Current RAD `dacklevel` pass:
+
+- The prototype writes `dack/levels/rad-test.dacklevel.json`.
+- This is a deliberately small local test slot, not the final package directory structure.
+- It saves placed world objects, Start/Checkpoint/Goal markers, object attributes, visible actors/enemies, actor names, coarse animation source IDs, text scale, actor scale, playset mode, platformer mode, and gameplay toggles.
+- Loading a level returns to Editor Mode by default. Entering Play Mode is an explicit test action that honors the Start Point, hides editor-only markers, clears transient shots, resets the player, and allows enemy collision/projectile rules to run.
+- It does not yet package the frozen Snapshot image, OCR cache, detected text geometry, or mutated playfield pixels. Those remain the next layer after live/snapshot source handling stabilizes.
+- Actor animation source IDs are currently pragmatic (`stickman-v0.1`, `tgc-player`, `sunny-dragon-fly`) and should become stable library asset IDs before hub publishing.
+- Projectile/explosion assignments should also become stable IDs. The RAD catalog lives at `dack/assets/project/effects/projectile-effect-profiles.json`; future `.dacklevel` actor/weapon records should reference profile IDs such as `explosion-b-fireball-impact` rather than hardcoded textures.

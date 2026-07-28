@@ -6,5 +6,9 @@ public enum ActorMotionState
     Run,
     Crawl,
     JumpUp,
-    JumpDown
+    JumpDown,
+    Fall,
+    RunShoot,
+    JumpShoot,
+    Death
 }

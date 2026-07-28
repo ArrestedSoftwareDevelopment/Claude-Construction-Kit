@@ -1,0 +1,78 @@
+{
+  "format": "dacklevel",
+  "version": 1,
+  "name": "RAD Test Level",
+  "sourceMode": "current-prototype-snapshot-reference",
+  "playsetMode": "Platformer",
+  "platformerMode": "Horizontal",
+  "safetyFloor": true,
+  "textTerrainEnabled": true,
+  "textDestructionEnabled": true,
+  "gunEnabled": true,
+  "actorSizeMultiplier": 2,
+  "textUnitPixels": 7,
+  "worldObjects": [
+    {
+      "kind": "GoalPoint",
+      "markerRole": "End",
+      "startX": 586.5,
+      "startY": 90,
+      "endX": 586.5,
+      "endY": 48,
+      "thicknessUnits": 0.8,
+      "speedUnits": 0,
+      "phase": 0,
+      "rangeUnits": 5,
+      "visibleInPlay": true,
+      "useCustomTint": false,
+      "tint": "000000",
+      "opacity": 1
+    },
+    {
+      "kind": "Ramp",
+      "markerRole": "None",
+      "startX": 50.5,
+      "startY": 358,
+      "endX": 317,
+      "endY": 172,
+      "thicknessUnits": 0.9,
+      "speedUnits": 0,
+      "phase": 0,
+      "rangeUnits": 5,
+      "visibleInPlay": true,
+      "useCustomTint": false,
+      "tint": "000000",
+      "opacity": 1
+    }
+  ],
+  "actors": [
+    {
+      "index": 0,
+      "name": "TGC Player",
+      "animationSource": "tgc-player",
+      "motionState": "Idle",
+      "visible": true,
+      "playable": true,
+      "facingRight": true,
+      "manualPlacement": false,
+      "x": 4,
+      "y": 296.99997,
+      "width": 42,
+      "height": 64.00003
+    },
+    {
+      "index": 1,
+      "name": "Sunny Dragon",
+      "animationSource": "sunny-dragon-fly",
+      "motionState": "Idle",
+      "visible": true,
+      "playable": false,
+      "facingRight": false,
+      "manualPlacement": true,
+      "x": 566.96,
+      "y": 102.69995,
+      "width": 45.5,
+      "height": 49
+    }
+  ]
+}

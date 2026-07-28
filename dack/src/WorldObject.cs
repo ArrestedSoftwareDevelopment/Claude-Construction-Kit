@@ -12,6 +12,7 @@ public enum WorldObjectKind
     Elevator,
     Checkpoint,
     StartPoint,
+    GoalPoint,
     HiddenSwitch,
     PinballFlipper,
     PinballBumper,
@@ -47,7 +48,7 @@ public sealed record WorldObject(
 )
 {
     public Vector2 Center => (Start + End) * 0.5f;
-    public bool IsMarker => MarkerRole != MarkerRole.None || Kind is WorldObjectKind.Checkpoint or WorldObjectKind.StartPoint or WorldObjectKind.HiddenSwitch;
+    public bool IsMarker => MarkerRole != MarkerRole.None || Kind is WorldObjectKind.Checkpoint or WorldObjectKind.StartPoint or WorldObjectKind.GoalPoint or WorldObjectKind.HiddenSwitch;
     public bool IsEditorOnly => !VisibleInPlay || Kind is WorldObjectKind.StartPoint or WorldObjectKind.HiddenSwitch;
     public Color Styled(Color fallback)
     {

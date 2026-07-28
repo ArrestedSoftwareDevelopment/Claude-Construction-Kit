@@ -11,6 +11,9 @@ public partial class Main : Control
 {
     private readonly List<ActorView> _actors = [];
     private readonly List<PlayerShot> _playerShots = [];
+    private readonly List<EnemyShot> _enemyShots = [];
+    private readonly List<ImpactEffect> _impactEffects = [];
+    private readonly Dictionary<ActorView, float> _enemyShotTimers = [];
     private readonly Vector2[] _actorAnchors =
     [
         new(0.16f, 0.66f),
@@ -23,9 +26,13 @@ public partial class Main : Control
     private PlayfieldSurface _playfield = null!;
     private SpritePad _spritePad = null!;
     private Label _selectionLabel = null!;
+    private LineEdit _characterNameEdit = null!;
     private Label _bindingLabel = null!;
     private Label _toolLabel = null!;
     private Label _motionLabel = null!;
+    private PanelContainer _platformerHud = null!;
+    private Label _platformerHudText = null!;
+    private bool _platformerHudDragging;
     private HSlider _scaleSlider = null!;
     private PanelContainer _sidebar = null!;
     private Button _spritePanelButton = null!;
@@ -49,10 +56,19 @@ public partial class Main : Control
     private SpinBox _tgcNumberBase = null!;
     private VBoxContainer _tgcClipRows = null!;
     private readonly List<TgcClipRow> _tgcClipRowModels = [];
+    private string _animationEditorName = "TGC Player";
+    private string _animationEditorSource = "raw base assets/The Game Creator's Pack/The Game Creator's Pack/Graphic Pack/Player_DarkOutline.png";
+    private string _animationEditorSourceKind = "raw-local-evaluation";
+    private string _animationEditorFolder = "game-creators-pack-graphics-prep";
+    private string _animationEditorFileName = "tgc-player.dackanim.json";
+    private int _animationEditorFrameCount;
+    private bool _syncingClipUnavailable;
+    private bool _syncingCharacterName;
     private readonly string[] _tgcPresetLabels =
     [
         "Run Shoot",
         "Jump Shoot",
+        "Fall",
         "Climb Up",
         "Climb Down",
         "Dig Up",
@@ -83,7 +99,24 @@ public partial class Main : Control
     private bool _platformerSafetyFloor = true;
     private bool _textTerrainEnabled = true;
     private bool _textDestructionEnabled = true;
+    private bool _gunEnabled = true;
+    private bool _editorMode = true;
+    private bool _enemyAiEnabled = true;
+    private bool _enemyTracksPlayer = true;
+    private bool _enemyProjectilesEnabled = true;
+    private bool _explosionsDamageText = true;
     private bool _updatingAttributeControls;
+    private double _deathTestSeconds;
+    private double _shootAnimSeconds;
+    private double _contactInvulnerabilitySeconds;
+    private int _platformerScore;
+    private int _platformerLives = 3;
+    private int _platformerDeaths;
+    private string _platformerStatus = "READY";
+    private float _actorSizeMultiplier = 2f;
+    private float _minLandingSupportRatio = 0.45f;
+    private float _fallDeathHeightUnits = 18f;
+    private float _lastGroundY;
     private PlatformerMode _platformerMode = PlatformerMode.Horizontal;
     private PlaysetMode _playsetMode = PlaysetMode.Platformer;
     private float _gravityScale = 1f;
@@ -94,6 +127,7 @@ public partial class Main : Control
         EnsureInputActions();
         BuildInterface();
         CreateActors();
+        SyncEditorModeToScene();
         _playfield.Resized += OnPlayfieldResized;
         SelectActor(_actors[0]);
         UpdateCursorMode();
@@ -113,6 +147,8 @@ public partial class Main : Control
         {
             if (!_actors[i].Visible)
                 continue;
+            if (_actors[i].ManualPlacement)
+                continue;
 
             Vector2 anchor = _actorAnchors[i];
             Vector2 basePosition = new(
@@ -122,6 +158,15 @@ public partial class Main : Control
             float bob = Mathf.Sin((float)_elapsed * 1.4f + i * 1.7f) * 5f;
             _actors[i].Position = basePosition + new Vector2(0, bob);
         }
+
+        if (!_editorMode)
+        {
+            UpdateEnemies((float)delta);
+            UpdateEnemyShots((float)delta);
+        }
+
+        UpdateImpactEffects((float)delta);
+        RefreshPlatformerHud();
     }
 
     public override void _UnhandledKeyInput(InputEvent @event)
@@ -230,6 +275,7 @@ public partial class Main : Control
         _playfield.WorldObjectSelectionObjectChanged += UpdateAttributeControls;
         BuildPlaysetToolbar();
         BuildCockpit();
+        BuildPlatformerHud();
 
         _sidebar = new PanelContainer
         {
@@ -252,6 +298,15 @@ public partial class Main : Control
         _selectionLabel.AddThemeColorOverride("font_color", new Color("#202A34"));
         side.AddChild(_selectionLabel);
 
+        _characterNameEdit = new LineEdit
+        {
+            PlaceholderText = "Character name",
+            CustomMinimumSize = new Vector2(0, 32),
+            SelectAllOnFocus = true
+        };
+        _characterNameEdit.TextChanged += RenameSelectedCharacter;
+        side.AddChild(_characterNameEdit);
+
         _bindingLabel = new Label
         {
             AutowrapMode = TextServer.AutowrapMode.WordSmart
@@ -267,17 +322,87 @@ public partial class Main : Control
 
         Button stickman = Button("STICKMAN");
         stickman.TooltipText = "Use the current OctoPyte stick figure animation set.";
-        stickman.Pressed += () => SetPlayerCharacter("Playable Scout", SpriteAnimationSet.TryLoadStickman(), "Stickman labels: idle, run, jump-up, jump-down. Turn is currently facing flip.");
+        stickman.Pressed += () =>
+        {
+            LoadStickmanEditorDefaults();
+            ApplyTgcClipRanges();
+        };
         characterPicker.AddChild(stickman);
 
         Button gameCreatorPlayer = Button("TGC PLAYER");
         gameCreatorPlayer.TooltipText = "Use The Game Creator's Pack player strip via local blob-detected frames.";
-        gameCreatorPlayer.Pressed += ApplyTgcClipRanges;
+        gameCreatorPlayer.Pressed += () =>
+        {
+            LoadTgcEditorDefaults();
+            ApplyTgcClipRanges();
+        };
         characterPicker.AddChild(gameCreatorPlayer);
 
-        side.AddChild(Heading("TGC STRIP EDITOR"));
+        Button sunnyDragon = Button("SUNNY DRAGON");
+        sunnyDragon.TooltipText = "Add the Legacy Collection Sunny Dragon fly strip as the first animated enemy.";
+        sunnyDragon.Pressed += () =>
+        {
+            LoadSunnyDragonEditorDefaults();
+            SetEnemyCharacter("Sunny Dragon", SpriteAnimationSet.TryLoadSunnyDragon(), "Sunny Dragon added as the first animated enemy. Its fly strip is a 9-frame grid source that can be renamed, labeled, saved, and loaded.");
+        };
+        characterPicker.AddChild(sunnyDragon);
+
+        Button tgcOrange = Button("ORANGE WORKER");
+        tgcOrange.TooltipText = "Add the TGC Orange Worker as an enemy.";
+        tgcOrange.Pressed += () => AddTgcEnemy(
+            "Orange Worker",
+            SpriteAnimationSet.TryLoadTgcPlatformerEnemy(new AnimationFrameRange(0, 5), new AnimationFrameRange(13, 18), new AnimationFrameRange(13, 18)),
+            "TGC Orange Worker added as an enemy. Good for simple ground patrol/blocker roles."
+        );
+        characterPicker.AddChild(tgcOrange);
+
+        Button tgcRed = Button("RED RUNNER");
+        tgcRed.TooltipText = "Add the TGC Red Runner as an enemy.";
+        tgcRed.Pressed += () => AddTgcEnemy(
+            "Red Runner",
+            SpriteAnimationSet.TryLoadTgcPlatformerEnemy(new AnimationFrameRange(6, 12), new AnimationFrameRange(19, 23), new AnimationFrameRange(19, 23)),
+            "TGC Red Runner added as an enemy. Good for faster patrol/chase roles."
+        );
+        characterPicker.AddChild(tgcRed);
+
+        Button tgcBlue = Button("BLUE GUARD");
+        tgcBlue.TooltipText = "Add the TGC Blue Guard as an enemy.";
+        tgcBlue.Pressed += () => AddTgcEnemy(
+            "Blue Guard",
+            SpriteAnimationSet.TryLoadTgcPlatformerEnemy(new AnimationFrameRange(28, 34), new AnimationFrameRange(40, 44), new AnimationFrameRange(40, 44)),
+            "TGC Blue Guard added as an enemy. Good for patrol/guard roles."
+        );
+        characterPicker.AddChild(tgcBlue);
+
+        Button tgcGreen = Button("GREEN CRAWLER");
+        tgcGreen.TooltipText = "Add the TGC Green Crawler as an enemy.";
+        tgcGreen.Pressed += () => AddTgcEnemy(
+            "Green Crawler",
+            SpriteAnimationSet.TryLoadTgcPlatformerEnemy(new AnimationFrameRange(35, 39), new AnimationFrameRange(45, 50), new AnimationFrameRange(53, 65)),
+            "TGC Green Crawler added as an enemy. Good for crawling/slime/insect-style hazards."
+        );
+        characterPicker.AddChild(tgcGreen);
+
+        Button tgcBoss = Button("SHOOTER BOSS");
+        tgcBoss.TooltipText = "Add the TGC Shooter Boss as a static/large enemy.";
+        tgcBoss.Pressed += () => AddTgcEnemy(
+            "Shooter Boss",
+            SpriteAnimationSet.TryLoadTgcShooterBoss(),
+            "TGC Shooter Boss added as an enemy/boss/pinball toy candidate."
+        );
+        characterPicker.AddChild(tgcBoss);
+
+        Button tgcFleet = Button("SHOOTER FLEET");
+        tgcFleet.TooltipText = "Add the TGC Shooter Fleet sheet as an enemy.";
+        tgcFleet.Pressed += () => AddTgcEnemy(
+            "Shooter Fleet",
+            SpriteAnimationSet.TryLoadTgcShooterFleet(),
+            "TGC Shooter Fleet added as an enemy. This is a rough first atlas import; exact per-ship slicing comes later."
+        );
+        characterPicker.AddChild(tgcFleet);
+
+        side.AddChild(Heading("ANIMATION FRAME EDITOR"));
         side.AddChild(CockpitNote("Name actions, edit start/end frame numbers, and add labels. The preview highlights every labeled range."));
-        int maxTgcFrame = Mathf.Max(0, SpriteAnimationSet.GetGameCreatorPlayerFrameCount() - 1);
         _tgcStripPreview = new AnimationStripPreview
         {
             Columns = 8,
@@ -304,21 +429,15 @@ public partial class Main : Control
         _tgcClipRows = new VBoxContainer();
         _tgcClipRows.AddThemeConstantOverride("separation", 4);
         side.AddChild(_tgcClipRows);
-        AddTgcClipRow("Idle", 0, 2, maxTgcFrame);
-        AddTgcClipRow("Run", 3, 14, maxTgcFrame);
-        AddTgcClipRow("Jump Up", 15, 15, maxTgcFrame);
-        AddTgcClipRow("Jump Down", 16, 16, maxTgcFrame);
-        AddTgcClipRow("Run Shoot", Mathf.Min(17, maxTgcFrame), Mathf.Min(20, maxTgcFrame), maxTgcFrame);
-        AddTgcClipRow("Jump Shoot", Mathf.Min(21, maxTgcFrame), Mathf.Min(24, maxTgcFrame), maxTgcFrame);
-        AddTgcClipRow("Death", Mathf.Min(25, maxTgcFrame), maxTgcFrame, maxTgcFrame);
-        UpdateTgcStripPreview();
+        LoadTgcEditorDefaults();
 
         Button addPreset = Button("ADD PRESET LABEL");
         addPreset.Pressed += () =>
         {
             string label = NextMissingPresetLabel();
-            int frame = Mathf.Clamp(_tgcClipRowModels.Count * 2, 0, maxTgcFrame);
-            AddTgcClipRow(label, frame, frame, maxTgcFrame);
+            int maxFrame = Mathf.Max(0, _animationEditorFrameCount - 1);
+            int frame = Mathf.Clamp(_tgcClipRowModels.Count * 2, 0, maxFrame);
+            AddTgcClipRow(label, frame, frame, maxFrame);
             UpdateTgcStripPreview();
             _inspectorText.Text = $"{label} animation label added from the preset vocabulary. Edit its frame numbers to match the strip.";
         };
@@ -327,18 +446,27 @@ public partial class Main : Control
         Button addLabel = Button("ADD LABEL");
         addLabel.Pressed += () =>
         {
-            int frame = Mathf.Clamp(_tgcClipRowModels.Count * 2, 0, maxTgcFrame);
-            AddTgcClipRow($"Action {_tgcClipRowModels.Count + 1}", frame, frame, maxTgcFrame);
+            int maxFrame = Mathf.Max(0, _animationEditorFrameCount - 1);
+            int frame = Mathf.Clamp(_tgcClipRowModels.Count * 2, 0, maxFrame);
+            AddTgcClipRow($"Action {_tgcClipRowModels.Count + 1}", frame, frame, maxFrame);
             UpdateTgcStripPreview();
             _inspectorText.Text = "New animation label added. Rename it, then edit its start/end frame numbers.";
         };
         side.AddChild(addLabel);
 
-        Button applyTgcClips = Button("APPLY TGC LABELS");
+        Button applyTgcClips = Button("APPLY ANIM LABELS");
         applyTgcClips.Pressed += ApplyTgcClipRanges;
         side.AddChild(applyTgcClips);
 
-        Button saveTgcClips = Button("SAVE TGC LABELS");
+        Button testDeath = Button("TEST DEATH");
+        testDeath.Pressed += TriggerDeathAnimation;
+        side.AddChild(testDeath);
+
+        Button loadTgcClips = Button("LOAD ANIM LABELS");
+        loadTgcClips.Pressed += LoadAnimationClipLabels;
+        side.AddChild(loadTgcClips);
+
+        Button saveTgcClips = Button("SAVE ANIM LABELS");
         saveTgcClips.Pressed += SaveTgcClipLabels;
         side.AddChild(saveTgcClips);
 
@@ -453,6 +581,36 @@ public partial class Main : Control
         };
         side.AddChild(_scaleSlider);
 
+        HBoxContainer actorSizeRow = new();
+        actorSizeRow.AddThemeConstantOverride("separation", 6);
+        Button halfSize = Button("ACTOR 1/2x");
+        halfSize.Pressed += () => SetActorSizeMultiplier(0.5f);
+        actorSizeRow.AddChild(halfSize);
+        Button normalSize = Button("ACTOR 1x");
+        normalSize.Pressed += () => SetActorSizeMultiplier(1f);
+        actorSizeRow.AddChild(normalSize);
+        Button doubleSize = Button("ACTOR 2x");
+        doubleSize.Pressed += () => SetActorSizeMultiplier(2f);
+        actorSizeRow.AddChild(doubleSize);
+        side.AddChild(actorSizeRow);
+
+        side.AddChild(CockpitNote("Gap/fall tuning: minimum support decides how much of the actor must overlap a surface. Higher values make narrow holes easier to fall through."));
+        HSlider supportSlider = AttributeSlider(0.15, 0.95, _minLandingSupportRatio, 0.05);
+        supportSlider.ValueChanged += value =>
+        {
+            _minLandingSupportRatio = (float)value;
+            RefreshMotionText();
+        };
+        side.AddChild(supportSlider);
+
+        HSlider fallDeath = AttributeSlider(4, 40, _fallDeathHeightUnits, 1);
+        fallDeath.ValueChanged += value =>
+        {
+            _fallDeathHeightUnits = (float)value;
+            RefreshMotionText();
+        };
+        side.AddChild(fallDeath);
+
         _motionLabel = new Label
         {
             AutowrapMode = TextServer.AutowrapMode.WordSmart
@@ -532,6 +690,60 @@ public partial class Main : Control
         UpdateCockpitToolkitPanels();
     }
 
+    private void BuildPlatformerHud()
+    {
+        _platformerHud = new PanelContainer
+        {
+            Position = new Vector2(18, 78),
+            MouseFilter = MouseFilterEnum.Stop
+        };
+        _platformerHud.AddThemeStyleboxOverride("panel", FlatStyle("#202A34", 8));
+        _platformerHud.GuiInput += OnPlatformerHudInput;
+        _playfield.AddChild(_platformerHud);
+
+        MarginContainer margin = Margins(10, 8, 10, 8);
+        _platformerHud.AddChild(margin);
+        _platformerHudText = new Label
+        {
+            Text = "",
+            CustomMinimumSize = new Vector2(210, 46)
+        };
+        _platformerHudText.AddThemeColorOverride("font_color", new Color("#F7F5EF"));
+        _platformerHudText.AddThemeFontSizeOverride("font_size", 13);
+        margin.AddChild(_platformerHudText);
+        RefreshPlatformerHud("READY");
+    }
+
+    private void OnPlatformerHudInput(InputEvent inputEvent)
+    {
+        if (!_editorMode)
+            return;
+
+        if (inputEvent is InputEventMouseButton mouseButton && mouseButton.ButtonIndex == MouseButton.Left)
+        {
+            if (mouseButton.Pressed)
+            {
+                _platformerHudDragging = true;
+            }
+            else
+            {
+                _platformerHudDragging = false;
+            }
+        }
+        else if (inputEvent is InputEventMouseMotion motion && _platformerHudDragging)
+        {
+            Vector2 desired = _platformerHud.Position + motion.Relative;
+            Vector2 max = new(
+                Mathf.Max(0, _playfield.Size.X - _platformerHud.Size.X),
+                Mathf.Max(0, _playfield.Size.Y - _platformerHud.Size.Y)
+            );
+            _platformerHud.Position = new Vector2(
+                Mathf.Clamp(desired.X, 0, max.X),
+                Mathf.Clamp(desired.Y, 0, max.Y)
+            );
+        }
+    }
+
     private Control BuildShelfPanel()
     {
         PanelContainer panel = CockpitPanel(260);
@@ -544,7 +756,23 @@ public partial class Main : Control
         shelf.AddChild(ShelfButton("Add Elevator", WorldObjectKind.Elevator, "Moving platform proof; later gets visible endpoints and timing."));
         shelf.AddChild(ShelfButton("Add Checkpoint", WorldObjectKind.Checkpoint, "Visible marker now; spawn binding comes next."));
         shelf.AddChild(ShelfButton("Add Start Point", WorldObjectKind.StartPoint, "Editor-only spawn marker. Visible while building, hidden during play."));
+        shelf.AddChild(ShelfButton("Add Goal", WorldObjectKind.GoalPoint, "Visible level objective marker: the first complete test level spine is Start -> Midpoint -> Goal."));
         shelf.AddChild(ShelfButton("Add Hidden Switch", WorldObjectKind.HiddenSwitch, "Invisible gameplay logic: visible in editor, hidden from the player."));
+        Button saveLevel = Button("Save Level");
+        saveLevel.Pressed += SaveLevel;
+        shelf.AddChild(saveLevel);
+
+        Button loadLevel = Button("Load Level");
+        loadLevel.Pressed += LoadLevel;
+        shelf.AddChild(loadLevel);
+
+        Button editorPlay = Button("Enter Play Mode");
+        editorPlay.Pressed += () =>
+        {
+            SetEditorMode(!_editorMode);
+            editorPlay.Text = _editorMode ? "Enter Play Mode" : "Return to Editor";
+        };
+        shelf.AddChild(editorPlay);
 
         Button floor = Button(_platformerSafetyFloor ? "Safety Floor: On" : "Safety Floor: Off");
         floor.Pressed += () =>
@@ -558,6 +786,52 @@ public partial class Main : Control
                 : "Platformer safety floor disabled. Gutter/plunge/death-pit levels can now work.";
         };
         shelf.AddChild(floor);
+
+        Button gun = Button(_gunEnabled ? "Gun: On" : "Gun: Off");
+        gun.Pressed += () =>
+        {
+            _gunEnabled = !_gunEnabled;
+            gun.Text = _gunEnabled ? "Gun: On" : "Gun: Off";
+            ClearPlayerShots();
+            _inspectorText.Text = _gunEnabled
+                ? "Gun enabled. Platformer can use Run Shoot / Jump Shoot labels and fire projectiles."
+                : "Gun disabled. Platformer becomes a jump/climb/dig style game; shoot input is ignored.";
+        };
+        shelf.AddChild(gun);
+
+        Button enemyAi = Button(_enemyAiEnabled ? "Enemy AI: On" : "Enemy AI: Off");
+        enemyAi.Pressed += () =>
+        {
+            _enemyAiEnabled = !_enemyAiEnabled;
+            enemyAi.Text = _enemyAiEnabled ? "Enemy AI: On" : "Enemy AI: Off";
+            _inspectorText.Text = _enemyAiEnabled
+                ? "Enemy AI enabled. Enemies patrol/hover, collide, and can block the route."
+                : "Enemy AI disabled. Enemies stay placed for editing.";
+        };
+        shelf.AddChild(enemyAi);
+
+        Button enemyTrack = Button(_enemyTracksPlayer ? "Enemy Track: On" : "Enemy Track: Off");
+        enemyTrack.Pressed += () =>
+        {
+            _enemyTracksPlayer = !_enemyTracksPlayer;
+            enemyTrack.Text = _enemyTracksPlayer ? "Enemy Track: On" : "Enemy Track: Off";
+            _inspectorText.Text = _enemyTracksPlayer
+                ? "Enemy tracking enabled. Enemies bias their patrol/facing toward the player and face the player when firing."
+                : "Enemy tracking disabled. Enemies keep patrol/guard motion and fire from their current facing.";
+        };
+        shelf.AddChild(enemyTrack);
+
+        Button enemyShots = Button(_enemyProjectilesEnabled ? "Enemy Shots: On" : "Enemy Shots: Off");
+        enemyShots.Pressed += () =>
+        {
+            _enemyProjectilesEnabled = !_enemyProjectilesEnabled;
+            enemyShots.Text = _enemyProjectilesEnabled ? "Enemy Shots: On" : "Enemy Shots: Off";
+            ClearEnemyShots();
+            _inspectorText.Text = _enemyProjectilesEnabled
+                ? "Enemy projectile ability enabled. Sunny Dragon fires simple aimed shots on a cooldown."
+                : "Enemy projectile ability disabled. Contact danger remains if Enemy AI is on.";
+        };
+        shelf.AddChild(enemyShots);
 
         Button textTerrain = Button(_textTerrainEnabled ? "Text Terrain: On" : "Text Terrain: Off");
         textTerrain.Pressed += () =>
@@ -758,7 +1032,7 @@ public partial class Main : Control
         _attributeText = CockpitNote("Select a placed object to edit speed, direction, thickness, and slope behavior.");
         inspector.AddChild(_attributeText);
 
-        _speedSlider = AttributeSlider(-12, 12, 0, 0.5);
+        _speedSlider = AttributeSlider(-24, 24, 0, 0.5);
         _speedSlider.ValueChanged += value =>
         {
             if (_updatingAttributeControls)
@@ -1018,7 +1292,7 @@ public partial class Main : Control
     {
         _initialModel = EditableSpriteModel.CreateInitial(out bool loadedThirdPartyAsset);
 
-        for (int i = 0; i < 3; i++)
+        for (int i = 0; i < 8; i++)
         {
             ActorView actor = new()
             {
@@ -1055,6 +1329,23 @@ public partial class Main : Control
         RefreshBindingText();
     }
 
+    private void RenameSelectedCharacter(string name)
+    {
+        if (_syncingCharacterName || _selectedActor is null)
+            return;
+
+        string trimmed = name.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed))
+            return;
+
+        _selectedActor.ActorName = trimmed;
+        if (ReferenceEquals(_selectedActor, _player))
+            _animationEditorName = trimmed;
+
+        RefreshBindingText();
+        _selectedActor.TooltipText = $"Select {trimmed}";
+    }
+
     private void SetPlayerCharacter(string actorName, SpriteAnimationSet? animationSet, string note)
     {
         if (animationSet is null)
@@ -1070,56 +1361,308 @@ public partial class Main : Control
         RefreshMotionText();
     }
 
+    private void SetEnemyCharacter(string actorName, SpriteAnimationSet? animationSet, string note)
+    {
+        AddEnemyCharacter(actorName, animationSet, note, "This is the first enemy/import test: one source strip, many possible game roles.");
+    }
+
+    private void AddTgcEnemy(string actorName, SpriteAnimationSet? animationSet, string note)
+    {
+        AddEnemyCharacter(actorName, animationSet, note, "TGC shelf import: treated as an enemy for now. Drag, scale, save, and later assign behavior/projectiles.");
+    }
+
+    private void AddEnemyCharacter(string actorName, SpriteAnimationSet? animationSet, string note, string footer)
+    {
+        if (animationSet is null)
+        {
+            _inspectorText.Text = $"{actorName} could not be loaded. The raw/local source may be missing.";
+            return;
+        }
+
+        ActorView enemy = NextEnemySlot();
+        enemy.ActorName = actorName;
+        enemy.AnimationSet = animationSet;
+        enemy.MotionState = ActorMotionState.Idle;
+        enemy.AnimationClock = 0;
+        enemy.IsPlayable = false;
+        enemy.Visible = true;
+        enemy.FacingRight = false;
+        enemy.ManualPlacement = true;
+        int slotIndex = _actors.IndexOf(enemy);
+        enemy.Size = EnemyDefaultSize();
+        enemy.CustomMinimumSize = enemy.Size;
+        enemy.Position = EnemySpawnPosition(slotIndex, enemy.Size);
+        enemy.HomePosition = enemy.Position;
+        enemy.TooltipText = $"Select {actorName}";
+        SelectActor(enemy);
+        _inspectorText.Text = note + "\n\n" + footer;
+    }
+
+    private ActorView NextEnemySlot()
+    {
+        for (int i = 1; i < _actors.Count; i++)
+        {
+            if (!_actors[i].Visible)
+                return _actors[i];
+        }
+
+        return _actors.Count > 1 ? _actors[1] : _player;
+    }
+
+    private Vector2 EnemyDefaultSize()
+    {
+        float height = Mathf.Max(_textUnitPixels * 7f, 52f);
+        return new Vector2(height, height);
+    }
+
+    private Vector2 EnemySpawnPosition(int slotIndex, Vector2 size)
+    {
+        Rect2 bounds = _playfield.PlayBounds;
+        int index = Mathf.Max(1, slotIndex);
+        int column = (index - 1) % 4;
+        int row = (index - 1) / 4;
+        Vector2 position = new(
+            bounds.Position.X + bounds.Size.X * (0.55f + column * 0.09f),
+            bounds.Position.Y + bounds.Size.Y * (0.30f + row * 0.14f)
+        );
+        return new Vector2(
+            Mathf.Clamp(position.X, bounds.Position.X, Mathf.Max(bounds.Position.X, bounds.End.X - size.X)),
+            Mathf.Clamp(position.Y, bounds.Position.Y, Mathf.Max(bounds.Position.Y, bounds.End.Y - size.Y))
+        );
+    }
+
+    private void LoadTgcEditorDefaults()
+    {
+        _animationEditorName = "TGC Player";
+        _animationEditorSource = "raw base assets/The Game Creator's Pack/The Game Creator's Pack/Graphic Pack/Player_DarkOutline.png";
+        _animationEditorSourceKind = "raw-local-evaluation";
+        _animationEditorFolder = "game-creators-pack-graphics-prep";
+        _animationEditorFileName = "tgc-player.dackanim.json";
+
+        SpriteFrame[] frames = SpriteAnimationSet.TryLoadGameCreatorPlayerFrames(out SpriteFrame[] loaded) ? loaded : [];
+        SetAnimationEditorFrames(frames);
+        int maxFrame = Mathf.Max(0, _animationEditorFrameCount - 1);
+        ClearTgcClipRows();
+        AddTgcClipRow("Idle", 0, Mathf.Min(2, maxFrame), maxFrame);
+        AddTgcClipRow("Run", Mathf.Min(3, maxFrame), Mathf.Min(14, maxFrame), maxFrame);
+        AddTgcClipRow("Jump Up", Mathf.Min(15, maxFrame), Mathf.Min(15, maxFrame), maxFrame);
+        AddTgcClipRow("Jump Down", Mathf.Min(16, maxFrame), Mathf.Min(16, maxFrame), maxFrame);
+        AddTgcClipRow("Fall", Mathf.Min(16, maxFrame), Mathf.Min(16, maxFrame), maxFrame);
+        AddTgcClipRow("Run Shoot", Mathf.Min(17, maxFrame), Mathf.Min(20, maxFrame), maxFrame);
+        AddTgcClipRow("Jump Shoot", Mathf.Min(21, maxFrame), Mathf.Min(24, maxFrame), maxFrame);
+        AddTgcClipRow("Death", Mathf.Min(16, maxFrame), Mathf.Min(17, maxFrame), maxFrame);
+        UpdateTgcStripPreview();
+    }
+
+    private void LoadStickmanEditorDefaults()
+    {
+        _animationEditorName = "Playable Scout";
+        _animationEditorSource = "assets/third_party/stickman-pack-v0.1/thin-*.png";
+        _animationEditorSourceKind = "admitted-third-party";
+        _animationEditorFolder = "stickman-pack-v0.1";
+        _animationEditorFileName = "stickman-thin.dackanim.json";
+
+        SpriteFrame[] frames = SpriteAnimationSet.TryLoadStickmanFrames(out SpriteFrame[] loaded) ? loaded : [];
+        SetAnimationEditorFrames(frames);
+        int maxFrame = Mathf.Max(0, _animationEditorFrameCount - 1);
+        ClearTgcClipRows();
+        AddTgcClipRow("Idle", 0, Mathf.Min(5, maxFrame), maxFrame);
+        AddTgcClipRow("Run", Mathf.Min(6, maxFrame), Mathf.Min(14, maxFrame), maxFrame);
+        AddTgcClipRow("Jump Up", Mathf.Min(15, maxFrame), Mathf.Min(15, maxFrame), maxFrame);
+        AddTgcClipRow("Jump Down", Mathf.Min(16, maxFrame), Mathf.Min(16, maxFrame), maxFrame);
+        AddTgcClipRow("Fall", Mathf.Min(16, maxFrame), Mathf.Min(16, maxFrame), maxFrame);
+        AddTgcClipRow("Run Shoot", Mathf.Min(6, maxFrame), Mathf.Min(14, maxFrame), maxFrame);
+        AddTgcClipRow("Jump Shoot", Mathf.Min(15, maxFrame), Mathf.Min(15, maxFrame), maxFrame);
+        AddTgcClipRow("Death", 0, Mathf.Min(5, maxFrame), maxFrame);
+        UpdateTgcStripPreview();
+    }
+
+    private void LoadSunnyDragonEditorDefaults()
+    {
+        _animationEditorName = "Sunny Dragon";
+        _animationEditorSource = "raw base assets/Legacy Collection/Legacy Collection/Assets/Misc/Characters/sunny-dragon/spritesheets/sunny-dragon-fly.png";
+        _animationEditorSourceKind = "raw-local-evaluation";
+        _animationEditorFolder = "legacy-collection-sunny-dragon-prep";
+        _animationEditorFileName = "sunny-dragon-fly.dackanim.json";
+
+        SpriteFrame[] frames = SpriteAnimationSet.TryLoadSunnyDragonFrames(out SpriteFrame[] loaded) ? loaded : [];
+        SetAnimationEditorFrames(frames);
+        int maxFrame = Mathf.Max(0, _animationEditorFrameCount - 1);
+        ClearTgcClipRows();
+        AddTgcClipRow("Idle", 0, maxFrame, maxFrame);
+        AddTgcClipRow("Fly", 0, maxFrame, maxFrame);
+        AddTgcClipRow("Run", 0, maxFrame, maxFrame);
+        AddTgcClipRow("Jump Up", 0, maxFrame, maxFrame);
+        AddTgcClipRow("Jump Down", 0, maxFrame, maxFrame);
+        AddTgcClipRow("Fall", 0, maxFrame, maxFrame);
+        AddTgcClipRow("Run Shoot", 0, maxFrame, maxFrame);
+        AddTgcClipRow("Jump Shoot", 0, maxFrame, maxFrame);
+        AddTgcClipRow("Death", 0, maxFrame, maxFrame);
+        UpdateTgcStripPreview();
+    }
+
+    private void SetAnimationEditorFrames(SpriteFrame[] frames)
+    {
+        _animationEditorFrameCount = frames.Length;
+        _tgcStripPreview?.SetFrames(frames);
+    }
+
+    private void ClearTgcClipRows()
+    {
+        if (_tgcClipRows is not null)
+        {
+            foreach (TgcClipRow row in _tgcClipRowModels)
+                row.Row.QueueFree();
+        }
+
+        _tgcClipRowModels.Clear();
+    }
+
     private void ApplyTgcClipRanges()
     {
         AnimationFrameRange idle = FindTgcClipRange(new AnimationFrameRange(0, 2), "idle");
         AnimationFrameRange run = FindTgcClipRange(new AnimationFrameRange(3, 14), "run", "walk");
         AnimationFrameRange jumpUp = FindTgcClipRange(new AnimationFrameRange(15, 15), "jump up", "jump", "rise");
-        AnimationFrameRange jumpDown = FindTgcClipRange(new AnimationFrameRange(16, 16), "jump down", "fall", "land");
+        AnimationFrameRange jumpDown = FindTgcClipRange(new AnimationFrameRange(16, 16), "jump down", "land");
+        AnimationFrameRange fall = FindTgcClipRange(jumpDown, "fall", "falling");
+        AnimationFrameRange runShoot = FindTgcClipRange(run, "run shoot", "run shooting");
+        AnimationFrameRange jumpShoot = FindTgcClipRange(jumpUp, "jump shoot", "air shoot", "jump shooting");
+        AnimationFrameRange death = FindTgcClipRange(new AnimationFrameRange(16, 17), "death", "die");
         bool idlePingPong = FindTgcClipPingPong("idle");
         bool runPingPong = FindTgcClipPingPong("run", "walk");
         bool jumpUpPingPong = FindTgcClipPingPong("jump up", "jump", "rise");
-        bool jumpDownPingPong = FindTgcClipPingPong("jump down", "fall", "land");
+        bool jumpDownPingPong = FindTgcClipPingPong("jump down", "land");
+        bool fallPingPong = FindTgcClipPingPong("fall", "falling");
+        bool runShootPingPong = FindTgcClipPingPong("run shoot", "run shooting");
+        bool jumpShootPingPong = FindTgcClipPingPong("jump shoot", "air shoot", "jump shooting");
+        bool deathPingPong = FindTgcClipPingPong("death", "die");
+        ApplyDeathStrobeSettings();
         UpdateTgcStripPreview();
 
-        SetPlayerCharacter(
-            "TGC Player",
-            SpriteAnimationSet.TryLoadGameCreatorPlayer(idle, run, jumpUp, jumpDown, idlePingPong, runPingPong, jumpUpPingPong, jumpDownPingPong),
-            "TGC Player labels applied.\n\n"
-            + $"Idle {idle.Start}-{idle.End}; Run {run.Start}-{run.End}; Jump-up {jumpUp.Start}-{jumpUp.End}; Jump-down {jumpDown.Start}-{jumpDown.End}.\n\n"
-            + "PingPong turns short ranges into forward/back sequences, useful for smoothing jumps and other small motions. Extra labels such as Run Shoot, Jump Shoot, and Death are highlighted now and will bind to engine states as those states come online."
-        );
+        bool editingStickman = _animationEditorFileName.Contains("stickman", StringComparison.OrdinalIgnoreCase);
+        bool editingSunnyDragon = _animationEditorFileName.Contains("sunny-dragon", StringComparison.OrdinalIgnoreCase);
+        SpriteAnimationSet? animationSet;
+        if (editingStickman)
+        {
+            animationSet = SpriteAnimationSet.TryLoadStickman(
+                idle,
+                run,
+                jumpUp,
+                jumpDown,
+                fall,
+                runShoot,
+                jumpShoot,
+                death,
+                idlePingPong,
+                runPingPong,
+                jumpUpPingPong,
+                jumpDownPingPong,
+                fallPingPong,
+                runShootPingPong,
+                jumpShootPingPong,
+                deathPingPong
+            );
+        }
+        else if (editingSunnyDragon)
+        {
+            animationSet = SpriteAnimationSet.TryLoadSunnyDragon(
+                idle,
+                run,
+                jumpUp,
+                jumpDown,
+                fall,
+                runShoot,
+                jumpShoot,
+                death,
+                idlePingPong,
+                runPingPong,
+                jumpUpPingPong,
+                jumpDownPingPong,
+                fallPingPong,
+                runShootPingPong,
+                jumpShootPingPong,
+                deathPingPong
+            );
+        }
+        else
+        {
+            animationSet = SpriteAnimationSet.TryLoadGameCreatorPlayer(
+                idle,
+                run,
+                jumpUp,
+                jumpDown,
+                fall,
+                runShoot,
+                jumpShoot,
+                death,
+                idlePingPong,
+                runPingPong,
+                jumpUpPingPong,
+                jumpDownPingPong,
+                fallPingPong,
+                runShootPingPong,
+                jumpShootPingPong,
+                deathPingPong
+            );
+        }
+
+        string note = $"{_animationEditorName} labels applied.\n\n"
+            + $"Idle {idle.Start}-{idle.End}; Run {run.Start}-{run.End}; Jump-up {jumpUp.Start}-{jumpUp.End}; Jump-down {jumpDown.Start}-{jumpDown.End}; Fall {fall.Start}-{fall.End}; Run-shoot {runShoot.Start}-{runShoot.End}; Jump-shoot {jumpShoot.Start}-{jumpShoot.End}; Death {death.Start}-{death.End}.\n\n"
+            + "Run Shoot and Jump Shoot now bind while firing. Death can be tested from the strip editor. PingPong turns short ranges into forward/back sequences.";
+
+        if (editingSunnyDragon)
+            SetEnemyCharacter(_animationEditorName, animationSet, note);
+        else
+            SetPlayerCharacter(_animationEditorName, animationSet, note);
+    }
+
+    private void TriggerDeathAnimation()
+    {
+        ApplyDeathStrobeSettings();
+        _deathTestSeconds = 1.35;
+        _playerVelocity = Vector2.Zero;
+        _player.MotionState = ActorMotionState.Death;
+        _player.AnimationClock = 0;
+        _inspectorText.Text = "Death animation test started. Adjust the Death row, STR, and count, then Apply/Save again.";
+    }
+
+    private void ApplyDeathStrobeSettings()
+    {
+        TgcClipRow? deathRow = FindTgcClipRow("death", "die");
+        _player.StrobeEnabled = deathRow?.Strobe.ButtonPressed ?? false;
+        _player.StrobeCount = Mathf.Clamp(Mathf.RoundToInt((float)(deathRow?.StrobeCount.Value ?? 0)), 0, 20);
     }
 
     private void SaveTgcClipLabels()
     {
-        string projectRoot = ProjectSettings.GlobalizePath("res://");
-        string outputPath = Path.GetFullPath(Path.Combine(
-            projectRoot,
-            "assets",
-            "quarantine",
-            "game-creators-pack-graphics-prep",
-            "tgc-player.dackanim.json"
-        ));
+        string outputPath = GetAnimationSavePath();
 
         Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
         int numberBase = Mathf.RoundToInt((float)(_tgcNumberBase?.Value ?? 0));
-        SpriteAnimationSet.TryLoadGameCreatorPlayerFramePreview(out _, out Rect2[] frameRects);
+        int frameCount = Mathf.Max(0, _animationEditorFrameCount);
 
         List<object> labels = [];
         for (int i = 0; i < _tgcClipRowModels.Count; i++)
         {
             TgcClipRow row = _tgcClipRowModels[i];
-            AnimationFrameRange editorRange = SpinRange(row.Start, row.End);
-            AnimationFrameRange internalRange = DisplayToInternalRange(editorRange, numberBase, frameRects.Length);
+            bool unavailable = IsUnavailableClipRow(row);
+            AnimationFrameRange editorRange = unavailable
+                ? new AnimationFrameRange(-1, -1)
+                : EndpointRange(row.Start, row.End);
+            AnimationFrameRange internalRange = unavailable
+                ? new AnimationFrameRange(-1, -1)
+                : DisplayToInternalRange(editorRange, numberBase, frameCount);
             labels.Add(new
             {
                 name = string.IsNullOrWhiteSpace(row.Name.Text) ? $"Action {i + 1}" : row.Name.Text.Trim(),
+                unavailable,
                 editorStart = editorRange.Start,
                 editorEnd = editorRange.End,
                 internalStart = internalRange.Start,
                 internalEnd = internalRange.End,
                 pingPong = row.PingPong.ButtonPressed,
+                strobe = row.Strobe.ButtonPressed,
+                strobeCount = Mathf.Clamp(Mathf.RoundToInt((float)row.StrobeCount.Value), 0, 20),
                 color = ClipColor(i).ToHtml(false)
             });
         }
@@ -1128,35 +1671,248 @@ public partial class Main : Control
         {
             format = "dackanim",
             version = 1,
-            source = "raw base assets/The Game Creator's Pack/The Game Creator's Pack/Graphic Pack/Player_DarkOutline.png",
-            sourceKind = "raw-local-evaluation",
+            sourceName = _animationEditorName,
+            source = _animationEditorSource,
+            sourceKind = _animationEditorSourceKind,
             frameNumberBase = numberBase,
             note = "editorStart/editorEnd are the numbers shown in the strip editor; internalStart/internalEnd are zero-based detected frame indices used by playback.",
-            frames = frameRects.Select((rect, index) => new
+            frames = Enumerable.Range(0, frameCount).Select(index => new
             {
                 index,
-                displayed = index + numberBase,
-                rect = new[] { rect.Position.X, rect.Position.Y, rect.Size.X, rect.Size.Y }
+                displayed = index + numberBase
             }).ToArray(),
             labels
         };
 
         JsonSerializerOptions options = new() { WriteIndented = true };
         File.WriteAllText(outputPath, JsonSerializer.Serialize(manifest, options));
-        _inspectorText.Text = $"TGC animation labels saved.\n\n{outputPath}\n\nThis file records displayed numbers, internal zero-based frame indices, frame rectangles, label names, and PingPong toggles.";
+        _inspectorText.Text = $"{_animationEditorName} animation labels saved.\n\n{outputPath}\n\nThis file records displayed numbers, internal zero-based frame indices, label names, PingPong toggles, and strobe settings.";
+    }
+
+    private void LoadAnimationClipLabels()
+    {
+        string inputPath = GetAnimationSavePath();
+        if (!File.Exists(inputPath))
+        {
+            _inspectorText.Text = $"No saved {_animationEditorName} animation labels found yet.\n\nExpected:\n{inputPath}";
+            return;
+        }
+
+        DackAnimManifest? manifest;
+        try
+        {
+            manifest = JsonSerializer.Deserialize<DackAnimManifest>(File.ReadAllText(inputPath));
+        }
+        catch (Exception ex)
+        {
+            _inspectorText.Text = $"Could not load animation labels.\n\n{ex.Message}";
+            return;
+        }
+
+        if (manifest?.labels is null || manifest.labels.Count == 0)
+        {
+            _inspectorText.Text = $"Animation label file loaded, but it had no labels.\n\n{inputPath}";
+            return;
+        }
+
+        _tgcNumberBase.Value = manifest.frameNumberBase;
+        int maxFrame = Mathf.Max(0, _animationEditorFrameCount - 1);
+        ClearTgcClipRows();
+        foreach (DackAnimLabel label in manifest.labels)
+        {
+            TgcClipRow row = BuildEditableClipRow(
+                string.IsNullOrWhiteSpace(label.name) ? $"Action {_tgcClipRowModels.Count + 1}" : label.name,
+                Mathf.Clamp(label.editorStart, 0, maxFrame),
+                Mathf.Clamp(label.editorEnd, 0, maxFrame),
+                maxFrame
+            );
+            if (label.unavailable)
+            {
+                row.Start.Text = "-";
+                row.End.Text = "-";
+            }
+            row.PingPong.ButtonPressed = label.pingPong;
+            row.Strobe.ButtonPressed = label.strobe;
+            row.StrobeCount.Value = Mathf.Clamp(label.strobeCount, 0, 20);
+            _tgcClipRowModels.Add(row);
+            _tgcClipRows.AddChild(row.Row);
+        }
+
+        UpdateTgcStripPreview();
+        _inspectorText.Text = $"{_animationEditorName} animation labels loaded.\n\n{inputPath}\n\nPress APPLY ANIM LABELS to use them on the player.";
+    }
+
+    private string GetAnimationSavePath()
+    {
+        string projectRoot = ProjectSettings.GlobalizePath("res://");
+        return Path.GetFullPath(Path.Combine(
+            projectRoot,
+            "assets",
+            "quarantine",
+            _animationEditorFolder,
+            _animationEditorFileName
+        ));
+    }
+
+    private void SaveLevel()
+    {
+        string outputPath = GetDefaultLevelPath();
+        Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
+
+        DackLevelManifest manifest = new()
+        {
+            format = "dacklevel",
+            version = 1,
+            name = "RAD Test Level",
+            sourceMode = "current-prototype-snapshot-reference",
+            editorMode = _editorMode,
+            playsetMode = _playsetMode.ToString(),
+            platformerMode = _platformerMode.ToString(),
+            safetyFloor = _platformerSafetyFloor,
+            textTerrainEnabled = _textTerrainEnabled,
+            textDestructionEnabled = _textDestructionEnabled,
+            gunEnabled = _gunEnabled,
+            enemyAiEnabled = _enemyAiEnabled,
+            enemyTracksPlayer = _enemyTracksPlayer,
+            enemyProjectilesEnabled = _enemyProjectilesEnabled,
+            explosionsDamageText = _explosionsDamageText,
+            platformerScore = _platformerScore,
+            platformerLives = _platformerLives,
+            platformerDeaths = _platformerDeaths,
+            hudX = _platformerHud?.Position.X ?? 18f,
+            hudY = _platformerHud?.Position.Y ?? 78f,
+            actorSizeMultiplier = _actorSizeMultiplier,
+            textUnitPixels = _textUnitPixels,
+            worldObjects = _playfield.GetPlacedWorldObjects().Select(LevelWorldObject.FromWorldObject).ToList(),
+            actors = _actors
+                .Where(actor => actor.Visible || actor.IsPlayable)
+                .Select((actor, index) => LevelActor.FromActor(actor, index))
+                .ToList()
+        };
+
+        JsonSerializerOptions options = new() { WriteIndented = true };
+        File.WriteAllText(outputPath, JsonSerializer.Serialize(manifest, options));
+        _inspectorText.Text = $"Level saved.\n\n{outputPath}\n\nThis first .dacklevel pass stores placed toolkit objects, route markers, visible actors, player/gameplay toggles, and the current playset settings. Snapshot image packaging comes next.";
+    }
+
+    private void LoadLevel()
+    {
+        string inputPath = GetDefaultLevelPath();
+        if (!File.Exists(inputPath))
+        {
+            _inspectorText.Text = $"No saved level found yet.\n\nExpected:\n{inputPath}";
+            return;
+        }
+
+        DackLevelManifest? manifest;
+        try
+        {
+            manifest = JsonSerializer.Deserialize<DackLevelManifest>(File.ReadAllText(inputPath));
+        }
+        catch (Exception ex)
+        {
+            _inspectorText.Text = $"Could not load level.\n\n{ex.Message}";
+            return;
+        }
+
+        if (manifest is null)
+        {
+            _inspectorText.Text = "Could not load level: file was empty or invalid.";
+            return;
+        }
+
+        SetEditorMode(true);
+        _platformerSafetyFloor = manifest.safetyFloor;
+        _textTerrainEnabled = manifest.textTerrainEnabled;
+        _textDestructionEnabled = manifest.textDestructionEnabled;
+        _gunEnabled = manifest.gunEnabled;
+        _enemyAiEnabled = manifest.enemyAiEnabled;
+        _enemyTracksPlayer = manifest.enemyTracksPlayer;
+        _enemyProjectilesEnabled = manifest.enemyProjectilesEnabled;
+        _explosionsDamageText = manifest.explosionsDamageText;
+        _platformerScore = manifest.platformerScore;
+        _platformerLives = manifest.platformerLives <= 0 ? 3 : manifest.platformerLives;
+        _platformerDeaths = manifest.platformerDeaths;
+        ClearEnemyShots();
+        if (_platformerHud is not null && (manifest.hudX > 0 || manifest.hudY > 0))
+            _platformerHud.Position = new Vector2(manifest.hudX, manifest.hudY);
+        _actorSizeMultiplier = manifest.actorSizeMultiplier <= 0 ? _actorSizeMultiplier : manifest.actorSizeMultiplier;
+        if (manifest.textUnitPixels > 0)
+            _textUnitPixels = manifest.textUnitPixels;
+        _playfield.TextUnitPixels = _textUnitPixels;
+        if (_scaleSlider is not null)
+            _scaleSlider.Value = _textUnitPixels;
+
+        if (Enum.TryParse(manifest.platformerMode, out PlatformerMode loadedPlatformerMode))
+            _platformerMode = loadedPlatformerMode;
+
+        if (Enum.TryParse(manifest.playsetMode, out PlaysetMode loadedPlaysetMode))
+            SetPlaysetMode(loadedPlaysetMode);
+
+        _playfield.SetPlacedWorldObjects(manifest.worldObjects.Select(worldObject => worldObject.ToWorldObject()));
+        RestoreLevelActors(manifest.actors);
+        ApplyActorScale();
+        SnapPlayerToStart();
+        RefreshMotionText();
+        RefreshCockpitStatus();
+        _inspectorText.Text = $"Level loaded.\n\n{inputPath}\n\nRestored {manifest.worldObjects.Count} placed objects and {manifest.actors.Count} actors.";
+    }
+
+    private void RestoreLevelActors(List<LevelActor> actors)
+    {
+        foreach (ActorView actor in _actors)
+        {
+            actor.Visible = actor.IsPlayable;
+            if (!actor.IsPlayable)
+                actor.AnimationSet = null;
+        }
+
+        foreach (LevelActor saved in actors)
+        {
+            if (saved.index < 0 || saved.index >= _actors.Count)
+                continue;
+
+            ActorView actor = _actors[saved.index];
+            actor.ActorName = string.IsNullOrWhiteSpace(saved.name) ? actor.ActorName : saved.name;
+            actor.Visible = saved.visible || actor.IsPlayable;
+            actor.FacingRight = saved.facingRight;
+            actor.ManualPlacement = saved.manualPlacement;
+            actor.MotionState = Enum.TryParse(saved.motionState, out ActorMotionState motionState) ? motionState : ActorMotionState.Idle;
+            actor.Position = new Vector2(saved.x, saved.y);
+            actor.Size = new Vector2(saved.width, saved.height);
+            actor.CustomMinimumSize = actor.Size;
+            actor.AnimationSet = saved.animationSource switch
+            {
+                "stickman-v0.1" => SpriteAnimationSet.TryLoadStickman(),
+                "sunny-dragon-fly" => SpriteAnimationSet.TryLoadSunnyDragon(),
+                "tgc-player" => SpriteAnimationSet.TryLoadGameCreatorPlayer(),
+                _ => actor.AnimationSet
+            };
+        }
+
+        SelectActor(_player);
+    }
+
+    private static string GetDefaultLevelPath()
+    {
+        string projectRoot = ProjectSettings.GlobalizePath("res://");
+        return Path.GetFullPath(Path.Combine(projectRoot, "levels", "rad-test.dacklevel.json"));
     }
 
     private AnimationFrameRange FindTgcClipRange(AnimationFrameRange fallback, params string[] names)
     {
         int numberBase = Mathf.RoundToInt((float)(_tgcNumberBase?.Value ?? 0));
-        int frameCount = SpriteAnimationSet.GetGameCreatorPlayerFrameCount();
+        int frameCount = Mathf.Max(0, _animationEditorFrameCount);
         foreach (TgcClipRow row in _tgcClipRowModels)
         {
             string normalized = NormalizeClipName(row.Name.Text);
+            if (IsUnavailableClipRow(row))
+                continue;
+
             foreach (string name in names)
             {
                 if (normalized == NormalizeClipName(name))
-                    return DisplayToInternalRange(SpinRange(row.Start, row.End), numberBase, frameCount);
+                    return DisplayToInternalRange(EndpointRange(row.Start, row.End), numberBase, frameCount);
             }
         }
 
@@ -1168,6 +1924,9 @@ public partial class Main : Control
         foreach (TgcClipRow row in _tgcClipRowModels)
         {
             string normalized = NormalizeClipName(row.Name.Text);
+            if (IsUnavailableClipRow(row))
+                continue;
+
             foreach (string name in names)
             {
                 if (normalized == NormalizeClipName(name))
@@ -1176,6 +1935,21 @@ public partial class Main : Control
         }
 
         return false;
+    }
+
+    private TgcClipRow? FindTgcClipRow(params string[] names)
+    {
+        foreach (TgcClipRow row in _tgcClipRowModels)
+        {
+            string normalized = NormalizeClipName(row.Name.Text);
+            foreach (string name in names)
+            {
+                if (normalized == NormalizeClipName(name))
+                    return row;
+            }
+        }
+
+        return null;
     }
 
     private void UpdateTgcStripPreview()
@@ -1191,12 +1965,28 @@ public partial class Main : Control
         _tgcStripPreview.SetLabels(GetTgcClipLabels());
     }
 
-    private static AnimationFrameRange SpinRange(SpinBox start, SpinBox end)
+    private static AnimationFrameRange EndpointRange(LineEdit start, LineEdit end)
     {
         return new AnimationFrameRange(
-            Mathf.RoundToInt((float)start.Value),
-            Mathf.RoundToInt((float)end.Value)
+            ParseEndpoint(start.Text),
+            ParseEndpoint(end.Text)
         );
+    }
+
+    private static int ParseEndpoint(string text)
+    {
+        return int.TryParse(text.Trim(), out int value) ? value : 0;
+    }
+
+    private static bool IsDashEndpoint(LineEdit endpoint)
+    {
+        string value = endpoint.Text.Trim();
+        return value == "-" || value == "—" || value == "–";
+    }
+
+    private static bool IsUnavailableClipRow(TgcClipRow row)
+    {
+        return IsDashEndpoint(row.Start) || IsDashEndpoint(row.End);
     }
 
     private static AnimationFrameRange DisplayToInternalRange(AnimationFrameRange editorRange, int numberBase, int frameCount)
@@ -1213,13 +2003,23 @@ public partial class Main : Control
     {
         List<AnimationClipLabel> labels = [];
         int numberBase = Mathf.RoundToInt((float)(_tgcNumberBase?.Value ?? 0));
-        int frameCount = SpriteAnimationSet.GetGameCreatorPlayerFrameCount();
+        int frameCount = Mathf.Max(0, _animationEditorFrameCount);
         for (int i = 0; i < _tgcClipRowModels.Count; i++)
         {
             TgcClipRow row = _tgcClipRowModels[i];
             string name = string.IsNullOrWhiteSpace(row.Name.Text) ? $"Action {i + 1}" : row.Name.Text.Trim();
-            AnimationFrameRange internalRange = DisplayToInternalRange(SpinRange(row.Start, row.End), numberBase, frameCount);
-            labels.Add(new AnimationClipLabel(name, internalRange, ClipColor(i), row.PingPong.ButtonPressed));
+            if (IsUnavailableClipRow(row))
+                continue;
+
+            AnimationFrameRange internalRange = DisplayToInternalRange(EndpointRange(row.Start, row.End), numberBase, frameCount);
+            labels.Add(new AnimationClipLabel(
+                name,
+                internalRange,
+                ClipColor(i),
+                row.PingPong.ButtonPressed,
+                row.Strobe.ButtonPressed,
+                Mathf.Clamp(Mathf.RoundToInt((float)row.StrobeCount.Value), 0, 20)
+            ));
         }
 
         return labels;
@@ -1259,10 +2059,10 @@ public partial class Main : Control
         nameEdit.TextChanged += _ => UpdateTgcStripPreview();
         row.AddChild(nameEdit);
 
-        SpinBox start = ClipEndpointSpin(defaultStart, maxFrame);
-        SpinBox end = ClipEndpointSpin(defaultEnd, maxFrame);
-        start.ValueChanged += _ => UpdateTgcStripPreview();
-        end.ValueChanged += _ => UpdateTgcStripPreview();
+        LineEdit start = ClipEndpointEdit(defaultStart, maxFrame);
+        LineEdit end = ClipEndpointEdit(defaultEnd, maxFrame);
+        start.TextChanged += text => OnClipEndpointTextChanged(start, end, text, maxFrame);
+        end.TextChanged += text => OnClipEndpointTextChanged(end, start, text, maxFrame);
         row.AddChild(start);
         row.AddChild(end);
 
@@ -1276,7 +2076,64 @@ public partial class Main : Control
         pingPong.Pressed += UpdateTgcStripPreview;
         row.AddChild(pingPong);
 
-        return new TgcClipRow(row, nameEdit, start, end, pingPong);
+        CheckBox strobe = new()
+        {
+            Text = "STR",
+            TooltipText = "Strobe this label during test/play effects.",
+            CustomMinimumSize = new Vector2(48, 32),
+            FocusMode = FocusModeEnum.None
+        };
+        strobe.Pressed += UpdateTgcStripPreview;
+        row.AddChild(strobe);
+
+        SpinBox strobeCount = ClipEndpointSpin(0, 20);
+        strobeCount.TooltipText = "Strobe pulse count/intensity, 0-20.";
+        strobeCount.ValueChanged += _ => UpdateTgcStripPreview();
+        row.AddChild(strobeCount);
+
+        return new TgcClipRow(row, nameEdit, start, end, pingPong, strobe, strobeCount);
+    }
+
+    private void OnClipEndpointTextChanged(LineEdit changed, LineEdit partner, string text, int maxFrame)
+    {
+        if (_syncingClipUnavailable)
+            return;
+
+        string value = text.Trim();
+        if (value == "-" || value == "—" || value == "–")
+        {
+            _syncingClipUnavailable = true;
+            changed.Text = "-";
+            partner.Text = "-";
+            _syncingClipUnavailable = false;
+            UpdateTgcStripPreview();
+            return;
+        }
+
+        if (!int.TryParse(value, out int parsed))
+        {
+            UpdateTgcStripPreview();
+            return;
+        }
+
+        int clamped = Mathf.Clamp(parsed, 0, Mathf.Max(0, maxFrame));
+        if (clamped != parsed)
+        {
+            _syncingClipUnavailable = true;
+            changed.Text = clamped.ToString();
+            changed.CaretColumn = changed.Text.Length;
+            _syncingClipUnavailable = false;
+        }
+
+        if (IsDashEndpoint(partner))
+        {
+            _syncingClipUnavailable = true;
+            partner.Text = clamped.ToString();
+            partner.CaretColumn = partner.Text.Length;
+            _syncingClipUnavailable = false;
+        }
+
+        UpdateTgcStripPreview();
     }
 
     private static string NormalizeClipName(string value)
@@ -1312,6 +2169,13 @@ public partial class Main : Control
     {
         int linkedActors = _actors.Count(actor => ReferenceEquals(actor.Model, _selectedActor.Model));
         _selectionLabel.Text = _selectedActor.ActorName;
+        if (_characterNameEdit is not null && _characterNameEdit.Text != _selectedActor.ActorName)
+        {
+            _syncingCharacterName = true;
+            _characterNameEdit.Text = _selectedActor.ActorName;
+            _syncingCharacterName = false;
+        }
+
         _bindingLabel.Text = linkedActors > 1
             ? $"LIVE LINK ACTIVE — edits update {linkedActors} actors instantly. Fork to make this actor independent."
             : "INDEPENDENT SPRITE — edits affect only this actor.";
@@ -1335,11 +2199,44 @@ public partial class Main : Control
     private void ToggleCockpit()
     {
         _cockpit.Visible = !_cockpit.Visible;
-        _playfield.ShowEditorOnlyObjects = _cockpit.Visible;
         _brickbatOverlay.HudEditable = _cockpit.Visible;
+        SyncEditorModeToScene();
         _playfield.QueueRedraw();
         RefreshCockpitStatus();
         UpdateCursorMode();
+    }
+
+    private void SetEditorMode(bool enabled)
+    {
+        _editorMode = enabled;
+        SyncEditorModeToScene();
+        if (_editorMode)
+        {
+            _platformerStatus = "EDITOR";
+            _inspectorText.Text = "Editor mode enabled.\n\nMarkers, enemies, and toolkit objects are draggable/scalable. Enemy AI and shots are paused for safe layout.";
+        }
+        else
+        {
+            SetPlaysetMode(PlaysetMode.Platformer);
+            _platformerLives = Mathf.Max(1, _platformerLives);
+            _platformerStatus = "PLAY";
+            _contactInvulnerabilitySeconds = 0.75;
+            ClearPlayerShots();
+            ClearEnemyShots();
+            SnapPlayerToStart();
+            _inspectorText.Text = "Play mode enabled.\n\nStart Point is honored, editor-only markers are hidden, enemy AI/projectiles can run, and collisions count.";
+        }
+
+        RefreshPlatformerHud();
+        UpdateCursorMode();
+    }
+
+    private void SyncEditorModeToScene()
+    {
+        _playfield.EditorMode = _editorMode;
+        _playfield.ShowEditorOnlyObjects = _editorMode || _cockpit.Visible;
+        foreach (ActorView actor in _actors)
+            actor.EditorMode = _editorMode;
     }
 
     private void TogglePlaysetToolbar()
@@ -1381,12 +2278,14 @@ public partial class Main : Control
         _player.Visible = showScout;
         _brickbatOverlay.Visible = brickbat;
         ClearPlayerShots();
+        ClearEnemyShots();
 
         if (showScout)
             SnapPlayerToStart();
 
         RefreshCockpitStatus();
         UpdateCockpitToolkitPanels();
+        RefreshPlatformerHud();
         UpdateCursorMode();
     }
 
@@ -1413,10 +2312,31 @@ public partial class Main : Control
 
     private void UpdatePlayer(double delta)
     {
-        if (_player is null || _bossMode || _playsetMode != PlaysetMode.Platformer)
+        if (_player is null || _bossMode || _editorMode || _playsetMode != PlaysetMode.Platformer)
             return;
 
         float dt = (float)delta;
+        if (_deathTestSeconds > 0)
+        {
+            _deathTestSeconds -= delta;
+            _player.AnimationClock += delta;
+            _player.MotionState = ActorMotionState.Death;
+            _player.QueueRedraw();
+            if (_deathTestSeconds <= 0)
+            {
+                _player.StrobeEnabled = false;
+                if (_platformerLives <= 0)
+                {
+                    _platformerLives = 3;
+                    _platformerStatus = "TRY AGAIN";
+                }
+                SnapPlayerToStart();
+            }
+
+            return;
+        }
+
+        _shootAnimSeconds = Mathf.Max(0, (float)_shootAnimSeconds - dt);
         float unit = _textUnitPixels;
         float motionUnit = Mathf.Max(unit, 10f);
         float inputX = Input.GetAxis("dack_left", "dack_right");
@@ -1480,9 +2400,17 @@ public partial class Main : Control
         next.Y += _playerVelocity.Y * dt;
         ResolveVerticalCollisions(ref next);
 
+        if (!_platformerSafetyFloor && next.Y > playBounds.End.Y + _fallDeathHeightUnits * _textUnitPixels)
+        {
+            TriggerDeathAnimation();
+            ClearPlayerShots();
+            RefreshMotionText();
+            return;
+        }
+
         if (next.Y > playBounds.End.Y + _player.Size.Y)
         {
-            SnapPlayerToStart();
+            TriggerDeathAnimation();
             ClearPlayerShots();
             RefreshMotionText();
             return;
@@ -1490,7 +2418,14 @@ public partial class Main : Control
 
         _playerPosition = next;
         _player.Position = _playerPosition;
-        if (shootPressed)
+        _contactInvulnerabilitySeconds = Mathf.Max(0, (float)_contactInvulnerabilitySeconds - dt);
+        if (TryPlayerEnemyContact())
+        {
+            KillPlayer("ENEMY CONTACT");
+            return;
+        }
+
+        if (shootPressed && _gunEnabled)
             FirePlayerShot();
 
         UpdatePlayerShots(dt);
@@ -1513,6 +2448,7 @@ public partial class Main : Control
         float shotSpeed = Mathf.Max(_textUnitPixels * 44f, 300f);
 
         _playerShots.Add(new PlayerShot(origin, direction * shotSpeed, 1.35f));
+        _shootAnimSeconds = 0.18;
         PushShotPositionsToPlayfield();
     }
 
@@ -1530,13 +2466,270 @@ public partial class Main : Control
             QueueProjectileOcrTarget(shot);
 
             Rect2 shotBounds = new(shot.Position - new Vector2(4f, 4f), new Vector2(8f, 8f));
-            if (shot.Life <= 0f || !playBounds.HasPoint(shot.Position) || TryHitTextObject(shotBounds))
+            if (shot.Life <= 0f || !playBounds.HasPoint(shot.Position))
+            {
                 _playerShots.RemoveAt(i);
+            }
+            else if (TryHitEnemy(shotBounds, out Vector2 enemyImpact))
+            {
+                AddImpactEffect(enemyImpact);
+                _playerShots.RemoveAt(i);
+            }
+            else if (TryHitTextObject(shotBounds, out Vector2 textImpact))
+            {
+                AddImpactEffect(textImpact);
+                _playerShots.RemoveAt(i);
+            }
             else
+            {
                 _playerShots[i] = shot;
+            }
         }
 
         PushShotPositionsToPlayfield();
+    }
+
+    private void UpdateEnemies(float dt)
+    {
+        if (_player is null || _bossMode || _playsetMode != PlaysetMode.Platformer || !_enemyAiEnabled)
+            return;
+
+        for (int i = 1; i < _actors.Count; i++)
+        {
+            ActorView enemy = _actors[i];
+            if (!enemy.Visible || enemy.AnimationSet is null)
+                continue;
+
+            if (enemy.HomePosition == Vector2.Zero)
+                enemy.HomePosition = enemy.Position;
+
+            float phase = (float)_elapsed * 1.4f + i * 2.1f;
+            Vector2 patrol = new(
+                Mathf.Sin(phase) * _textUnitPixels * 5.5f,
+                Mathf.Sin(phase * 1.7f) * _textUnitPixels * 1.8f
+            );
+            if (_enemyTracksPlayer)
+            {
+                float chaseBias = Mathf.Clamp((_player.Position.X - enemy.HomePosition.X) * 0.18f, -_textUnitPixels * 7f, _textUnitPixels * 7f);
+                patrol.X += chaseBias;
+            }
+
+            enemy.Position = enemy.HomePosition + patrol;
+            if (_enemyTracksPlayer)
+                enemy.FacingRight = _player.Position.X > enemy.Position.X;
+            enemy.MotionState = ActorMotionState.Idle;
+
+            if (_enemyProjectilesEnabled)
+            {
+                float timer = _enemyShotTimers.TryGetValue(enemy, out float existing) ? existing : 0.8f + i * 0.45f;
+                timer -= dt;
+                if (timer <= 0f)
+                {
+                    FireEnemyShot(enemy);
+                    timer = 1.7f + i * 0.35f;
+                }
+
+                _enemyShotTimers[enemy] = timer;
+            }
+        }
+    }
+
+    private void FireEnemyShot(ActorView enemy)
+    {
+        const int maxEnemyShots = 6;
+        if (_enemyShots.Count >= maxEnemyShots)
+            return;
+
+        Vector2 origin = enemy.Position + enemy.Size * 0.5f;
+        Vector2 target = _player.Position + _player.Size * 0.5f;
+        if (_enemyTracksPlayer)
+            enemy.FacingRight = target.X > origin.X;
+
+        Vector2 direction = target - origin;
+        if (direction.LengthSquared() <= 0.01f)
+            direction = enemy.FacingRight ? Vector2.Right : Vector2.Left;
+        else if (!_enemyTracksPlayer)
+            direction = enemy.FacingRight ? Vector2.Right : Vector2.Left;
+        else
+            direction = direction.Normalized();
+
+        float shotSpeed = Mathf.Max(_textUnitPixels * 28f, 190f);
+        _enemyShots.Add(new EnemyShot(origin, direction * shotSpeed, 2.2f));
+        PushEnemyShotPositionsToPlayfield();
+    }
+
+    private void PushImpactEffectsToPlayfield()
+    {
+        EffectVisual[] visuals = new EffectVisual[_impactEffects.Count];
+        for (int i = 0; i < _impactEffects.Count; i++)
+        {
+            int frame = Mathf.Clamp(1 + Mathf.FloorToInt(_impactEffects[i].Age / 0.052f), 1, 12);
+            visuals[i] = new EffectVisual(_impactEffects[i].Position, frame);
+        }
+
+        _playfield.SetImpactEffects(visuals);
+    }
+
+    private void UpdateEnemyShots(float dt)
+    {
+        if (_enemyShots.Count == 0)
+            return;
+
+        Rect2 playBounds = _playfield.PlayBounds.Grow(20f);
+        Rect2 playerBounds = PlayerHitBounds();
+        for (int i = _enemyShots.Count - 1; i >= 0; i--)
+        {
+            EnemyShot shot = _enemyShots[i];
+            shot.Position += shot.Velocity * dt;
+            shot.Life -= dt;
+            Rect2 shotBounds = new(shot.Position - new Vector2(4f, 4f), new Vector2(8f, 8f));
+            if (shot.Life <= 0f || !playBounds.HasPoint(shot.Position))
+            {
+                _enemyShots.RemoveAt(i);
+            }
+            else if (shotBounds.Intersects(playerBounds))
+            {
+                AddImpactEffect(playerBounds.GetCenter());
+                _enemyShots.RemoveAt(i);
+                KillPlayer("DRAGON SHOT");
+            }
+            else
+            {
+                _enemyShots[i] = shot;
+            }
+        }
+
+        PushEnemyShotPositionsToPlayfield();
+    }
+
+    private void AddImpactEffect(Vector2 position)
+    {
+        _impactEffects.Add(new ImpactEffect(position, 0f));
+        ApplyExplosionTextBlast(position);
+        PushImpactEffectsToPlayfield();
+    }
+
+    private void ApplyExplosionTextBlast(Vector2 position)
+    {
+        if (!_explosionsDamageText || !_textDestructionEnabled || !_playfield.HasCapturedPage)
+            return;
+
+        float radius = Mathf.Max(_textUnitPixels * 4.8f, 34f);
+        Rect2 blastBounds = new(position - new Vector2(radius, radius), new Vector2(radius * 2f, radius * 2f));
+        int removed = 0;
+        foreach (Rect2 letter in _playfield.GetTextObjectRegions(TextObjectGranularity.Letter))
+        {
+            if (removed >= 9)
+                break;
+
+            if (!blastBounds.Intersects(letter))
+                continue;
+
+            Vector2 offset = letter.GetCenter() - position;
+            if (offset.LengthSquared() > radius * radius)
+                continue;
+
+            float chance = 0.82f - offset.Length() / radius * 0.45f;
+            float hash = Mathf.Abs(Mathf.Sin(letter.Position.X * 12.9898f + letter.Position.Y * 78.233f + (float)_elapsed * 4.113f));
+            if (hash > chance)
+                continue;
+
+            _playfield.EraseDocumentText(letter.Grow(2.2f));
+            removed++;
+        }
+
+        if (removed > 0)
+        {
+            _playfield.ThrowRandomLetters(position, removed);
+            _platformerScore += removed * 5;
+            _platformerStatus = $"BLAST -{removed} LETTERS";
+            RefreshPlatformerHud();
+        }
+    }
+
+    private void UpdateImpactEffects(float dt)
+    {
+        if (_impactEffects.Count == 0)
+            return;
+
+        for (int i = _impactEffects.Count - 1; i >= 0; i--)
+        {
+            ImpactEffect effect = _impactEffects[i];
+            effect.Age += dt;
+            if (effect.Age > 0.62f)
+                _impactEffects.RemoveAt(i);
+            else
+                _impactEffects[i] = effect;
+        }
+
+        PushImpactEffectsToPlayfield();
+    }
+
+    private bool TryPlayerEnemyContact()
+    {
+        if (!_enemyAiEnabled || _contactInvulnerabilitySeconds > 0 || _deathTestSeconds > 0)
+            return false;
+
+        Rect2 playerBounds = PlayerHitBounds();
+        for (int i = 1; i < _actors.Count; i++)
+        {
+            ActorView enemy = _actors[i];
+            if (!enemy.Visible || enemy.AnimationSet is null)
+                continue;
+
+            if (playerBounds.Intersects(EnemyHitBounds(enemy)))
+                return true;
+        }
+
+        return false;
+    }
+
+    private bool TryHitEnemy(Rect2 shotBounds, out Vector2 impactPosition)
+    {
+        impactPosition = shotBounds.GetCenter();
+        for (int i = 1; i < _actors.Count; i++)
+        {
+            ActorView enemy = _actors[i];
+            if (!enemy.Visible || enemy.AnimationSet is null)
+                continue;
+
+            Rect2 enemyBounds = EnemyHitBounds(enemy);
+            if (!shotBounds.Intersects(enemyBounds))
+                continue;
+
+            impactPosition = enemyBounds.GetCenter();
+            _platformerScore += 100;
+            _platformerStatus = $"+100 {enemy.ActorName.ToUpperInvariant()}";
+            RefreshPlatformerHud();
+            return true;
+        }
+
+        return false;
+    }
+
+    private void KillPlayer(string reason)
+    {
+        if (_deathTestSeconds > 0 || _contactInvulnerabilitySeconds > 0)
+            return;
+
+        _platformerLives = Mathf.Max(0, _platformerLives - 1);
+        _platformerDeaths++;
+        _platformerStatus = reason;
+        _contactInvulnerabilitySeconds = 1.0;
+        ClearPlayerShots();
+        ClearEnemyShots();
+        TriggerDeathAnimation();
+        RefreshPlatformerHud(reason);
+    }
+
+    private Rect2 PlayerHitBounds()
+    {
+        return new Rect2(_player.Position, _player.Size).Grow(-Mathf.Min(_player.Size.X, _player.Size.Y) * 0.18f);
+    }
+
+    private static Rect2 EnemyHitBounds(ActorView enemy)
+    {
+        return new Rect2(enemy.Position, enemy.Size).Grow(-Mathf.Min(enemy.Size.X, enemy.Size.Y) * 0.18f);
     }
 
     private void QueueProjectileOcrTarget(PlayerShot shot)
@@ -1575,8 +2768,9 @@ public partial class Main : Control
             _playfield.Ocr.QueueRegion(target, sample);
     }
 
-    private bool TryHitTextObject(Rect2 shotBounds)
+    private bool TryHitTextObject(Rect2 shotBounds, out Vector2 impactPosition)
     {
+        impactPosition = shotBounds.GetCenter();
         if (!_textDestructionEnabled || !_playfield.HasCapturedPage)
             return false;
 
@@ -1585,6 +2779,7 @@ public partial class Main : Control
             if (!shotBounds.Intersects(letter))
                 continue;
 
+            impactPosition = letter.GetCenter();
             _playfield.EraseDocumentText(letter.Grow(1.5f));
             return true;
         }
@@ -1610,6 +2805,41 @@ public partial class Main : Control
         _playfield.SetPlayerShotPositions(positions);
     }
 
+    private void ClearEnemyShots()
+    {
+        if (_enemyShots.Count == 0)
+            return;
+
+        _enemyShots.Clear();
+        PushEnemyShotPositionsToPlayfield();
+    }
+
+    private void PushEnemyShotPositionsToPlayfield()
+    {
+        Vector2[] positions = new Vector2[_enemyShots.Count];
+        for (int i = 0; i < _enemyShots.Count; i++)
+            positions[i] = _enemyShots[i].Position;
+
+        _playfield.SetEnemyShotPositions(positions);
+    }
+
+    private void RefreshPlatformerHud(string? status = null)
+    {
+        if (_platformerHudText is null)
+            return;
+
+        if (!string.IsNullOrWhiteSpace(status))
+            _platformerStatus = status;
+
+        _platformerHud.Visible = _playsetMode == PlaysetMode.Platformer;
+        int visibleEnemies = _actors.Skip(1).Count(actor => actor.Visible && actor.AnimationSet is not null);
+        _platformerHudText.Text =
+            $"SCORE  {_platformerScore}\n"
+            + $"LIVES  {_platformerLives}   DEATHS {_platformerDeaths}\n"
+            + $"ENEMY  {visibleEnemies}   SHOTS {_enemyShots.Count}\n"
+            + _platformerStatus;
+    }
+
     private void UpdatePlayerAnimation(float inputX, bool crawlingText)
     {
         _player.AnimationClock = _elapsed;
@@ -1620,9 +2850,15 @@ public partial class Main : Control
             return;
         }
 
+        if (_gunEnabled && _shootAnimSeconds > 0)
+        {
+            _player.MotionState = _playerOnGround ? ActorMotionState.RunShoot : ActorMotionState.JumpShoot;
+            return;
+        }
+
         if (!_playerOnGround)
         {
-            _player.MotionState = _playerVelocity.Y < 0 ? ActorMotionState.JumpUp : ActorMotionState.JumpDown;
+            _player.MotionState = _playerVelocity.Y < 0 ? ActorMotionState.JumpUp : ActorMotionState.Fall;
             return;
         }
 
@@ -1645,7 +2881,8 @@ public partial class Main : Control
                 && previousBottom <= surface.Position.Y + 2f
                 && nextBounds.End.Y >= surface.Position.Y
                 && nextBounds.Position.X < surface.End.X
-                && nextBounds.End.X > surface.Position.X)
+                && nextBounds.End.X > surface.Position.X
+                && HasEnoughLandingSupport(nextBounds, surface))
             {
                 next.Y = surface.Position.Y - _player.Size.Y;
                 _playerVelocity.Y = 0;
@@ -1661,7 +2898,8 @@ public partial class Main : Control
             if (_playerVelocity.Y >= 0
                 && previousBottom <= surfaceY + _textUnitPixels * 0.4f
                 && nextBounds.End.Y >= surfaceY
-                && surface.ContainsXRange(nextBounds.Position.X, nextBounds.End.X, _textUnitPixels, _playfield.ElapsedSeconds))
+                && surface.ContainsXRange(nextBounds.Position.X, nextBounds.End.X, _textUnitPixels, _playfield.ElapsedSeconds)
+                && HasEnoughLandingSupport(nextBounds, surface.Bounds(_textUnitPixels, _playfield.ElapsedSeconds)))
             {
                 next.Y = surfaceY - _player.Size.Y;
                 _playerVelocity.Y = 0;
@@ -1675,6 +2913,16 @@ public partial class Main : Control
             next.Y = 30;
             _playerVelocity.Y = 0;
         }
+    }
+
+    private bool HasEnoughLandingSupport(Rect2 actorBounds, Rect2 surface)
+    {
+        float overlap = Mathf.Min(actorBounds.End.X, surface.End.X) - Mathf.Max(actorBounds.Position.X, surface.Position.X);
+        if (overlap <= 0)
+            return false;
+
+        float required = Mathf.Clamp(_minLandingSupportRatio, 0.05f, 1f) * actorBounds.Size.X;
+        return overlap >= required;
     }
 
     private IEnumerable<Rect2> GetSolidSurfaces()
@@ -1716,7 +2964,10 @@ public partial class Main : Control
 
     private void ApplyActorScale()
     {
-        Vector2 playerSize = new(Mathf.Round(_textUnitPixels * 3.0f), Mathf.Round(_textUnitPixels * 4.6f));
+        Vector2 playerSize = new(
+            Mathf.Round(_textUnitPixels * 3.0f * _actorSizeMultiplier),
+            Mathf.Round(_textUnitPixels * 4.6f * _actorSizeMultiplier)
+        );
         Vector2 cardSize = new(_textUnitPixels * 6.5f, _textUnitPixels * 7f);
 
         for (int i = 0; i < _actors.Count; i++)
@@ -1724,6 +2975,39 @@ public partial class Main : Control
             _actors[i].Size = i == 0 ? playerSize : cardSize;
             _actors[i].CustomMinimumSize = _actors[i].Size;
         }
+    }
+
+    private void SetActorSizeMultiplier(float multiplier)
+    {
+        if (_selectedActor is not null && !ReferenceEquals(_selectedActor, _player))
+        {
+            ScaleSelectedEnemy(multiplier);
+            return;
+        }
+
+        _actorSizeMultiplier = multiplier;
+        ApplyActorScale();
+        SnapPlayerToStart();
+        _playfield.QueueRedraw();
+        RefreshMotionText();
+    }
+
+    private void ScaleSelectedEnemy(float multiplier)
+    {
+        float baseHeight = Mathf.Max(_textUnitPixels * 7f, 1f);
+        float currentBottom = _selectedActor.Position.Y + _selectedActor.Size.Y;
+        float aspect = _selectedActor.Size.X > 0 && _selectedActor.Size.Y > 0
+            ? _selectedActor.Size.X / _selectedActor.Size.Y
+            : 1f;
+        float newHeight = Mathf.Round(baseHeight * multiplier);
+        float newWidth = Mathf.Round(newHeight * aspect);
+        _selectedActor.Size = new Vector2(newWidth, newHeight);
+        _selectedActor.CustomMinimumSize = _selectedActor.Size;
+        _selectedActor.Position = new Vector2(_selectedActor.Position.X, currentBottom - newHeight);
+        _selectedActor.ManualPlacement = true;
+        _selectedActor.QueueRedraw();
+        RefreshMotionText();
+        _inspectorText.Text = $"{_selectedActor.ActorName} scaled to {multiplier:0.##}x enemy size.\n\nActor size buttons affect the selected enemy when an enemy is selected; select the player to tune the player/text ratio.";
     }
 
     private void UpdateCursorMode()
@@ -1771,7 +3055,7 @@ public partial class Main : Control
 
         string mode = _platformerMode == PlatformerMode.Horizontal ? "horizontal run" : "vertical climb";
         string ground = _playerOnGround ? "grounded" : "airborne";
-        _motionLabel.Text = $"{mode}  |  text unit {_textUnitPixels:0}px  |  actor {_player.Size.Y:0}px tall  |  gravity {_gravityScale:0.00}x  |  {ground}";
+        _motionLabel.Text = $"{mode}  |  text unit {_textUnitPixels:0}px  |  actor {_player.Size.Y:0}px tall ({_actorSizeMultiplier:0.##}x)  |  gravity {_gravityScale:0.00}x  |  support {_minLandingSupportRatio * 100f:0}%  |  fall death {_fallDeathHeightUnits:0}u  |  {(_gunEnabled ? "gun" : "no gun")}  |  {ground}";
     }
 
     private void UpdateAttributeControls(WorldObject? selected)
@@ -1915,6 +3199,21 @@ public partial class Main : Control
         return spin;
     }
 
+    private static LineEdit ClipEndpointEdit(int value, int maxFrame)
+    {
+        LineEdit edit = new()
+        {
+            Text = Mathf.Clamp(value, 0, Mathf.Max(0, maxFrame)).ToString(),
+            PlaceholderText = "-",
+            CustomMinimumSize = new Vector2(70, 32),
+            FocusMode = FocusModeEnum.Click,
+            SelectAllOnFocus = true,
+            TooltipText = "Frame number, or '-' if this character does not use this animation."
+        };
+        edit.AddThemeFontSizeOverride("font_size", 12);
+        return edit;
+    }
+
     private Button ShelfButton(string text, WorldObjectKind kind, string description)
     {
         Button button = Button(text);
@@ -1968,6 +3267,7 @@ public partial class Main : Control
             WorldObjectKind.Conveyor => new Color("#4378B8"),
             WorldObjectKind.Elevator => new Color("#F4C95D"),
             WorldObjectKind.StartPoint => new Color("#B56CFF"),
+            WorldObjectKind.GoalPoint => new Color("#F4C95D"),
             WorldObjectKind.HiddenSwitch => new Color("#FF2BD6"),
             WorldObjectKind.Checkpoint => new Color("#5CB8A7"),
             WorldObjectKind.PinballFlipper => new Color("#FF5C35"),
@@ -2050,11 +3350,181 @@ public partial class Main : Control
         public float Life = life;
     }
 
+    private struct EnemyShot(Vector2 position, Vector2 velocity, float life)
+    {
+        public Vector2 Position = position;
+        public Vector2 Velocity = velocity;
+        public float Life = life;
+    }
+
+    private struct ImpactEffect(Vector2 position, float age)
+    {
+        public Vector2 Position = position;
+        public float Age = age;
+    }
+
+    private sealed class DackAnimManifest
+    {
+        public int frameNumberBase { get; set; }
+        public List<DackAnimLabel> labels { get; set; } = [];
+    }
+
+    private sealed class DackAnimLabel
+    {
+        public string name { get; set; } = "";
+        public bool unavailable { get; set; }
+        public int editorStart { get; set; }
+        public int editorEnd { get; set; }
+        public bool pingPong { get; set; }
+        public bool strobe { get; set; }
+        public int strobeCount { get; set; }
+    }
+
+    private sealed class DackLevelManifest
+    {
+        public string format { get; set; } = "dacklevel";
+        public int version { get; set; } = 1;
+        public string name { get; set; } = "";
+        public string sourceMode { get; set; } = "";
+        public bool editorMode { get; set; } = true;
+        public string playsetMode { get; set; } = "";
+        public string platformerMode { get; set; } = "";
+        public bool safetyFloor { get; set; }
+        public bool textTerrainEnabled { get; set; }
+        public bool textDestructionEnabled { get; set; }
+        public bool gunEnabled { get; set; }
+        public bool enemyAiEnabled { get; set; } = true;
+        public bool enemyTracksPlayer { get; set; } = true;
+        public bool enemyProjectilesEnabled { get; set; } = true;
+        public bool explosionsDamageText { get; set; } = true;
+        public int platformerScore { get; set; }
+        public int platformerLives { get; set; } = 3;
+        public int platformerDeaths { get; set; }
+        public float hudX { get; set; } = 18f;
+        public float hudY { get; set; } = 78f;
+        public float actorSizeMultiplier { get; set; }
+        public float textUnitPixels { get; set; }
+        public List<LevelWorldObject> worldObjects { get; set; } = [];
+        public List<LevelActor> actors { get; set; } = [];
+    }
+
+    private sealed class LevelWorldObject
+    {
+        public string kind { get; set; } = "";
+        public string markerRole { get; set; } = "";
+        public float startX { get; set; }
+        public float startY { get; set; }
+        public float endX { get; set; }
+        public float endY { get; set; }
+        public float thicknessUnits { get; set; }
+        public float speedUnits { get; set; }
+        public float phase { get; set; }
+        public float rangeUnits { get; set; }
+        public bool visibleInPlay { get; set; }
+        public bool useCustomTint { get; set; }
+        public string tint { get; set; } = "";
+        public float opacity { get; set; }
+
+        public static LevelWorldObject FromWorldObject(WorldObject worldObject)
+        {
+            return new LevelWorldObject
+            {
+                kind = worldObject.Kind.ToString(),
+                markerRole = worldObject.MarkerRole.ToString(),
+                startX = worldObject.Start.X,
+                startY = worldObject.Start.Y,
+                endX = worldObject.End.X,
+                endY = worldObject.End.Y,
+                thicknessUnits = worldObject.ThicknessUnits,
+                speedUnits = worldObject.SpeedUnits,
+                phase = worldObject.Phase,
+                rangeUnits = worldObject.RangeUnits,
+                visibleInPlay = worldObject.VisibleInPlay,
+                useCustomTint = worldObject.UseCustomTint,
+                tint = worldObject.Tint.ToHtml(false),
+                opacity = worldObject.Opacity
+            };
+        }
+
+        public WorldObject ToWorldObject()
+        {
+            WorldObjectKind parsedKind = Enum.TryParse(kind, out WorldObjectKind worldObjectKind)
+                ? worldObjectKind
+                : WorldObjectKind.Platform;
+            MarkerRole parsedRole = Enum.TryParse(markerRole, out MarkerRole role)
+                ? role
+                : MarkerRole.None;
+            Color parsedTint = string.IsNullOrWhiteSpace(tint) ? default : new Color("#" + tint);
+
+            return new WorldObject(
+                parsedKind,
+                new Vector2(startX, startY),
+                new Vector2(endX, endY),
+                thicknessUnits,
+                speedUnits,
+                phase,
+                rangeUnits,
+                parsedRole,
+                visibleInPlay,
+                useCustomTint,
+                parsedTint,
+                opacity
+            );
+        }
+    }
+
+    private sealed class LevelActor
+    {
+        public int index { get; set; }
+        public string name { get; set; } = "";
+        public string animationSource { get; set; } = "";
+        public string motionState { get; set; } = "";
+        public bool visible { get; set; }
+        public bool playable { get; set; }
+        public bool facingRight { get; set; }
+        public bool manualPlacement { get; set; }
+        public float x { get; set; }
+        public float y { get; set; }
+        public float width { get; set; }
+        public float height { get; set; }
+
+        public static LevelActor FromActor(ActorView actor, int index)
+        {
+            return new LevelActor
+            {
+                index = index,
+                name = actor.ActorName,
+                animationSource = GuessAnimationSource(actor),
+                motionState = actor.MotionState.ToString(),
+                visible = actor.Visible,
+                playable = actor.IsPlayable,
+                facingRight = actor.FacingRight,
+                manualPlacement = actor.ManualPlacement,
+                x = actor.Position.X,
+                y = actor.Position.Y,
+                width = actor.Size.X,
+                height = actor.Size.Y
+            };
+        }
+
+        private static string GuessAnimationSource(ActorView actor)
+        {
+            string name = actor.ActorName.ToLowerInvariant();
+            if (name.Contains("sunny") || name.Contains("dragon"))
+                return "sunny-dragon-fly";
+            if (name.Contains("tgc"))
+                return "tgc-player";
+            return actor.IsPlayable ? "stickman-v0.1" : "";
+        }
+    }
+
     private sealed record TgcClipRow(
         HBoxContainer Row,
         LineEdit Name,
-        SpinBox Start,
-        SpinBox End,
-        CheckBox PingPong
+        LineEdit Start,
+        LineEdit End,
+        CheckBox PingPong,
+        CheckBox Strobe,
+        SpinBox StrobeCount
     );
 }

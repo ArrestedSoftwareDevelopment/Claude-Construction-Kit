@@ -5,16 +5,24 @@ using System.IO;
 
 namespace Dack;
 
-public sealed record SpriteFrame(Texture2D Texture, Rect2 SourceRegion);
+public sealed record SpriteFrame(Texture2D Texture, Rect2 SourceRegion, Vector2 DisplaySize);
 public readonly record struct AnimationFrameRange(int Start, int End);
 
 public sealed class SpriteAnimationSet
 {
     private const string AssetRoot = "res://assets/third_party/stickman-pack-v0.1";
+    private const string SunnyDragonRelativePath = "raw base assets/Legacy Collection/Legacy Collection/Assets/Misc/Characters/sunny-dragon/spritesheets/sunny-dragon-fly.png";
+    private const string TgcPlatformerRuntimePath = "res://assets/project/game-creators-pack/platformer-spritesheet.png";
+    private const string TgcShooterBossRuntimePath = "res://assets/project/game-creators-pack/shooter-boss-sprite.png";
+    private const string TgcShooterRuntimePath = "res://assets/project/game-creators-pack/shooter-spritesheet.png";
     private static readonly AnimationFrameRange DefaultGameCreatorIdle = new(0, 2);
     private static readonly AnimationFrameRange DefaultGameCreatorRun = new(3, 14);
     private static readonly AnimationFrameRange DefaultGameCreatorJumpUp = new(15, 15);
     private static readonly AnimationFrameRange DefaultGameCreatorJumpDown = new(16, 16);
+    private static readonly AnimationFrameRange DefaultGameCreatorFall = new(16, 16);
+    private static readonly AnimationFrameRange DefaultGameCreatorRunShoot = new(9, 10);
+    private static readonly AnimationFrameRange DefaultGameCreatorJumpShoot = new(11, 12);
+    private static readonly AnimationFrameRange DefaultGameCreatorDeath = new(16, 17);
 
     private readonly Dictionary<ActorMotionState, SpriteFrame[]> _frames;
 
@@ -25,28 +33,70 @@ public sealed class SpriteAnimationSet
 
     public static SpriteAnimationSet? TryLoadStickman()
     {
-        Dictionary<ActorMotionState, SpriteFrame[]> frames = [];
-        AddFrames(frames, ActorMotionState.Idle, $"{AssetRoot}/thin-idle-sheet.png");
-        AddFrames(frames, ActorMotionState.Run, $"{AssetRoot}/thin-run-sheet.png");
-        AddFrames(frames, ActorMotionState.JumpUp, $"{AssetRoot}/thin-jump-up.png");
-        AddFrames(frames, ActorMotionState.JumpDown, $"{AssetRoot}/thin-jump-down.png");
-
-        if (!frames.ContainsKey(ActorMotionState.Idle))
+        if (!TryLoadStickmanFrames(out SpriteFrame[] all))
             return null;
 
-        if (!frames.ContainsKey(ActorMotionState.Run))
-            frames[ActorMotionState.Run] = frames[ActorMotionState.Idle];
+        return BuildAnimationSetFromFrames(
+            all,
+            new AnimationFrameRange(0, 5),
+            new AnimationFrameRange(6, 14),
+            new AnimationFrameRange(15, 15),
+            new AnimationFrameRange(16, 16),
+            new AnimationFrameRange(16, 16),
+            new AnimationFrameRange(6, 14),
+            new AnimationFrameRange(15, 15),
+            new AnimationFrameRange(0, 5),
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false
+        );
+    }
 
-        if (!frames.ContainsKey(ActorMotionState.Crawl))
-            frames[ActorMotionState.Crawl] = frames[ActorMotionState.Run];
-
-        if (!frames.ContainsKey(ActorMotionState.JumpUp))
-            frames[ActorMotionState.JumpUp] = frames[ActorMotionState.Idle];
-
-        if (!frames.ContainsKey(ActorMotionState.JumpDown))
-            frames[ActorMotionState.JumpDown] = frames[ActorMotionState.JumpUp];
-
-        return new SpriteAnimationSet(frames);
+    public static SpriteAnimationSet? TryLoadStickman(
+        AnimationFrameRange idle,
+        AnimationFrameRange run,
+        AnimationFrameRange jumpUp,
+        AnimationFrameRange jumpDown,
+        AnimationFrameRange fall,
+        AnimationFrameRange runShoot,
+        AnimationFrameRange jumpShoot,
+        AnimationFrameRange death,
+        bool idlePingPong,
+        bool runPingPong,
+        bool jumpUpPingPong,
+        bool jumpDownPingPong,
+        bool fallPingPong,
+        bool runShootPingPong,
+        bool jumpShootPingPong,
+        bool deathPingPong
+    )
+    {
+        return TryLoadStickmanFrames(out SpriteFrame[] all)
+            ? BuildAnimationSetFromFrames(
+                all,
+                idle,
+                run,
+                jumpUp,
+                jumpDown,
+                fall,
+                runShoot,
+                jumpShoot,
+                death,
+                idlePingPong,
+                runPingPong,
+                jumpUpPingPong,
+                jumpDownPingPong,
+                fallPingPong,
+                runShootPingPong,
+                jumpShootPingPong,
+                deathPingPong
+            )
+            : null;
     }
 
     public static SpriteAnimationSet? TryLoadGameCreatorPlayer()
@@ -55,8 +105,147 @@ public sealed class SpriteAnimationSet
             DefaultGameCreatorIdle,
             DefaultGameCreatorRun,
             DefaultGameCreatorJumpUp,
-            DefaultGameCreatorJumpDown
+            DefaultGameCreatorJumpDown,
+            DefaultGameCreatorFall,
+            DefaultGameCreatorRunShoot,
+            DefaultGameCreatorJumpShoot,
+            DefaultGameCreatorDeath,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false
         );
+    }
+
+    public static SpriteAnimationSet? TryLoadTgcPlatformerEnemy(
+        AnimationFrameRange idle,
+        AnimationFrameRange run,
+        AnimationFrameRange crawl
+    )
+    {
+        if (!TryLoadBlobFrames(TgcPlatformerRuntimePath, out SpriteFrame[] all))
+            return null;
+
+        return BuildAnimationSetFromFrames(
+            all,
+            idle,
+            run,
+            idle,
+            idle,
+            idle,
+            run,
+            idle,
+            idle,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false
+        ).WithCrawl(all, crawl);
+    }
+
+    public static SpriteAnimationSet? TryLoadTgcShooterBoss()
+    {
+        return TryLoadSingleSprite(TgcShooterBossRuntimePath);
+    }
+
+    public static SpriteAnimationSet? TryLoadTgcShooterFleet()
+    {
+        return TryLoadBlobFrames(TgcShooterRuntimePath, out SpriteFrame[] all)
+            ? BuildAnimationSetFromFrames(
+                all,
+                new AnimationFrameRange(0, Mathf.Min(5, all.Length - 1)),
+                new AnimationFrameRange(0, Mathf.Min(5, all.Length - 1)),
+                new AnimationFrameRange(0, 0),
+                new AnimationFrameRange(0, 0),
+                new AnimationFrameRange(0, 0),
+                new AnimationFrameRange(0, Mathf.Min(5, all.Length - 1)),
+                new AnimationFrameRange(0, 0),
+                new AnimationFrameRange(0, 0),
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+            )
+            : null;
+    }
+
+    public static SpriteAnimationSet? TryLoadSunnyDragon()
+    {
+        return TryLoadSunnyDragonFrames(out SpriteFrame[] all)
+            ? BuildAnimationSetFromFrames(
+                all,
+                new AnimationFrameRange(0, all.Length - 1),
+                new AnimationFrameRange(0, all.Length - 1),
+                new AnimationFrameRange(0, all.Length - 1),
+                new AnimationFrameRange(0, all.Length - 1),
+                new AnimationFrameRange(0, all.Length - 1),
+                new AnimationFrameRange(0, all.Length - 1),
+                new AnimationFrameRange(0, all.Length - 1),
+                new AnimationFrameRange(0, all.Length - 1),
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+            )
+            : null;
+    }
+
+    public static SpriteAnimationSet? TryLoadSunnyDragon(
+        AnimationFrameRange idle,
+        AnimationFrameRange run,
+        AnimationFrameRange jumpUp,
+        AnimationFrameRange jumpDown,
+        AnimationFrameRange fall,
+        AnimationFrameRange runShoot,
+        AnimationFrameRange jumpShoot,
+        AnimationFrameRange death,
+        bool idlePingPong,
+        bool runPingPong,
+        bool jumpUpPingPong,
+        bool jumpDownPingPong,
+        bool fallPingPong,
+        bool runShootPingPong,
+        bool jumpShootPingPong,
+        bool deathPingPong
+    )
+    {
+        return TryLoadSunnyDragonFrames(out SpriteFrame[] all)
+            ? BuildAnimationSetFromFrames(
+                all,
+                idle,
+                run,
+                jumpUp,
+                jumpDown,
+                fall,
+                runShoot,
+                jumpShoot,
+                death,
+                idlePingPong,
+                runPingPong,
+                jumpUpPingPong,
+                jumpDownPingPong,
+                fallPingPong,
+                runShootPingPong,
+                jumpShootPingPong,
+                deathPingPong
+            )
+            : null;
     }
 
     public static SpriteAnimationSet? TryLoadGameCreatorPlayer(
@@ -66,7 +255,24 @@ public sealed class SpriteAnimationSet
         AnimationFrameRange jumpDown
     )
     {
-        return TryLoadGameCreatorPlayer(idle, run, jumpUp, jumpDown, false, false, false, false);
+        return TryLoadGameCreatorPlayer(
+            idle,
+            run,
+            jumpUp,
+            jumpDown,
+            DefaultGameCreatorFall,
+            DefaultGameCreatorRunShoot,
+            DefaultGameCreatorJumpShoot,
+            DefaultGameCreatorDeath,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false
+        );
     }
 
     public static SpriteAnimationSet? TryLoadGameCreatorPlayer(
@@ -74,46 +280,74 @@ public sealed class SpriteAnimationSet
         AnimationFrameRange run,
         AnimationFrameRange jumpUp,
         AnimationFrameRange jumpDown,
+        AnimationFrameRange fall,
+        AnimationFrameRange runShoot,
+        AnimationFrameRange jumpShoot,
+        AnimationFrameRange death,
         bool idlePingPong,
         bool runPingPong,
         bool jumpUpPingPong,
-        bool jumpDownPingPong
+        bool jumpDownPingPong,
+        bool fallPingPong,
+        bool runShootPingPong,
+        bool jumpShootPingPong,
+        bool deathPingPong
     )
     {
-        string projectRoot = ProjectSettings.GlobalizePath("res://");
-        string filePath = Path.GetFullPath(Path.Combine(
-            projectRoot,
-            "..",
-            "raw base assets",
-            "The Game Creator's Pack",
-            "The Game Creator's Pack",
-            "Graphic Pack",
-            "Player_DarkOutline.png"
-        ));
-
-        if (!File.Exists(filePath))
+        if (!TryLoadGameCreatorPlayerFrames(out SpriteFrame[] all))
             return null;
 
-        Image strip = Image.LoadFromFile(filePath);
-        if (strip.IsEmpty())
-            return null;
+        return BuildAnimationSetFromFrames(
+            all,
+            idle,
+            run,
+            jumpUp,
+            jumpDown,
+            fall,
+            runShoot,
+            jumpShoot,
+            death,
+            idlePingPong,
+            runPingPong,
+            jumpUpPingPong,
+            jumpDownPingPong,
+            fallPingPong,
+            runShootPingPong,
+            jumpShootPingPong,
+            deathPingPong
+        );
+    }
 
-        strip.Convert(Image.Format.Rgba8);
-        Rect2[] detectedFrames = DetectBlobFrames(strip);
-        if (detectedFrames.Length == 0)
-            return null;
-
-        ImageTexture texture = ImageTexture.CreateFromImage(strip);
-        SpriteFrame[] all = new SpriteFrame[detectedFrames.Length];
-        for (int i = 0; i < detectedFrames.Length; i++)
-            all[i] = new SpriteFrame(texture, detectedFrames[i]);
-
+    private static SpriteAnimationSet BuildAnimationSetFromFrames(
+        SpriteFrame[] all,
+        AnimationFrameRange idle,
+        AnimationFrameRange run,
+        AnimationFrameRange jumpUp,
+        AnimationFrameRange jumpDown,
+        AnimationFrameRange fall,
+        AnimationFrameRange runShoot,
+        AnimationFrameRange jumpShoot,
+        AnimationFrameRange death,
+        bool idlePingPong,
+        bool runPingPong,
+        bool jumpUpPingPong,
+        bool jumpDownPingPong,
+        bool fallPingPong,
+        bool runShootPingPong,
+        bool jumpShootPingPong,
+        bool deathPingPong
+    )
+    {
         Dictionary<ActorMotionState, SpriteFrame[]> frames = [];
         frames[ActorMotionState.Idle] = SliceFrames(all, idle, idlePingPong);
         frames[ActorMotionState.Run] = SliceFrames(all, run, runPingPong);
         frames[ActorMotionState.Crawl] = frames[ActorMotionState.Run];
         frames[ActorMotionState.JumpUp] = SliceFrames(all, jumpUp, jumpUpPingPong);
         frames[ActorMotionState.JumpDown] = SliceFrames(all, jumpDown, jumpDownPingPong);
+        frames[ActorMotionState.Fall] = SliceFrames(all, fall, fallPingPong);
+        frames[ActorMotionState.RunShoot] = SliceFrames(all, runShoot, runShootPingPong);
+        frames[ActorMotionState.JumpShoot] = SliceFrames(all, jumpShoot, jumpShootPingPong);
+        frames[ActorMotionState.Death] = SliceFrames(all, death, deathPingPong);
 
         return new SpriteAnimationSet(frames);
     }
@@ -155,6 +389,64 @@ public sealed class SpriteAnimationSet
         return true;
     }
 
+    public static bool TryLoadGameCreatorPlayerFrames(out SpriteFrame[] frames)
+    {
+        frames = [];
+        if (!TryLoadGameCreatorPlayerFramePreview(out Texture2D? texture, out Rect2[] rects) || texture is null)
+            return false;
+
+        Vector2 displaySize = GetCommonDisplaySize(rects);
+        frames = new SpriteFrame[rects.Length];
+        for (int i = 0; i < rects.Length; i++)
+            frames[i] = new SpriteFrame(texture, rects[i], displaySize);
+
+        return frames.Length > 0;
+    }
+
+    public static bool TryLoadTgcPlatformerFrames(out SpriteFrame[] frames)
+    {
+        return TryLoadBlobFrames(TgcPlatformerRuntimePath, out frames);
+    }
+
+    public static bool TryLoadStickmanFrames(out SpriteFrame[] frames)
+    {
+        List<SpriteFrame> loaded = [];
+        AppendFrames(loaded, $"{AssetRoot}/thin-idle-sheet.png");
+        AppendFrames(loaded, $"{AssetRoot}/thin-run-sheet.png");
+        AppendFrames(loaded, $"{AssetRoot}/thin-jump-up.png");
+        AppendFrames(loaded, $"{AssetRoot}/thin-jump-down.png");
+        frames = loaded.ToArray();
+        return frames.Length > 0;
+    }
+
+    public static bool TryLoadSunnyDragonFrames(out SpriteFrame[] frames)
+    {
+        frames = [];
+        string projectRoot = ProjectSettings.GlobalizePath("res://");
+        string filePath = Path.GetFullPath(Path.Combine(projectRoot, "..", SunnyDragonRelativePath));
+        if (!File.Exists(filePath))
+            return false;
+
+        Image sheet = Image.LoadFromFile(filePath);
+        if (sheet.IsEmpty())
+            return false;
+
+        sheet.Convert(Image.Format.Rgba8);
+        int frameCount = 9;
+        int frameWidth = sheet.GetWidth() / frameCount;
+        int frameHeight = sheet.GetHeight();
+        if (frameWidth <= 0 || frameHeight <= 0)
+            return false;
+
+        ImageTexture texture = ImageTexture.CreateFromImage(sheet);
+        frames = new SpriteFrame[frameCount];
+        Vector2 displaySize = new(frameWidth, frameHeight);
+        for (int i = 0; i < frameCount; i++)
+            frames[i] = new SpriteFrame(texture, new Rect2(i * frameWidth, 0, frameWidth, frameHeight), displaySize);
+
+        return true;
+    }
+
     public SpriteFrame GetFrame(ActorMotionState state, double clock)
     {
         SpriteFrame[] frames = _frames.TryGetValue(state, out SpriteFrame[]? stateFrames)
@@ -164,6 +456,58 @@ public sealed class SpriteAnimationSet
         float framesPerSecond = state is ActorMotionState.Run or ActorMotionState.Crawl ? 12f : 6f;
         int index = Mathf.FloorToInt((float)clock * framesPerSecond) % frames.Length;
         return frames[index];
+    }
+
+    private SpriteAnimationSet WithCrawl(SpriteFrame[] all, AnimationFrameRange crawl)
+    {
+        _frames[ActorMotionState.Crawl] = SliceFrames(all, crawl);
+        return this;
+    }
+
+    private static SpriteAnimationSet? TryLoadSingleSprite(string resourcePath)
+    {
+        string filePath = ProjectSettings.GlobalizePath(resourcePath);
+        if (!File.Exists(filePath))
+            return null;
+
+        Image image = Image.LoadFromFile(filePath);
+        if (image.IsEmpty())
+            return null;
+
+        image.Convert(Image.Format.Rgba8);
+        ImageTexture texture = ImageTexture.CreateFromImage(image);
+        SpriteFrame frame = new(texture, new Rect2(0, 0, image.GetWidth(), image.GetHeight()), new Vector2(image.GetWidth(), image.GetHeight()));
+        SpriteFrame[] frames = [frame];
+        Dictionary<ActorMotionState, SpriteFrame[]> states = [];
+        foreach (ActorMotionState state in Enum.GetValues<ActorMotionState>())
+            states[state] = frames;
+
+        return new SpriteAnimationSet(states);
+    }
+
+    private static bool TryLoadBlobFrames(string resourcePath, out SpriteFrame[] frames)
+    {
+        frames = [];
+        string filePath = ProjectSettings.GlobalizePath(resourcePath);
+        if (!File.Exists(filePath))
+            return false;
+
+        Image image = Image.LoadFromFile(filePath);
+        if (image.IsEmpty())
+            return false;
+
+        image.Convert(Image.Format.Rgba8);
+        Rect2[] rects = DetectBlobFrames(image);
+        if (rects.Length == 0)
+            return false;
+
+        ImageTexture texture = ImageTexture.CreateFromImage(image);
+        Vector2 displaySize = GetCommonDisplaySize(rects);
+        frames = new SpriteFrame[rects.Length];
+        for (int i = 0; i < rects.Length; i++)
+            frames[i] = new SpriteFrame(texture, rects[i], displaySize);
+
+        return true;
     }
 
     private static void AddFrames(
@@ -182,6 +526,7 @@ public sealed class SpriteAnimationSet
 
         sheet.Convert(Image.Format.Rgba8);
         MakeNearWhiteTransparent(sheet);
+        ThickenOpaquePixels(sheet, 1);
 
         int frameSize = sheet.GetHeight();
         int frameCount = Mathf.Max(1, sheet.GetWidth() / frameSize);
@@ -189,9 +534,31 @@ public sealed class SpriteAnimationSet
         SpriteFrame[] loaded = new SpriteFrame[frameCount];
 
         for (int i = 0; i < frameCount; i++)
-            loaded[i] = new SpriteFrame(texture, new Rect2(i * frameSize, 0, frameSize, frameSize));
+            loaded[i] = new SpriteFrame(texture, new Rect2(i * frameSize, 0, frameSize, frameSize), new Vector2(frameSize, frameSize));
 
         frames[state] = loaded;
+    }
+
+    private static void AppendFrames(List<SpriteFrame> frames, string resourcePath)
+    {
+        string filePath = ProjectSettings.GlobalizePath(resourcePath);
+        if (!File.Exists(filePath))
+            return;
+
+        Image sheet = Image.LoadFromFile(filePath);
+        if (sheet.IsEmpty())
+            return;
+
+        sheet.Convert(Image.Format.Rgba8);
+        MakeNearWhiteTransparent(sheet);
+        ThickenOpaquePixels(sheet, 1);
+
+        int frameSize = sheet.GetHeight();
+        int frameCount = Mathf.Max(1, sheet.GetWidth() / frameSize);
+        ImageTexture texture = ImageTexture.CreateFromImage(sheet);
+
+        for (int i = 0; i < frameCount; i++)
+            frames.Add(new SpriteFrame(texture, new Rect2(i * frameSize, 0, frameSize, frameSize), new Vector2(frameSize, frameSize)));
     }
 
     private static string GameCreatorPlayerPath()
@@ -218,6 +585,19 @@ public sealed class SpriteAnimationSet
         SpriteFrame[] slice = new SpriteFrame[count];
         Array.Copy(frames, start, slice, 0, count);
         return slice;
+    }
+
+    private static Vector2 GetCommonDisplaySize(Rect2[] frames)
+    {
+        float maxWidth = 1f;
+        float maxHeight = 1f;
+        foreach (Rect2 frame in frames)
+        {
+            maxWidth = Mathf.Max(maxWidth, frame.Size.X);
+            maxHeight = Mathf.Max(maxHeight, frame.Size.Y);
+        }
+
+        return new Vector2(maxWidth, maxHeight);
     }
 
     private static SpriteFrame[] SliceFrames(SpriteFrame[] frames, AnimationFrameRange range)
@@ -263,8 +643,15 @@ public sealed class SpriteAnimationSet
             }
         }
 
+        bool likelyHorizontalStrip = width > height * 4;
         frames.Sort((a, b) =>
         {
+            if (likelyHorizontalStrip)
+            {
+                int xCompare = a.X.CompareTo(b.X);
+                return xCompare != 0 ? xCompare : a.Y.CompareTo(b.Y);
+            }
+
             int yCompare = a.Y.CompareTo(b.Y);
             return yCompare != 0 ? yCompare : a.X.CompareTo(b.X);
         });
@@ -328,6 +715,41 @@ public sealed class SpriteAnimationSet
                 Color pixel = image.GetPixel(x, y);
                 if (pixel.R > 0.95f && pixel.G > 0.95f && pixel.B > 0.95f)
                     image.SetPixel(x, y, Colors.Transparent);
+            }
+        }
+    }
+
+    private static void ThickenOpaquePixels(Image image, int radius)
+    {
+        if (radius <= 0)
+            return;
+
+        int width = image.GetWidth();
+        int height = image.GetHeight();
+        Image source = (Image)image.Duplicate();
+
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                Color pixel = source.GetPixel(x, y);
+                if (pixel.A <= 0.03f)
+                    continue;
+
+                for (int oy = -radius; oy <= radius; oy++)
+                {
+                    for (int ox = -radius; ox <= radius; ox++)
+                    {
+                        int targetX = x + ox;
+                        int targetY = y + oy;
+                        if (targetX < 0 || targetY < 0 || targetX >= width || targetY >= height)
+                            continue;
+
+                        Color target = image.GetPixel(targetX, targetY);
+                        if (target.A < pixel.A)
+                            image.SetPixel(targetX, targetY, pixel);
+                    }
+                }
             }
         }
     }

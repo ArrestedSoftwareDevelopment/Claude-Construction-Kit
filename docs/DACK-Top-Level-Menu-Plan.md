@@ -174,6 +174,7 @@ Primary shelves:
 
 - Player spawns
 - Enemy/NPC spawns
+- Start / midpoint / goal markers
 - Patrol routes
 - Cover regions
 - Ricochet walls
@@ -194,6 +195,22 @@ Important rules:
 - Cover
 - Per-actor text behavior
 - AI behavior blocks
+
+First complete side-view level spine:
+
+- `Start Point`: editor-visible spawn marker, hidden during play unless the creator chooses otherwise.
+- `Checkpoint`: visible midpoint or recovery marker.
+- `Goal`: visible end objective; useful immediately for platformers and later for racing, escort, maze, and tower-offense modes.
+- `Enemy/NPC`: actor placed as blocker, guard, hazard, or moving puzzle piece.
+
+Enemy setup should be a small set of composable choices rather than one giant AI page:
+
+- Locomotion: grounded, flying, climbing, crawling, swimming, turret/static.
+- Behavior: patrol, guard, chase, flee, wander, ambush, swarm, escort target, defend goal.
+- Attack: contact only, projectile, beam/laser, text-destroying shot, area pulse, none.
+- Text interaction: collide with text, ignore text, destroy text, climb text, tunnel text, seek/avoid OCR words.
+
+Sunny Dragon is the first practical test of this model: a flying guard that can block a route in platformer, side-view shooter, Brickbat bonus/hazard, pinball toy, or overhead modes without requiring new art.
 
 ### 3. Ball / Table Physics
 

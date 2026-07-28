@@ -305,20 +305,33 @@ Labels themselves must be editable and expandable. The creator should not be tra
 - editable start/end frame numbers;
 - add-label support;
 - a per-label ping-pong/reverse toggle, so a short range like three jump frames can preview/play as a five-frame forward-then-back motion;
+- a per-label strobe toggle plus integer count/intensity, initially useful for death, invincibility, power-up, and damage feedback;
 - visual range highlighting for every label;
+- nullable/unavailable labels via `- / -` endpoints, because not every character has every action;
 - save/export to `.dackanim.json`, including both creator-visible numbering and internal zero-based detected frame indices;
+- load/import `.dackanim.json` back into the editor so saved label work can be inspected, corrected, and reapplied instead of being write-only;
 - later: delete/reorder labels, duplicate ranges, and bind labels explicitly to engine motion states.
 
 Current RAD test:
 
-- `STICKMAN` uses the admitted OctoPyte stick figure clips.
+- `STICKMAN` uses the admitted OctoPyte stick figure clips and now enters the same frame editor as imported strips: idle, run, jump-up, jump-down, fall, run-shoot, jump-shoot, and death labels can be edited, ping-ponged, strobed, saved, loaded, and reapplied.
 - `TGC PLAYER` uses The Game Creator's Pack `Player_DarkOutline.png` strip through local blob-detected frame loading.
-- The TGC mapping starts rough, but the prototype exposes a visual 8-column frame strip plus editable label names, numeric endpoints, and ping-pong toggles. Recognized labels like idle/run/jump-up/jump-down drive the current player animation; extra labels such as run-shoot, jump-shoot, climb-up/down, dig-up/down, shoot-up/down, bounce, and death can be added and highlighted ahead of full engine binding.
-- `SAVE TGC LABELS` writes `dack/assets/quarantine/game-creators-pack-graphics-prep/tgc-player.dackanim.json`, a local-only manifest that records the frame rectangles, displayed frame numbers, internal playback indices, editable label names, and ping-pong flags. This is the debugging lens for numbering/range mistakes.
+- `SUNNY DRAGON` uses `raw base assets/Legacy Collection/Legacy Collection/Assets/Misc/Characters/sunny-dragon/spritesheets/sunny-dragon-fly.png` as the first animated enemy import. It exercises a third path: a non-square 9-frame grid strip rather than curated Stickman sheets or TGC blob detection.
+- The selected actor can be renamed in the sidebar. Names should be saved as creator metadata, not inferred permanently from filenames; this is how imported assets become reusable characters.
+- The current mapping starts rough, but the prototype exposes a visual 8-column frame strip plus editable label names, numeric endpoints, ping-pong toggles, strobe toggles, and strobe counts. Recognized labels like idle/run/jump-up/jump-down drive the current player animation; extra labels such as run-shoot, jump-shoot, climb-up/down, dig-up/down, shoot-up/down, bounce, and death can be added and highlighted ahead of full engine binding.
+- `SAVE ANIM LABELS` writes a source-aware local-only manifest: TGC currently saves to `dack/assets/quarantine/game-creators-pack-graphics-prep/tgc-player.dackanim.json`; Stickman currently saves to `dack/assets/quarantine/stickman-pack-v0.1/stickman-thin.dackanim.json`. `LOAD ANIM LABELS` reads the current source's manifest back into the editor. This is the debugging lens for numbering/range mistakes and the seed of the eventual character picker format.
+- The schema is intentionally variable-length. `Run` can be 12 frames, `Fall` can be one frame, `Death` can be dashed unavailable, and future effects such as `Power Up` can use arbitrarily long ranges. Engine bindings should consume labels by meaning and range, never by assuming a fixed frame count.
+- The first saved manifest exposed an important detector bug: horizontal strips must sort detected frames left-to-right before row/top ordering. Sorting by Y first can pull far-right death frames into indices 0/1 and make idle/run labels appear to include the wrong action.
+- Cropped frames must retain a stable display box. If every detected crop is stretched to fill the actor rectangle, narrow or short frames appear to change character size during playback. DACK should draw each crop inside a common per-animation frame box, centered and baseline/bottom aligned, while keeping collision size separate.
+- Thin stick-figure art needs special care at document scale. The v0.1 Stickman sheets are tiny 64 px frames with one-pixel limbs; downscaling can turn those strokes into dotted fragments. The current runtime applies a small one-pixel opaque-pixel expansion to Stickman imports after white-background transparency cleanup. This is an art-preservation pass, not collision geometry, and it should eventually become an importer option such as `preserveHairlineStrokes`.
 
 Swinging vines/ropes should wait for the visible spline/Bezier tool family. A straight-line placeholder would teach the wrong feel. The desired version is an authored curve with draggable handles, visible swing arc, optional attach/detach points, and animation labels for grab, swing, release, and land.
 
 Power-up animations can often be effect composites rather than separate sprite sheets. The cheap useful version is: play the actor's idle or current-state animation, then layer reusable DACK effects over it—rings, glows, color cycling, sparks, outline pulses, rotating text sigils, or Jeff-Minter-style neon bursts. This lets a creator define `Power Up`, `Shielded`, `Hasted`, `Poisoned`, `Charged`, or `Invincible` without requiring new hand-drawn frames for every character.
+
+Projectile/explosion profiles are their own import category. The first RAD profile uses `raw base assets/explosion pack 1/explosion pack 1/Bonus/From explosions pack 2/explosion-b/explosion-b.png`, copied for runtime as `dack/assets/project/effects/fireball-impact-explosion.png`. The sheet is 1040x48, interpreted as 13 frames of 80x48: frame 0 projectile, frame 1 impact, frames 2-12 explosion. Seven additional cleared profiles from `raw base assets/explosion pack 1/explosion pack 1/Explosions pack` are copied into `dack/assets/project/effects/` as `explosion-1-a.png` through `explosion-1-g.png`. The catalog file `projectile-effect-profiles.json` records frame sizes, frame counts, source paths, and default blast radii. Designers should eventually assign these profiles per enemy/player weapon, with credit/provenance stored alongside the profile.
+
+The Game Creator's Pack graphic sheets are also now staged as runtime project assets under `dack/assets/project/game-creators-pack/`. `tgc-graphic-pack-catalog.json` names the first useful profiles: Orange Worker, Red Runner, Blue Guard, Green Crawler, Shooter Boss, Shooter Fleet, Red Girder, Gray Blocks, Orange Bricks, and Retro Puzzle Blocks. The platformer characters are currently indexed as blob-range profiles from `Platformer_SpriteSheet.png`; the girders/blocks are atlas-region hints for future level-object shelf import.
 
 ## Import Pipeline
 

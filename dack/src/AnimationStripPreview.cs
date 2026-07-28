@@ -5,22 +5,25 @@ namespace Dack;
 
 public partial class AnimationStripPreview : Control
 {
-    private Texture2D? _texture;
-    private Rect2[] _frames = [];
+    private SpriteFrame[] _frames = [];
     private readonly List<AnimationClipLabel> _labels = [];
 
     public int Columns { get; set; } = 8;
     public int NumberBase { get; set; }
+    public int FrameCount => _frames.Length;
 
     public override void _Ready()
     {
         CustomMinimumSize = new Vector2(0, 190);
-        if (SpriteAnimationSet.TryLoadGameCreatorPlayerFramePreview(out Texture2D? texture, out Rect2[] frames))
-        {
-            _texture = texture;
-            _frames = frames;
-            CustomMinimumSize = new Vector2(0, Mathf.Ceil(frames.Length / (float)Columns) * 46f + 8f);
-        }
+        if (SpriteAnimationSet.TryLoadGameCreatorPlayerFrames(out SpriteFrame[] frames))
+            SetFrames(frames);
+    }
+
+    public void SetFrames(SpriteFrame[] frames)
+    {
+        _frames = frames;
+        CustomMinimumSize = new Vector2(0, Mathf.Max(1, Mathf.Ceil(frames.Length / (float)Mathf.Max(1, Columns))) * 46f + 8f);
+        QueueRedraw();
     }
 
     public void SetLabels(IEnumerable<AnimationClipLabel> labels)
@@ -35,9 +38,9 @@ public partial class AnimationStripPreview : Control
         DrawRect(new Rect2(Vector2.Zero, Size), new Color("#F7F5EF", 0.82f), true);
         DrawRect(new Rect2(Vector2.Zero, Size), new Color("#D9DEE5"), false, 1f);
 
-        if (_texture is null || _frames.Length == 0)
+        if (_frames.Length == 0)
         {
-            DrawString(ThemeDB.FallbackFont, new Vector2(10, 24), "No TGC frames detected", HorizontalAlignment.Left, Size.X - 20, 12, new Color("#52606D"));
+            DrawString(ThemeDB.FallbackFont, new Vector2(10, 24), "No animation frames detected", HorizontalAlignment.Left, Size.X - 20, 12, new Color("#52606D"));
             return;
         }
 
@@ -59,11 +62,13 @@ public partial class AnimationStripPreview : Control
             DrawRect(cell, rangeColor.A > 0 ? rangeColor : new Color("#E8EDF2"), true);
             DrawRect(cell, new Color("#52606D", 0.45f), false, 1f);
 
-            Rect2 source = _frames[i];
-            float scale = Mathf.Min((cell.Size.X - 8f) / source.Size.X, 25f / source.Size.Y);
-            Vector2 drawSize = source.Size * scale;
+            SpriteFrame frame = _frames[i];
+            Rect2 source = frame.SourceRegion;
+            Vector2 displaySize = frame.DisplaySize;
+            float scale = Mathf.Min((cell.Size.X - 8f) / displaySize.X, 25f / displaySize.Y);
+            Vector2 drawSize = displaySize * scale;
             Vector2 drawPosition = cell.Position + new Vector2((cell.Size.X - drawSize.X) * 0.5f, 4f);
-            DrawTextureRectRegion(_texture, new Rect2(drawPosition, drawSize), source);
+            DrawTextureRectRegion(frame.Texture, new Rect2(drawPosition, drawSize), source);
 
             DrawString(
                 ThemeDB.FallbackFont,
