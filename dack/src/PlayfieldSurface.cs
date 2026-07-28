@@ -290,9 +290,9 @@ public partial class PlayfieldSurface : Control
             WorldObjectKind.Slide => new WorldObject(kind, center + new Vector2(-unit * 12f, -unit * 4f), center + new Vector2(unit * 12f, unit * 5f), 0.9f, 7f),
             WorldObjectKind.Conveyor => new WorldObject(kind, center + new Vector2(-unit * 13f, unit * 10f), center + new Vector2(unit * 13f, unit * 10f), 0.9f, 6f),
             WorldObjectKind.Elevator => new WorldObject(kind, center + new Vector2(-unit * 8f, unit * 2f), center + new Vector2(unit * 8f, unit * 2f), 0.9f, 1.6f, _placedWorldObjects.Count * 0.45f),
-            WorldObjectKind.Checkpoint => new WorldObject(kind, center + new Vector2(unit * 8f, unit * 8f), center + new Vector2(unit * 8f, unit * 2f), 0.8f),
-            WorldObjectKind.StartPoint => new WorldObject(kind, center + new Vector2(-unit * 3f, unit * 6f), center + new Vector2(unit * 3f, unit * 6f), 0.8f),
-            WorldObjectKind.HiddenSwitch => new WorldObject(kind, center + new Vector2(-unit * 4f, unit * 4f), center + new Vector2(unit * 4f, unit * 4f), 0.8f),
+            WorldObjectKind.Checkpoint => CreateMarker(center, unit, MarkerRole.Midpoint, true),
+            WorldObjectKind.StartPoint => CreateMarker(center, unit, MarkerRole.Start, false),
+            WorldObjectKind.HiddenSwitch => CreateMarker(center, unit, MarkerRole.Switch, false),
             _ => new WorldObject(kind, center - new Vector2(unit * 8f, 0), center + new Vector2(unit * 8f, 0), 0.8f)
         };
 
@@ -300,6 +300,34 @@ public partial class PlayfieldSurface : Control
         _selectedWorldObjectIndex = _placedWorldObjects.Count - 1;
         PublishWorldObjectSelection();
         QueueRedraw();
+    }
+
+    public void AddMarker(MarkerRole role, bool visibleInPlay)
+    {
+        Rect2 bounds = PlayBounds;
+        float unit = TextUnitPixels;
+        Vector2 center = bounds.GetCenter() + new Vector2(unit * 8f, unit * 6f);
+        WorldObject marker = CreateMarker(center, unit, role, visibleInPlay);
+        _placedWorldObjects.Add(marker);
+        _selectedWorldObjectIndex = _placedWorldObjects.Count - 1;
+        PublishWorldObjectSelection();
+        QueueRedraw();
+    }
+
+    private static WorldObject CreateMarker(Vector2 center, float unit, MarkerRole role, bool visibleInPlay)
+    {
+        WorldObjectKind kind = role == MarkerRole.Switch ? WorldObjectKind.HiddenSwitch : WorldObjectKind.Checkpoint;
+        return new WorldObject(
+            kind,
+            center + new Vector2(0, unit * 6f),
+            center,
+            0.8f,
+            0f,
+            0f,
+            5f,
+            role,
+            visibleInPlay
+        );
     }
 
     public void ClearPlacedObjects()
@@ -439,7 +467,7 @@ public partial class PlayfieldSurface : Control
         WorldObject? start = null;
         foreach (WorldObject worldObject in _placedWorldObjects)
         {
-            if (worldObject.Kind == WorldObjectKind.StartPoint)
+            if (worldObject.MarkerRole == MarkerRole.Start || worldObject.Kind == WorldObjectKind.StartPoint)
                 start = worldObject;
         }
 
@@ -473,6 +501,21 @@ public partial class PlayfieldSurface : Control
         UpdateSelected(selected => selected.Kind == WorldObjectKind.Elevator
             ? selected with { RangeUnits = Mathf.Clamp(rangeUnits, 0f, 16f) }
             : selected);
+    }
+
+    public void SetSelectedTint(Color tint)
+    {
+        UpdateSelected(selected => selected with { Tint = tint, UseCustomTint = true });
+    }
+
+    public void SetSelectedOpacity(float opacity)
+    {
+        UpdateSelected(selected => selected with { Opacity = Mathf.Clamp(opacity, 0f, 1f) });
+    }
+
+    public void ClearSelectedTint()
+    {
+        UpdateSelected(selected => selected with { UseCustomTint = false });
     }
 
     public void ReverseSelectedDirection()
@@ -746,6 +789,7 @@ public partial class PlayfieldSurface : Control
             + $"Speed: {selected.SpeedUnits:0.0} units\n"
             + $"Thickness: {selected.ThicknessUnits:0.0} units\n"
             + $"Range: {selected.RangeUnits:0.0} units\n"
+            + $"Opacity: {selected.Opacity * 100f:0}%\n"
             + hidden
             + "Drag the object body to move it. Drag either square handle to scale/angle it. Collision updates immediately."
         );
@@ -1152,7 +1196,7 @@ public partial class PlayfieldSurface : Control
     private void DrawLadder(WorldObject ladder)
     {
         Rect2 rect = ladder.Bounds(TextUnitPixels, ElapsedSeconds);
-        Color rail = new("#8A5A37");
+        Color rail = ladder.Styled(new Color("#8A5A37"));
         DrawRect(new Rect2(rect.Position, new Vector2(3, rect.Size.Y)), rail, true);
         DrawRect(new Rect2(rect.Position + new Vector2(rect.Size.X - 3, 0), new Vector2(3, rect.Size.Y)), rail, true);
 
@@ -1164,8 +1208,9 @@ public partial class PlayfieldSurface : Control
     {
         Vector2 start = ramp.ResolvePoint(ramp.Start, TextUnitPixels, ElapsedSeconds);
         Vector2 end = ramp.ResolvePoint(ramp.End, TextUnitPixels, ElapsedSeconds);
+        Color body = ramp.Styled(new Color("#5CB8A7"));
         DrawLine(start + new Vector2(3, 5), end + new Vector2(3, 5), new Color(0, 0, 0, 0.18f), TextUnitPixels * 0.45f);
-        DrawLine(start, end, new Color("#5CB8A7"), TextUnitPixels * 0.42f);
+        DrawLine(start, end, body, TextUnitPixels * 0.42f);
         DrawLine(start, end, new Color("#F7F5EF"), 2f);
     }
 
@@ -1173,8 +1218,9 @@ public partial class PlayfieldSurface : Control
     {
         Vector2 start = slide.ResolvePoint(slide.Start, TextUnitPixels, ElapsedSeconds);
         Vector2 end = slide.ResolvePoint(slide.End, TextUnitPixels, ElapsedSeconds);
+        Color body = slide.Styled(new Color("#FF5C35"));
         DrawLine(start + new Vector2(3, 5), end + new Vector2(3, 5), new Color(0, 0, 0, 0.18f), TextUnitPixels * 0.5f);
-        DrawLine(start, end, new Color("#FF5C35"), TextUnitPixels * 0.45f);
+        DrawLine(start, end, body, TextUnitPixels * 0.45f);
         DrawLine(start, end, new Color("#FFF0A8"), 2f);
     }
 
@@ -1182,8 +1228,9 @@ public partial class PlayfieldSurface : Control
     {
         Vector2 start = conveyor.ResolvePoint(conveyor.Start, TextUnitPixels, ElapsedSeconds);
         Vector2 end = conveyor.ResolvePoint(conveyor.End, TextUnitPixels, ElapsedSeconds);
+        Color body = conveyor.Styled(new Color("#4378B8"));
         DrawLine(start + new Vector2(3, 5), end + new Vector2(3, 5), new Color(0, 0, 0, 0.18f), TextUnitPixels * 0.55f);
-        DrawLine(start, end, new Color("#4378B8"), TextUnitPixels * 0.5f);
+        DrawLine(start, end, body, TextUnitPixels * 0.5f);
 
         Vector2 direction = conveyor.Direction(TextUnitPixels, ElapsedSeconds);
         float length = start.DistanceTo(end);
@@ -1200,14 +1247,15 @@ public partial class PlayfieldSurface : Control
         Vector2 end = elevator.ResolvePoint(elevator.End, TextUnitPixels, ElapsedSeconds);
         Vector2 range = elevator.ElevatorRangeVector(TextUnitPixels);
         Vector2 baseCenter = elevator.Center;
+        Color body = elevator.Styled(new Color("#F4C95D"));
 
         DrawLine(baseCenter - range + new Vector2(0, 2), baseCenter + range + new Vector2(0, 2), new Color(0, 0, 0, 0.18f), 4f);
         DrawLine(baseCenter - range, baseCenter + range, new Color("#B56CFF", 0.62f), 2f);
-        DrawCircle(baseCenter - range, 4f, new Color("#F4C95D"));
-        DrawCircle(baseCenter + range, 4f, new Color("#F4C95D"));
+        DrawCircle(baseCenter - range, 4f, body);
+        DrawCircle(baseCenter + range, 4f, body);
 
         DrawLine(start + new Vector2(3, 5), end + new Vector2(3, 5), new Color(0, 0, 0, 0.18f), TextUnitPixels * 0.65f);
-        DrawLine(start, end, new Color("#F4C95D"), TextUnitPixels * 0.6f);
+        DrawLine(start, end, body, TextUnitPixels * 0.6f);
         DrawLine(start, end, new Color("#202A34"), 2f);
     }
 
@@ -1215,12 +1263,13 @@ public partial class PlayfieldSurface : Control
     {
         Vector2 basePoint = checkpoint.ResolvePoint(checkpoint.Start, TextUnitPixels, ElapsedSeconds);
         Vector2 topPoint = checkpoint.ResolvePoint(checkpoint.End, TextUnitPixels, ElapsedSeconds);
+        Color flag = checkpoint.Styled(new Color("#5CB8A7"));
         DrawLine(basePoint + new Vector2(2, 3), topPoint + new Vector2(2, 3), new Color(0, 0, 0, 0.22f), 3f);
         DrawLine(basePoint, topPoint, new Color("#202A34"), 3f);
         Vector2 flagA = topPoint;
         Vector2 flagB = topPoint + new Vector2(TextUnitPixels * 4.5f, TextUnitPixels * 1.4f);
         Vector2 flagC = topPoint + new Vector2(0, TextUnitPixels * 2.8f);
-        DrawColoredPolygon([flagA, flagB, flagC], new Color("#5CB8A7"));
+        DrawColoredPolygon([flagA, flagB, flagC], flag);
         DrawPolyline([flagA, flagB, flagC, flagA], new Color("#F7F5EF"), 1.5f);
     }
 
@@ -1233,9 +1282,10 @@ public partial class PlayfieldSurface : Control
         Vector2 end = worldObject.ResolvePoint(worldObject.End, TextUnitPixels, ElapsedSeconds);
         Vector2 center = (start + end) * 0.5f;
         float radius = Mathf.Max(TextUnitPixels * 1.7f, 12f);
-        DrawLine(start, end, WithAlpha(color, 0.62f), Mathf.Max(2f, TextUnitPixels * 0.28f));
+        Color styled = worldObject.Styled(color);
+        DrawLine(start, end, WithAlpha(styled, styled.A * 0.62f), Mathf.Max(2f, TextUnitPixels * 0.28f));
         DrawCircle(center + new Vector2(2, 3), radius + 3f, new Color(0, 0, 0, 0.30f));
-        DrawCircle(center, radius, WithAlpha(color, 0.62f));
+        DrawCircle(center, radius, WithAlpha(styled, styled.A * 0.62f));
         DrawCircle(center, radius, new Color("#F7F5EF"), false, 2f);
         DrawString(ThemeDB.FallbackFont, center + new Vector2(radius + 5f, 4f), label, HorizontalAlignment.Left, 90f, 12, new Color("#FFF0A8"));
     }

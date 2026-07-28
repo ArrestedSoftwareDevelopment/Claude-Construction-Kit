@@ -47,7 +47,7 @@ Top-level raw packs observed:
 | Sprites | 231 | 1.8 MB | PNG, PSD | Candidate character animation reference; license unknown from local audit |
 | StickmanPack-V0.1 | 12 | tiny | PNG, GIF | Approved source for current stickman subset |
 | StickmanPack-V0.2 | 8 | tiny | PNG | Better current stickman animation source; should be promoted after provenance update |
-| The Game Creator's Pack | 44 | 161 MB | WAV, MP3, PNG | Candidate audio/UI/game kit reference; license unknown from local audit |
+| The Game Creator's Pack | 44 | 161 MB | WAV, MP3, PNG | Rights confirmed by project owner; good first sprite importer/animation-editor use case |
 | Warped shooting fx files | 276 | 16 MB | PNG, ASEPRITE, GIF, PDF, MP3 | Candidate projectile/effects animation source, license present |
 
 ## Important Observations
@@ -115,9 +115,35 @@ Explosion and shooting FX packs include PNG sequences, GIFs, `.ase`, and `.asepr
 
 Do not admit broadly until license/provenance is written pack-by-pack.
 
-### 5. Unknown-license packs stay design-only
+### 5. The Game Creator's Pack is a useful importer proving ground
 
-`Knight`, `Props`, `Sprites`, `The Game Creator's Pack`, `MountainDuskGodot`, `all_64c`, and `all_spr` need explicit provenance before any curated runtime admission. They may still inform editor/animator design locally.
+The project owner has confirmed rights for The Game Creator's Pack. Its `Graphic Pack` folder is a small, useful stress test rather than a huge runtime burden:
+
+| File | Dimensions | Importer implication |
+| --- | ---: | --- |
+| `Player_DarkOutline.png` | 571x42 | horizontal strip with many variably spaced frames; blob/manual grouping needed |
+| `Player_LightOutline.png` | 571x42 | same as above, palette/style variant |
+| `Platformer_SpriteSheet.png` | 217x154 | mixed character/enemy/tile sheet; needs blob detection plus human clip grouping |
+| `Shooter_SpriteSheet.png` | 256x128 | dense small sprite/effect sheet |
+| `Shooter_SpriteSheet_C64.png` | 179x96 | constrained C64-flavored variant |
+| `Shooter_SpriteSheet_NoPaletteSwaps.png` | 188x65 | reduced palette-swap sheet |
+| `Potions.png` | 67x33 | loose object sheet |
+| `Shooter_Boss_Sprite.png` | 64x64 | single sprite |
+| `Shooter_Expansion_2.png` | 64x64 | small mixed sprite/effect sheet |
+| `The Retro Puzzle Pack - Sample.png` | 101x77 | small puzzle/tile sample |
+
+This argues that the first importer should not assume square frames or perfect grids. It should support:
+
+- fixed grid slicing when the sheet is regular;
+- automatic non-transparent blob detection for loose strips/sheets;
+- manual frame rectangles for anything the detector gets wrong;
+- clip grouping after detection, because detection finds pictures, not meaning.
+
+`tools/prep_game_creator_graphics.py` is the local prototype for this path. It writes frame candidates and a manifest to ignored quarantine, giving us real data for the future animation editor without admitting the pack into runtime assets yet.
+
+### 6. Unknown-license packs stay design-only
+
+`Knight`, `Props`, `Sprites`, `MountainDuskGodot`, `all_64c`, and `all_spr` need explicit provenance before any curated runtime admission. They may still inform editor/animator design locally.
 
 ## Asset Governance Rules
 
@@ -247,6 +273,25 @@ Add `.dackanim.json` beside curated sheets:
 
 This gets rid of hardcoded assumptions in `SpriteAnimationSet`.
 
+### Stage 2A: Blob-detected draft manifest
+
+For irregular strips and mixed sheets, DACK should create a draft import manifest before the creator does any manual cleanup:
+
+```json
+{
+  "source": "Player_DarkOutline.png",
+  "slicing": "blob-detect",
+  "frames": [
+    { "rect": [0, 2, 28, 40], "origin": [14, 39], "tags": [] }
+  ],
+  "clips": {
+    "unassigned": { "frames": [0], "fps": 8, "loop": true }
+  }
+}
+```
+
+The animation editor then lets the creator rename clips, reorder frames, set FPS, define origins, and bind clips to actor states. This gives us a safe import runway for packs that are visually obvious to a human but not machine-regular.
+
 ### Stage 3: External editor refresh
 
 - Aseprite bridge imports PNG + JSON exported by Aseprite.
@@ -270,7 +315,8 @@ This gets rid of hardcoded assumptions in `SpriteAnimationSet`.
 7. Add a minimal Animator inspector: clip list, frame strip, FPS, loop, origin, preview.
 8. Keep the live pad as the in-context frame/sprite editor, not a full animation suite.
 9. Curate only small pinball parts from the huge VerzatileDev sheets when the pinball shelf begins.
-10. Do not admit unknown-license packs until provenance is explicit.
+10. Use The Game Creator's Pack Graphic Pack as the first irregular-sheet importer test: blob-detect frames, generate a manifest, then hand-group clips.
+11. Do not admit unknown-license packs until provenance is explicit.
 
 ## Product Feeling
 

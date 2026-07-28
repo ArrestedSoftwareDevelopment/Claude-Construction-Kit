@@ -3,5 +3,7 @@ namespace Dack;
 public enum PlaysetMode
 {
     Platformer,
-    Brickbat
+    Brickbat,
+    Pinball,
+    Overhead
 }

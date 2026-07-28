@@ -21,6 +21,7 @@ Supporting notes:
 - GUI architecture: [`docs/DACK-GUI-Architecture.md`](docs/DACK-GUI-Architecture.md)
 - Asset audit and sprite animator plan: [`docs/DACK-Asset-Audit-and-Sprite-Animator.md`](docs/DACK-Asset-Audit-and-Sprite-Animator.md)
 - Level Snapshot and package format: [`docs/DACK-Level-Snapshot-Format.md`](docs/DACK-Level-Snapshot-Format.md)
+- Object/player/enemy attribute model: [`docs/DACK-Object-Attribute-Model.md`](docs/DACK-Object-Attribute-Model.md)
 
 ---
 
@@ -420,10 +421,14 @@ All toolkits share the **DACK Core** (rendering, physics, keyboard/mouse input, 
 - Entities: player, patrol enemies, collectibles (icons or images), hazards, moving platforms, goal flag.
 - Win conditions: reach exit, collect N items, survive timer, or (Live Document Mode) reach a word-count goal.
 
-### 9.2 Action Kit (Ground & Flight)
+### 9.2 Overhead / Action Kit
 
-- **Ground sub-mode:** top-down or side-view run-and-gun; desktop icons or document images as cover/obstacles, windows/paragraphs as walls/rooms.
-- **Flight sub-mode:** free-scrolling shooter weaving between floating "window"/image obstacles and taskbar/margin hazard zones.
+- **Overhead family:** top-down movement over a cloned desktop/document. Combat tanks, driving, planes/spaceships, RPG/adventure actors, animals, insects, office creatures, workers, and swarms are all presets over the same world model.
+- **Combat/tank preset:** rotate, drive, shoot, ricochet, hide, duel. Desktop icons or document images become cover/obstacles, windows/paragraphs become walls/rooms.
+- **Driving preset:** steer, accelerate, brake/reverse, drift, follow creator-drawn roads or document/diagram paths.
+- **Plane/space preset:** rotate, thrust, coast/inertia, wrap or bounce at bounds, shoot, avoid floating UI/document hazards.
+- **RPG/adventure preset:** 8-way or click-to-move, interact, pick up, open, talk/fight, pathfind around document objects.
+- **Animal/insect preset:** crawl, wander, forage, flee, follow trails, swarm, climb text/UI shapes, and react to semantic words or live document events.
 - Params: weapon type/rate of fire, enemy HP/AI (patrol, chase, turret), health/armor, scroll speed (flight).
 - Entities: turrets, chasers, pickups, destructible props (simulation-only—never touch the originating file or app).
 - **Featured preset: "Word War."** Live Document Mode ruleset where an enemy line besieges the page; every sentence written pushes the line back, every idle stretch lets it creep forward. Designed as the flagship example of §8's "productive, not punishing" intent.

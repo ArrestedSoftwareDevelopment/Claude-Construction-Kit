@@ -31,13 +31,20 @@ public partial class Main : Control
     private HBoxContainer _playsetToolbarRow = null!;
     private Button _playsetToolbarToggle = null!;
     private PanelContainer _cockpit = null!;
+    private Control _platformerPanel = null!;
+    private Control _brickbatPanel = null!;
+    private Control _pinballPanel = null!;
+    private Control _overheadPanel = null!;
     private Label _cockpitStatus = null!;
     private Label _inspectorText = null!;
     private Label _attributeText = null!;
     private HSlider _speedSlider = null!;
     private HSlider _thicknessSlider = null!;
     private HSlider _rangeSlider = null!;
+    private HSlider _opacitySlider = null!;
     private HSlider _gravitySlider = null!;
+    private ColorPickerButton _tintPicker = null!;
+    private CheckBox _customTintCheck = null!;
     private BrickbatOverlay _brickbatOverlay = null!;
     private ActorView _selectedActor = null!;
     private ActorView _player = null!;
@@ -390,7 +397,9 @@ public partial class Main : Control
         _cockpitStatus.AddThemeFontSizeOverride("font_size", 12);
         top.AddChild(_cockpitStatus);
 
-        Button close = Button("ESC / CLOSE");
+        Button close = Button("×");
+        close.TooltipText = "Close Cockpit (Esc)";
+        close.CustomMinimumSize = new Vector2(36, 34);
         close.Pressed += ToggleCockpit;
         top.AddChild(close);
 
@@ -401,10 +410,18 @@ public partial class Main : Control
         columns.AddThemeConstantOverride("separation", 12);
         root.AddChild(columns);
 
-        columns.AddChild(BuildShelfPanel());
-        columns.AddChild(BuildBrickbatPanel());
+        _platformerPanel = BuildShelfPanel();
+        _brickbatPanel = BuildBrickbatPanel();
+        _pinballPanel = BuildPinballPanel();
+        _overheadPanel = BuildOverheadPanel();
+
+        columns.AddChild(_platformerPanel);
+        columns.AddChild(_brickbatPanel);
+        columns.AddChild(_pinballPanel);
+        columns.AddChild(_overheadPanel);
         columns.AddChild(BuildInspectorPanel());
         columns.AddChild(BuildUnderstandingPanel());
+        UpdateCockpitToolkitPanels();
     }
 
     private Control BuildShelfPanel()
@@ -518,6 +535,20 @@ public partial class Main : Control
         };
         brickbat.AddChild(grain);
 
+        Button textCollision = Button(_brickbatOverlay.TextCollisionMode == TextCollisionMode.Bounce ? "Text Physics: Bounce" : "Text Physics: Pierce");
+        textCollision.Pressed += () =>
+        {
+            _brickbatOverlay.TextCollisionMode = _brickbatOverlay.TextCollisionMode == TextCollisionMode.Bounce
+                ? TextCollisionMode.PassThrough
+                : TextCollisionMode.Bounce;
+            textCollision.Text = _brickbatOverlay.TextCollisionMode == TextCollisionMode.Bounce ? "Text Physics: Bounce" : "Text Physics: Pierce";
+            SetPlaysetMode(PlaysetMode.Brickbat);
+            _inspectorText.Text = _brickbatOverlay.TextCollisionMode == TextCollisionMode.Bounce
+                ? "Brickbat text collision set to Bounce. Letters/words act like solid targets and deflect the ball."
+                : "Brickbat text collision set to Pierce. The ball erases and scores text but keeps traveling through it. This is the seed of ghost-ball/piercing powerups and conditional zones.";
+        };
+        brickbat.AddChild(textCollision);
+
         Button reset = Button("RESET BRICKBAT");
         reset.Pressed += () =>
         {
@@ -527,8 +558,74 @@ public partial class Main : Control
         };
         brickbat.AddChild(reset);
 
+        Button resetHud = Button("AUTO-PLACE SCORE");
+        resetHud.Pressed += () =>
+        {
+            _brickbatOverlay.ResetHudPosition();
+            _inspectorText.Text = "Brickbat score panel returned to auto whitespace placement. Open the Cockpit in Brickbat and drag the panel to pin it somewhere else.";
+        };
+        brickbat.AddChild(resetHud);
+
         brickbat.AddChild(CockpitHeading("LATER"));
         brickbat.AddChild(CockpitNote("Target recipes, bonus deck, laser settings, persistence policy, HUD style, and word-goal filters belong on this page."));
+        return panel;
+    }
+
+    private Control BuildPinballPanel()
+    {
+        PanelContainer panel = CockpitPanel(250);
+        VBoxContainer pinball = PanelVBox(panel);
+        pinball.AddChild(CockpitHeading("PINBALL PAGE"));
+        pinball.AddChild(CockpitNote("Starter goal: prove one ball, two flippers, bumpers, drains, and score inserts on the same cloned playfield."));
+
+        Button enter = Button("ENTER PINBALL");
+        enter.Pressed += () =>
+        {
+            SetPlaysetMode(PlaysetMode.Pinball);
+            _inspectorText.Text =
+                "Pinball module placeholder.\n\n"
+                + "Next coding pass should add PinballOverlay: ball physics, flipper arcs, bumpers, drains, plunger lane, tilt/nudge, and score events.";
+        };
+        pinball.AddChild(enter);
+
+        pinball.AddChild(CockpitHeading("FIRST PARTS"));
+        pinball.AddChild(CockpitNote(
+            "Flippers, plunger lane, ball spawn, bumper, rollover, drain, gate, ramp rail, lit insert, jackpot target. "
+            + "All should use direct handles: flipper sweep arc, bumper radius, drain width, gate direction, and plunger force."
+        ));
+        pinball.AddChild(CockpitHeading("SOURCE FIT"));
+        pinball.AddChild(CockpitNote(
+            "Best early sources: Photoshop/GIMP/Krita/Paint canvases, PowerPoint/Draw/diagram slides, desktop/icon layouts, and BBS/textmode table art. "
+            + "Word works as a themed table, but canvas apps are the natural home."
+        ));
+        return panel;
+    }
+
+    private Control BuildOverheadPanel()
+    {
+        PanelContainer panel = CockpitPanel(250);
+        VBoxContainer overhead = PanelVBox(panel);
+        overhead.AddChild(CockpitHeading("OVERHEAD PAGE"));
+        overhead.AddChild(CockpitNote("Overhead is a family: Combat tanks, driving, planes/spaceships, RPG actors, animals, insects, and office creatures. Combat is the first preset."));
+
+        Button enter = Button("ENTER OVERHEAD");
+        enter.Pressed += () =>
+        {
+            SetPlaysetMode(PlaysetMode.Overhead);
+            _inspectorText.Text =
+                "Overhead toolkit placeholder.\n\n"
+                + "Next coding pass should add OverheadActorController with movement presets: tank/combat, driving, plane/space, RPG walk, and creature/insect crawl/swarm.";
+        };
+        overhead.AddChild(enter);
+
+        overhead.AddChild(CockpitHeading("FIRST PARTS"));
+        overhead.AddChild(CockpitNote(
+            "Player spawn, enemy spawn, patrol/guard route, cover region, ricochet wall, destructible text/object rule, pickup, door/gate, objective, and safe zone."
+        ));
+        overhead.AddChild(CockpitHeading("MOVEMENT SEEDS"));
+        overhead.AddChild(CockpitNote(
+            "Tank rotate/drive, car steer/drift, plane thrust/coast, RPG walk/interact, insect wander/forage/swarm. Same top-down world, different movement grammar."
+        ));
         return panel;
     }
 
@@ -582,6 +679,63 @@ public partial class Main : Control
         };
         inspector.AddChild(CockpitNote("Range of motion"));
         inspector.AddChild(_rangeSlider);
+
+        _tintPicker = new ColorPickerButton
+        {
+            Color = new Color("#5CB8A7"),
+            CustomMinimumSize = new Vector2(0, 34),
+            FocusMode = FocusModeEnum.None,
+            Text = "Object Color"
+        };
+        _tintPicker.ColorChanged += color =>
+        {
+            if (_updatingAttributeControls)
+                return;
+
+            _playfield.SetSelectedTint(color);
+            UpdateAttributeControls(_playfield.GetSelectedWorldObject());
+        };
+        inspector.AddChild(CockpitNote("Color / tint"));
+        inspector.AddChild(_tintPicker);
+
+        _customTintCheck = new CheckBox
+        {
+            Text = "Use custom color",
+            FocusMode = FocusModeEnum.None
+        };
+        _customTintCheck.Toggled += enabled =>
+        {
+            if (_updatingAttributeControls)
+                return;
+
+            if (enabled)
+                _playfield.SetSelectedTint(_tintPicker.Color);
+            else
+                _playfield.ClearSelectedTint();
+
+            UpdateAttributeControls(_playfield.GetSelectedWorldObject());
+        };
+        inspector.AddChild(_customTintCheck);
+
+        _opacitySlider = AttributeSlider(0, 1, 1, 0.05);
+        _opacitySlider.ValueChanged += value =>
+        {
+            if (_updatingAttributeControls)
+                return;
+
+            _playfield.SetSelectedOpacity((float)value);
+            UpdateAttributeControls(_playfield.GetSelectedWorldObject());
+        };
+        inspector.AddChild(CockpitNote("Opacity"));
+        inspector.AddChild(_opacitySlider);
+
+        Button clearTint = Button("DEFAULT COLOR");
+        clearTint.Pressed += () =>
+        {
+            _playfield.ClearSelectedTint();
+            UpdateAttributeControls(_playfield.GetSelectedWorldObject());
+        };
+        inspector.AddChild(clearTint);
 
         Button reverse = Button("REVERSE DIRECTION");
         reverse.Pressed += () =>
@@ -685,6 +839,14 @@ public partial class Main : Control
         Button brickbat = Button("BRICKBAT");
         brickbat.Pressed += () => SetPlaysetMode(PlaysetMode.Brickbat);
         _playsetToolbarRow.AddChild(brickbat);
+
+        Button pinball = Button("PINBALL");
+        pinball.Pressed += () => SetPlaysetMode(PlaysetMode.Pinball);
+        _playsetToolbarRow.AddChild(pinball);
+
+        Button overhead = Button("OVERHEAD");
+        overhead.Pressed += () => SetPlaysetMode(PlaysetMode.Overhead);
+        _playsetToolbarRow.AddChild(overhead);
 
         Button reset = Button("RESET");
         reset.Pressed += () =>
@@ -814,6 +976,7 @@ public partial class Main : Control
     {
         _cockpit.Visible = !_cockpit.Visible;
         _playfield.ShowEditorOnlyObjects = _cockpit.Visible;
+        _brickbatOverlay.HudEditable = _cockpit.Visible;
         _playfield.QueueRedraw();
         RefreshCockpitStatus();
         UpdateCursorMode();
@@ -835,23 +998,47 @@ public partial class Main : Control
         if (_cockpitStatus is null)
             return;
 
-        string mode = _playsetMode == PlaysetMode.Brickbat ? "Brickbat" : "Platformer";
-        _cockpitStatus.Text = $"{mode}  •  {_playfield.Ocr.StatusText}  •  Esc hides cockpit";
+        string mode = PlaysetModeLabel(_playsetMode);
+        _cockpitStatus.Text = $"{mode}  •  {_playfield.Ocr.StatusText}  •  contextual shelves  •  Esc hides cockpit";
+    }
+
+    private void UpdateCockpitToolkitPanels()
+    {
+        if (_platformerPanel is null || _brickbatPanel is null || _pinballPanel is null || _overheadPanel is null)
+            return;
+
+        _platformerPanel.Visible = _playsetMode == PlaysetMode.Platformer;
+        _brickbatPanel.Visible = _playsetMode == PlaysetMode.Brickbat;
+        _pinballPanel.Visible = _playsetMode == PlaysetMode.Pinball;
+        _overheadPanel.Visible = _playsetMode == PlaysetMode.Overhead;
     }
 
     private void SetPlaysetMode(PlaysetMode mode)
     {
         _playsetMode = mode;
         bool brickbat = mode == PlaysetMode.Brickbat;
-        _player.Visible = !brickbat;
+        bool showScout = mode is PlaysetMode.Platformer or PlaysetMode.Overhead;
+        _player.Visible = showScout;
         _brickbatOverlay.Visible = brickbat;
         ClearPlayerShots();
 
-        if (!brickbat)
+        if (showScout)
             SnapPlayerToStart();
 
         RefreshCockpitStatus();
+        UpdateCockpitToolkitPanels();
         UpdateCursorMode();
+    }
+
+    private static string PlaysetModeLabel(PlaysetMode mode)
+    {
+        return mode switch
+        {
+            PlaysetMode.Brickbat => "Brickbat",
+            PlaysetMode.Pinball => "Pinball",
+            PlaysetMode.Overhead => "Overhead",
+            _ => "Platformer"
+        };
     }
 
     private void SetPlatformerMode(PlatformerMode mode)
@@ -1229,7 +1416,7 @@ public partial class Main : Control
 
     private void UpdateAttributeControls(WorldObject? selected)
     {
-        if (_attributeText is null || _speedSlider is null || _thicknessSlider is null || _rangeSlider is null || _gravitySlider is null)
+        if (_attributeText is null || _speedSlider is null || _thicknessSlider is null || _rangeSlider is null || _opacitySlider is null || _gravitySlider is null || _tintPicker is null || _customTintCheck is null)
             return;
 
         _updatingAttributeControls = true;
@@ -1239,9 +1426,15 @@ public partial class Main : Control
             _speedSlider.Editable = false;
             _thicknessSlider.Editable = false;
             _rangeSlider.Editable = false;
+            _opacitySlider.Editable = false;
+            _tintPicker.Disabled = true;
+            _customTintCheck.Disabled = true;
+            _customTintCheck.ButtonPressed = false;
             _speedSlider.Value = 0;
             _thicknessSlider.Value = 0.8;
             _rangeSlider.Value = 5;
+            _opacitySlider.Value = 1;
+            _tintPicker.Color = new Color("#5CB8A7");
             _attributeText.Text =
                 "No placed object selected.\n\n"
                 + $"Gravity: {_gravityScale:0.00}x\n"
@@ -1255,14 +1448,22 @@ public partial class Main : Control
         _speedSlider.Editable = true;
         _thicknessSlider.Editable = true;
         _rangeSlider.Editable = selected.Kind == WorldObjectKind.Elevator;
+        _opacitySlider.Editable = true;
+        _tintPicker.Disabled = false;
+        _customTintCheck.Disabled = false;
+        _customTintCheck.ButtonPressed = selected.UseCustomTint;
         _speedSlider.Value = selected.SpeedUnits;
         _thicknessSlider.Value = selected.ThicknessUnits;
         _rangeSlider.Value = selected.RangeUnits;
+        _opacitySlider.Value = selected.Opacity;
+        _tintPicker.Color = selected.UseCustomTint ? selected.Tint : DefaultWorldObjectColor(selected.Kind);
         _attributeText.Text =
             $"{selected.Kind}\n"
             + $"Speed/force: {selected.SpeedUnits:0.0}\n"
             + $"Thickness: {selected.ThicknessUnits:0.0}\n"
             + $"Range: {selected.RangeUnits:0.0} text units\n"
+            + $"Opacity: {selected.Opacity * 100f:0}%\n"
+            + $"Color: {(selected.UseCustomTint ? "custom" : "default")}\n"
             + $"Gravity: {_gravityScale:0.00}x\n"
             + (selected.IsEditorOnly ? "Editor-only: visible while building, hidden during play.\n" : "")
             + "Reverse flips conveyors by speed; other line tools swap A/B endpoints.";
@@ -1341,6 +1542,22 @@ public partial class Main : Control
         };
         slider.FocusMode = FocusModeEnum.None;
         return slider;
+    }
+
+    private static Color DefaultWorldObjectColor(WorldObjectKind kind)
+    {
+        return kind switch
+        {
+            WorldObjectKind.Ladder => new Color("#8A5A37"),
+            WorldObjectKind.Ramp => new Color("#5CB8A7"),
+            WorldObjectKind.Slide => new Color("#FF5C35"),
+            WorldObjectKind.Conveyor => new Color("#4378B8"),
+            WorldObjectKind.Elevator => new Color("#F4C95D"),
+            WorldObjectKind.StartPoint => new Color("#B56CFF"),
+            WorldObjectKind.HiddenSwitch => new Color("#FF2BD6"),
+            WorldObjectKind.Checkpoint => new Color("#5CB8A7"),
+            _ => new Color("#5CB8A7")
+        };
     }
 
     private static PanelContainer CockpitPanel(float width)

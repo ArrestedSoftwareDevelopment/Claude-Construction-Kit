@@ -75,3 +75,16 @@ are explicitly prepared.
 - Intended evaluation use: pinball construction kit prototyping, table-part
   taxonomy, flipper/plunger/bumper/ramp visual design, and future curated
   pinball skin experiments.
+
+### The Game Creator's Pack
+
+- Local source:
+  `raw base assets/The Game Creator's Pack/The Game Creator's Pack/`
+- Rights status: project owner reports the pack is available for DACK use.
+  A specific admitted runtime subset and attribution/credit text still need to
+  be recorded before any files move into `third_party/`.
+- Current evaluation use: sprite importer and animation-editor design.
+- Graphic Pack note: the folder contains 10 small PNGs that cover horizontal
+  player strips, mixed sprite sheets, loose object sheets, and single sprites.
+  This makes it a strong local use case for blob detection, manual frame
+  grouping, animation clip naming, and future `.dackanim.json` manifest export.

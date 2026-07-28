@@ -25,6 +25,11 @@ Level storage and sharing direction is organized in
 and `.dackpack` layouts, source-clone privacy policy, cached Word Sense/OCR
 labels, placed toolkit objects, and mutation variants.
 
+Object attributes are organized in
+`../docs/DACK-Object-Attribute-Model.md`: shared presentation, opacity/color,
+collision, motion, role, source-binding, player, enemy/NPC, obstacle, and
+per-actor text-capability attributes.
+
 ## Development Environment
 
 - Godot: 4.7.1 stable Mono, expected at `../Godot_v4.7.1-stable_mono_win64/`.
@@ -57,6 +62,9 @@ dotnet build DACK.csproj
   Platformer, Brickbat, Reset, Cockpit, Boss. Toolkit-specific controls now
   move into contextual Cockpit pages; Brickbat owns its paddle orientation,
   letter/word grain, and reset controls there.
+- The Cockpit now folds away toolkit pages that do not apply to the selected
+  game type. Inspector and Understand stay available; Platformer/Brickbat/
+  Pinball/Overhead shelves appear contextually to save screen real estate.
 - Use left/right arrows or A/D to move the playable scout.
 - Press Space, W, or Up to jump.
 - Press J or X to shoot in Platformer mode. Shots travel in the scout's facing direction and erase captured-page text on impact. This started as a platformer projectile, but it is already behaving like a reusable text-mutation verb: shots can remove letters/words and alter the shared cloned terrain for later playsets. Shots also queue lazy OCR for word-shaped regions ahead of their path, making projectile targeting a natural way to prioritize which words the engine should read next.
@@ -85,8 +93,9 @@ dotnet build DACK.csproj
   speed/force, thickness/collision pad, reverse direction, and a
   **Ramp Up / Slide Down** normalization button. Elevators also expose a
   range-of-motion slider and draw their travel rail/limits in the editor.
-  Conveyors can be reversed by flipping speed direction. Slides have their own
-  downhill push instead of piggybacking on generic ramp detection.
+  Objects also expose a color picker, custom-color checkbox, and opacity
+  slider. Conveyors can be reversed by flipping speed direction. Slides have
+  their own downhill push instead of piggybacking on generic ramp detection.
 - Platformer world rules now expose separate toggles for captured text behavior:
   **Text Terrain**, **Text Crawl**, and **Shot Text Damage**. These are currently
   player/global rules; the intended product model is per-actor capabilities so
@@ -98,6 +107,10 @@ dotnet build DACK.csproj
 - In the Cockpit's Brickbat Page, switch paddle orientation and target grain.
   This is the first contextual toolkit page, replacing the old crowded toolbar
   buttons.
+- In Brickbat mode, the score/word HUD starts with automatic whitespace
+  placement, but becomes draggable while the Cockpit is open. Drag the panel to
+  pin it somewhere better for the level; use **Auto-Place Score** to return it
+  to automatic placement.
 - In Brickbat mode, detected letters or words become invisible collision objects; when struck, the cloned page visually erases that text object. The mouse controls the paddle.
 - Brickbat starts with three balls, tracks score, hits, remaining targets, and balls, and now treats bonus effects as big analog arcade typography: colorful, fading, rotating, strobing text. Laser bonuses pick a random 10-100% strength, fire after a short arming delay, and delete/score the intersected column of text.
 - Click one of the three actors to select it.
@@ -146,19 +159,29 @@ Word-shrapnel algorithm sketch:
 Brickbat should graduate from "a Breakout-like proof of concept" into a document-native game builder. The default mode can stay simple, but the toolkit should expose enough knobs that a creator can turn any page into a different kind of target-clearing game.
 
 - **Game rules**: ball count, launch randomness, ball speed tiers, miss behavior, win condition, score multipliers, time pressure, target grain, and whether destroyed text persists when switching playsets.
+- **Text collision rules**: text targets can bounce the ball, let the ball pierce through while still scoring/erasing, or switch modes inside conditional zones. In Brickbat this becomes both a creator setting and a power-up vocabulary item: ghost ball, piercing shot, hard-copy bounce, semantic pass-through, or only-bounce-on-keywords.
 - **Target recipes**: letters, words, lines, headings, icons, pillboxes, selected colors, OCR-discovered words, punctuation clusters, margin notes, or manually painted regions.
 - **Paddle tools**: bottom/side/top orientation, width/height, curved deflection, sticky paddle, moving/AI paddle, split paddle, or document-edge paddles.
 - **Bonus deck**: choose which literary/arcade bonuses can appear, their frequency, their visual style, and whether they are geometry-triggered, OCR-triggered, score-triggered, or manually placed.
-- **Laser/beam editor**: strength range, width, delay, direction, scoring, color cycling, and whether the beam cuts text, only scores it, or temporarily reveals semantic labels.
+- **Laser/beam editor**: strength range, width, delay, direction, scoring, color cycling, target snapping, and whether the beam cuts text, only scores it, or temporarily reveals semantic labels. Higher laser strength should mean more reliable deletion: longer reach, wider hit band, and better snapping toward nearby text.
+- **Bonus pacing**: multiball is capped at three balls and should have a visible cooldown, roughly 30 seconds in the starter rule set, so lasers and other bonuses keep rotating into play.
 - **Persistence policy**: keep the damaged clone for cross-playset terrain, reset on new game, or save the deformed clone as a new level variant.
 - **Visual personality**: quiet office mode, red-pen markup mode, neon/Jeff-Minter mode, monochrome terminal mode, or custom palettes.
 - **Sound hooks**: simple event slots first — paddle hit, text hit, word destroyed, laser arm/fire, bonus spawn, ball lost, round won — before building a deeper audio system.
 
 ## Pinball construction kit note
 
-Pinball belongs beside Brickbat, Racing, and Platformer as a future construction-kit mode. The creator places flippers, a plunger lane, bumpers, rollovers, drop targets, ramps, gates, drains, nudges, bonus inserts, jackpot/multiball rules, and score logic directly onto the cloned page. Document gutters can become lanes, headings/icons/pillboxes can become bumpers or lit inserts, bullet lists can become drop targets, and semantic words can become missions or jackpots. It should reuse the same effects deck heavily: flashing inserts, analog score text, word explosions, jackpot banners, and big ridiculous neon.
+Pinball belongs beside Brickbat, Racing, Platformer, and Overhead as a future construction-kit mode. The creator places flippers, a plunger lane, bumpers, rollovers, drop targets, ramps, gates, drains, nudges, bonus inserts, jackpot/multiball rules, and score logic directly onto the cloned page. Document gutters can become lanes, headings/icons/pillboxes can become bumpers or lit inserts, bullet lists can become drop targets, and semantic words can become missions or jackpots. It should reuse the same effects deck heavily: flashing inserts, analog score text, word explosions, jackpot banners, and big ridiculous neon.
 
 Pinball should also use the textmode/BBS layer as actual table art, not just UI. Starter board skin ideas: office memo table, dungeon terminal table, neon BBS jackpot board, sci-fi system-console table, and literary word-processor table. These can be generated from open FIGlet-style banners, box drawing, CP437-like glyphs, DACK procedural borders, and carefully licensed curated art.
+
+For the VerzatileDev starter pack, the preferred path is a batch prep/scaler, not a full importer yet. Keep the purchased originals untouched in `raw base assets/`, generate local-only scaled candidates under `dack/assets/quarantine/`, then curate a small admitted subset into `dack/assets/third_party/` only after we pick the parts, confirm provenance, and decide how each piece behaves. The helper script is:
+
+```powershell
+python tools/prep_pinball_assets.py
+```
+
+It creates two tiers for large sheets/backgrounds (`preview-1024`, `thumb-256`) and two tiers for individual pieces (`candidate-512`, `thumb-128`), plus a manifest. This gives the shelf/editor useful thumbnails and working candidates without committing huge raw art or pretending we understand pivots, collision shapes, flipper arcs, bumper radii, insert states, or table metadata yet.
 
 Builder rules to design:
 
@@ -166,10 +189,25 @@ Builder rules to design:
 - **Ball rules**: ball count, launch force, gravity/table tilt, elasticity, friction, spin/english, max speed, stuck-ball rescue, multiball cap, and whether pinball deforms the shared clone.
 - **Flipper rules**: left/right/custom flippers, strength, return speed, angle limits, cooldown, keyboard/mouse binding, and visible sweep preview handles.
 - **Target rules**: bumpers, rollovers, drop targets, word targets, letter banks, headings, icons, pillboxes, tables/cells, and manually painted targets.
+- **Text collision rules**: textual table art can either behave as solid pins/targets, pass-through scoring ink, or conditional stateful geometry. A pinball table might make headings solid rails, body copy pass-through scoring texture, and lit jackpot words temporarily solid.
 - **Scoring rules**: target value, combos, lit/unlit state, lane completion, word completion, multipliers, jackpots, hurry-up timers, and bonus count-up.
 - **Mission rules**: semantic words can become modes such as `JACKPOT`, `LOCK`, `MULTIBALL`, `BONUS`, `DRAIN`, `SAVE`, `RAMP`, or `TILT`.
 - **Effects/sound hooks**: bumper hit, rollover lit, ramp made, drain, ball save, tilt warning, jackpot, multiball, word completed, and table clear.
 - **Construction UI**: drag handles for flipper arcs, bumper radii, ramp splines, gate direction, plunger lane strength, drain width, and insert/target lighting.
+
+## Overhead toolkit note
+
+Overhead is a camera/control family, not a single game type. Combat is the first preset, but the same foundation should support driving, planes/spaceships, RPG/adventure actors, animals, insects, office creatures, workers, and swarms.
+
+Movement presets:
+
+- **Combat/tank**: rotate, drive, shoot, ricochet, hide behind cover.
+- **Driving**: steer, accelerate, brake/reverse, drift, follow roads/tracks.
+- **Plane/space**: rotate, thrust, coast/inertia, wrap/bounce at boundaries, shoot.
+- **RPG/adventure**: 8-way or click-to-move, interact, pick up, open, talk/fight.
+- **Animals/insects**: crawl, wander, forage, flee, follow scent/trails, swarm, climb text/UI shapes.
+
+First proof: one overhead actor on the cloned playfield with tank-style rotate/drive/fire controls, ricochet projectiles, cover/solid regions, and one simple enemy behavior.
 
 ## Reusable visual effects library
 
@@ -303,6 +341,22 @@ Suggested build order:
 Racing is a natural future toolkit because the minimum authoring model is small: draw or derive a track, place a starting point, and optionally add finish/checkpoints/laps. Tracks can come from creator splines, document margins, process diagrams, spreadsheet paths, presentation arrows, or semantic words such as `START`, `FINISH`, `CHECKPOINT`, `BOOST`, `OIL`, `TARPIT`, and `SHORTCUT`.
 
 Snake/Maze can share some of the same route-preview tools, but its play language is collect/grow/chase/evade rather than lap/checkpoint/time-trial.
+
+## Crossing / Escort note
+
+Frogger-like games fit under **Route / Flow** as Crossing / Escort presets. The construction grammar is lanes, traffic bands, moving hazards, carried platforms, safe islands, start/end markers, and timing windows. On desktop/document sources this could map cleanly to calendar rows, inbox lists, kanban lanes, spreadsheet bands, scrolling feeds, or paragraph gutters.
+
+It is almost a self-escort mission: the player is the vulnerable object being escorted across hostile flows. Later variants can escort NPCs, files/icons, words, little workers, animals, or semantic objects across the cloned screen.
+
+Escort and Tower Defense share a deeper **Route Conflict** model. Route actors try to traverse a path while placed tools help, hinder, protect, delay, destroy, heal, shield, or redirect them. The same module can express:
+
+- **Tower Defense**: stop hostile waves from reaching a protected objective.
+- **Tower Offense**: help friendly waves/convoys breach or reach an enemy objective.
+- **Escort / Convoy**: protect one or more vulnerable travelers along a route.
+- **Crossing**: time movement through hostile lanes to reach safe endpoints.
+- **Process Defense**: protect a document/diagram/project flow from disruption.
+
+The key shared setting is route polarity: defend, offend, escort, race, cross, or sort.
 
 ## Sprite scale note
 

@@ -4,6 +4,8 @@
 
 DACK is not one game with menus. It is a desktop/world transformer with multiple construction kits. The GUI therefore needs to scale from a nearly invisible play overlay to a serious editor without burying the playfield under chrome.
 
+Top-level game-type/menu planning now lives in [`DACK-Top-Level-Menu-Plan.md`](DACK-Top-Level-Menu-Plan.md). The key decision there is to organize primary game menus by view/control family—Side View, Overhead, Ball/Table, Paddle/Clearing, Grid/Text, Route/Flow, Ambient/Desktop Toybox—then place named presets underneath.
+
 The guiding metaphor is:
 
 **A magic transparency sheet over your desktop.**
@@ -86,10 +88,12 @@ Suggested controls:
 
 - Source: Desktop / Monitor / Window / Region / Image / Text Grid.
 - Mode: Play / Build / Understand.
-- Toolkit: Platformer / Brickbat / Pinball / Snake-Maze / RPG / Racing / Tower Defense / Action / Casual.
+- View Family: Side View / Overhead / Ball-Table / Paddle-Clearing / Grid-Text / Route-Flow / Ambient.
+- Preset: changes by family, e.g. Platformer, Brickbat, Pinball, Combat/Tanks, RPG, Snake/Maze, Racing, Tower Defense.
 - Clone: Reset / Save Variant / Compare Source.
 - Word Sense: Off / Lazy Local / Full Page Prep, plus status.
 - Safety: Boss Key hint and clone-only indicator.
+- Close gadget: visible `×` to hide the ordinary Cockpit; separate from Boss Key.
 
 ### Left Shelf
 
@@ -172,6 +176,8 @@ The toolkit contributes:
 - Meters.
 - Presets.
 - Test-play affordances.
+
+Only the selected toolkit/family page should be expanded by default. Other toolkit pages fold away to keep the playfield and inspector usable. The Inspector and Understand panels remain broadly available because selected-object attributes, source bindings, invisible logic, and detection layers cut across every game type.
 
 This prevents feature growth from turning into a pile of unrelated windows.
 

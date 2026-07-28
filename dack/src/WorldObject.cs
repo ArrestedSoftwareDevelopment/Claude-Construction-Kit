@@ -12,7 +12,23 @@ public enum WorldObjectKind
     Elevator,
     Checkpoint,
     StartPoint,
-    HiddenSwitch
+    HiddenSwitch,
+    PinballFlipper,
+    PinballBumper,
+    PinballPlunger,
+    PinballDrain,
+    PinballRollover,
+    PinballGate
+}
+
+public enum MarkerRole
+{
+    None,
+    Start,
+    Midpoint,
+    End,
+    Secret,
+    Switch
 }
 
 public sealed record WorldObject(
@@ -22,11 +38,23 @@ public sealed record WorldObject(
     float ThicknessUnits = 0.8f,
     float SpeedUnits = 0f,
     float Phase = 0f,
-    float RangeUnits = 5f
+    float RangeUnits = 5f,
+    MarkerRole MarkerRole = MarkerRole.None,
+    bool VisibleInPlay = true,
+    bool UseCustomTint = false,
+    Color Tint = default,
+    float Opacity = 1f
 )
 {
     public Vector2 Center => (Start + End) * 0.5f;
-    public bool IsEditorOnly => Kind is WorldObjectKind.StartPoint or WorldObjectKind.HiddenSwitch;
+    public bool IsMarker => MarkerRole != MarkerRole.None || Kind is WorldObjectKind.Checkpoint or WorldObjectKind.StartPoint or WorldObjectKind.HiddenSwitch;
+    public bool IsEditorOnly => !VisibleInPlay || Kind is WorldObjectKind.StartPoint or WorldObjectKind.HiddenSwitch;
+    public Color Styled(Color fallback)
+    {
+        Color color = UseCustomTint ? Tint : fallback;
+        color.A *= Mathf.Clamp(Opacity, 0f, 1f);
+        return color;
+    }
 
     public WorldObject Translated(Vector2 delta)
     {
