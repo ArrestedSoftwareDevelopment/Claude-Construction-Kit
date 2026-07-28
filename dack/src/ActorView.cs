@@ -20,6 +20,7 @@ public partial class ActorView : Control
     public bool ManualPlacement { get; set; }
     public Vector2 HomePosition { get; set; }
     public bool EditorMode { get; set; } = true;
+    public bool CanFireProjectiles { get; set; }
 
     public bool IsPlayable
     {

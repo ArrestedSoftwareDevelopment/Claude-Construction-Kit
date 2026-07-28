@@ -636,7 +636,9 @@ public sealed class SpriteAnimationSet
                     continue;
 
                 DetectedFrame frame = FloodFrame(image, visited, x, y);
-                if (frame.OpaquePixels < 180 || frame.Height < 24)
+                int minPixels = height <= 180 ? 25 : 180;
+                int minHeight = height <= 180 ? 4 : 24;
+                if (frame.OpaquePixels < minPixels || frame.Height < minHeight || frame.Width < 4)
                     continue;
 
                 frames.Add(frame.Grow(1, width, height));

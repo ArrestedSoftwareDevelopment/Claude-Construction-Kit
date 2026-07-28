@@ -109,6 +109,7 @@ public partial class Main : Control
     private double _deathTestSeconds;
     private double _shootAnimSeconds;
     private double _contactInvulnerabilitySeconds;
+    private double _hazardArmDelaySeconds;
     private int _platformerScore;
     private int _platformerLives = 3;
     private int _platformerDeaths;
@@ -1363,15 +1364,17 @@ public partial class Main : Control
 
     private void SetEnemyCharacter(string actorName, SpriteAnimationSet? animationSet, string note)
     {
-        AddEnemyCharacter(actorName, animationSet, note, "This is the first enemy/import test: one source strip, many possible game roles.");
+        AddEnemyCharacter(actorName, animationSet, note, "This is the first enemy/import test: one source strip, many possible game roles.", canFireProjectiles: true);
     }
 
     private void AddTgcEnemy(string actorName, SpriteAnimationSet? animationSet, string note)
     {
-        AddEnemyCharacter(actorName, animationSet, note, "TGC shelf import: treated as an enemy for now. Drag, scale, save, and later assign behavior/projectiles.");
+        bool canFire = actorName.Contains("Boss", StringComparison.OrdinalIgnoreCase)
+            || actorName.Contains("Fleet", StringComparison.OrdinalIgnoreCase);
+        AddEnemyCharacter(actorName, animationSet, note, "TGC shelf import: treated as an enemy for now. Drag, scale, save, and later assign behavior/projectiles.", canFire);
     }
 
-    private void AddEnemyCharacter(string actorName, SpriteAnimationSet? animationSet, string note, string footer)
+    private void AddEnemyCharacter(string actorName, SpriteAnimationSet? animationSet, string note, string footer, bool canFireProjectiles)
     {
         if (animationSet is null)
         {
@@ -1387,6 +1390,7 @@ public partial class Main : Control
         enemy.IsPlayable = false;
         enemy.Visible = true;
         enemy.FacingRight = false;
+        enemy.CanFireProjectiles = canFireProjectiles;
         enemy.ManualPlacement = true;
         int slotIndex = _actors.IndexOf(enemy);
         enemy.Size = EnemyDefaultSize();
@@ -1395,7 +1399,7 @@ public partial class Main : Control
         enemy.HomePosition = enemy.Position;
         enemy.TooltipText = $"Select {actorName}";
         SelectActor(enemy);
-        _inspectorText.Text = note + "\n\n" + footer;
+        _inspectorText.Text = note + "\n\n" + footer + $"\n\nProjectile capable: {(canFireProjectiles ? "yes" : "no")}.";
     }
 
     private ActorView NextEnemySlot()
@@ -2212,6 +2216,7 @@ public partial class Main : Control
         SyncEditorModeToScene();
         if (_editorMode)
         {
+            ClearEnemyShots();
             _platformerStatus = "EDITOR";
             _inspectorText.Text = "Editor mode enabled.\n\nMarkers, enemies, and toolkit objects are draggable/scalable. Enemy AI and shots are paused for safe layout.";
         }
@@ -2220,7 +2225,8 @@ public partial class Main : Control
             SetPlaysetMode(PlaysetMode.Platformer);
             _platformerLives = Mathf.Max(1, _platformerLives);
             _platformerStatus = "PLAY";
-            _contactInvulnerabilitySeconds = 0.75;
+            _contactInvulnerabilitySeconds = 1.25;
+            _hazardArmDelaySeconds = 1.0;
             ClearPlayerShots();
             ClearEnemyShots();
             SnapPlayerToStart();
@@ -2337,6 +2343,7 @@ public partial class Main : Control
         }
 
         _shootAnimSeconds = Mathf.Max(0, (float)_shootAnimSeconds - dt);
+        _hazardArmDelaySeconds = Mathf.Max(0, (float)_hazardArmDelaySeconds - dt);
         float unit = _textUnitPixels;
         float motionUnit = Mathf.Max(unit, 10f);
         float inputX = Input.GetAxis("dack_left", "dack_right");
@@ -2402,7 +2409,7 @@ public partial class Main : Control
 
         if (!_platformerSafetyFloor && next.Y > playBounds.End.Y + _fallDeathHeightUnits * _textUnitPixels)
         {
-            TriggerDeathAnimation();
+            KillPlayer("FALL DEATH");
             ClearPlayerShots();
             RefreshMotionText();
             return;
@@ -2410,7 +2417,7 @@ public partial class Main : Control
 
         if (next.Y > playBounds.End.Y + _player.Size.Y)
         {
-            TriggerDeathAnimation();
+            KillPlayer("FALL DEATH");
             ClearPlayerShots();
             RefreshMotionText();
             return;
@@ -2421,7 +2428,7 @@ public partial class Main : Control
         _contactInvulnerabilitySeconds = Mathf.Max(0, (float)_contactInvulnerabilitySeconds - dt);
         if (TryPlayerEnemyContact())
         {
-            KillPlayer("ENEMY CONTACT");
+            KillPlayer(PlayerContactDeathReason());
             return;
         }
 
@@ -2519,7 +2526,7 @@ public partial class Main : Control
                 enemy.FacingRight = _player.Position.X > enemy.Position.X;
             enemy.MotionState = ActorMotionState.Idle;
 
-            if (_enemyProjectilesEnabled)
+            if (_enemyProjectilesEnabled && enemy.CanFireProjectiles && _hazardArmDelaySeconds <= 0)
             {
                 float timer = _enemyShotTimers.TryGetValue(enemy, out float existing) ? existing : 0.8f + i * 0.45f;
                 timer -= dt;
@@ -2554,7 +2561,9 @@ public partial class Main : Control
             direction = direction.Normalized();
 
         float shotSpeed = Mathf.Max(_textUnitPixels * 28f, 190f);
-        _enemyShots.Add(new EnemyShot(origin, direction * shotSpeed, 2.2f));
+        _enemyShots.Add(new EnemyShot(origin, direction * shotSpeed, 2.2f, 0f, enemy.ActorName));
+        _platformerStatus = $"{enemy.ActorName.ToUpperInvariant()} FIRED";
+        RefreshPlatformerHud();
         PushEnemyShotPositionsToPlayfield();
     }
 
@@ -2582,16 +2591,17 @@ public partial class Main : Control
             EnemyShot shot = _enemyShots[i];
             shot.Position += shot.Velocity * dt;
             shot.Life -= dt;
+            shot.Age += dt;
             Rect2 shotBounds = new(shot.Position - new Vector2(4f, 4f), new Vector2(8f, 8f));
             if (shot.Life <= 0f || !playBounds.HasPoint(shot.Position))
             {
                 _enemyShots.RemoveAt(i);
             }
-            else if (shotBounds.Intersects(playerBounds))
+            else if (shot.Age > 0.32f && shotBounds.Intersects(playerBounds))
             {
                 AddImpactEffect(playerBounds.GetCenter());
                 _enemyShots.RemoveAt(i);
-                KillPlayer("DRAGON SHOT");
+                KillPlayer($"{shot.OwnerName.ToUpperInvariant()} SHOT");
             }
             else
             {
@@ -2667,7 +2677,7 @@ public partial class Main : Control
 
     private bool TryPlayerEnemyContact()
     {
-        if (!_enemyAiEnabled || _contactInvulnerabilitySeconds > 0 || _deathTestSeconds > 0)
+        if (!_enemyAiEnabled || _hazardArmDelaySeconds > 0 || _contactInvulnerabilitySeconds > 0 || _deathTestSeconds > 0)
             return false;
 
         Rect2 playerBounds = PlayerHitBounds();
@@ -2677,11 +2687,40 @@ public partial class Main : Control
             if (!enemy.Visible || enemy.AnimationSet is null)
                 continue;
 
-            if (playerBounds.Intersects(EnemyHitBounds(enemy)))
+            Rect2 enemyBounds = EnemyHitBounds(enemy);
+            Rect2 overlap = playerBounds.Intersection(enemyBounds);
+            float overlapArea = overlap.Size.X * overlap.Size.Y;
+            float playerArea = playerBounds.Size.X * playerBounds.Size.Y;
+            float enemyArea = enemyBounds.Size.X * enemyBounds.Size.Y;
+            if (overlapArea > Mathf.Min(playerArea, enemyArea) * 0.12f)
                 return true;
         }
 
         return false;
+    }
+
+    private string PlayerContactDeathReason()
+    {
+        Rect2 playerBounds = PlayerHitBounds();
+        for (int i = 1; i < _actors.Count; i++)
+        {
+            ActorView enemy = _actors[i];
+            if (!enemy.Visible || enemy.AnimationSet is null)
+                continue;
+
+            Rect2 enemyBounds = EnemyHitBounds(enemy);
+            if (!playerBounds.Intersects(enemyBounds))
+                continue;
+
+            Rect2 overlap = playerBounds.Intersection(enemyBounds);
+            float overlapArea = overlap.Size.X * overlap.Size.Y;
+            float playerArea = playerBounds.Size.X * playerBounds.Size.Y;
+            float enemyArea = enemyBounds.Size.X * enemyBounds.Size.Y;
+            if (overlapArea > Mathf.Min(playerArea, enemyArea) * 0.12f)
+                return $"{enemy.ActorName.ToUpperInvariant()} CONTACT";
+        }
+
+        return "ENEMY CONTACT";
     }
 
     private bool TryHitEnemy(Rect2 shotBounds, out Vector2 impactPosition)
@@ -2709,6 +2748,9 @@ public partial class Main : Control
 
     private void KillPlayer(string reason)
     {
+        if (_editorMode || _playsetMode != PlaysetMode.Platformer)
+            return;
+
         if (_deathTestSeconds > 0 || _contactInvulnerabilitySeconds > 0)
             return;
 
@@ -2718,6 +2760,7 @@ public partial class Main : Control
         _contactInvulnerabilitySeconds = 1.0;
         ClearPlayerShots();
         ClearEnemyShots();
+        _playfield.ThrowDeathPhrase(_player.Position + _player.Size * 0.5f, reason);
         TriggerDeathAnimation();
         RefreshPlatformerHud(reason);
     }
@@ -3350,11 +3393,13 @@ public partial class Main : Control
         public float Life = life;
     }
 
-    private struct EnemyShot(Vector2 position, Vector2 velocity, float life)
+    private struct EnemyShot(Vector2 position, Vector2 velocity, float life, float age, string ownerName)
     {
         public Vector2 Position = position;
         public Vector2 Velocity = velocity;
         public float Life = life;
+        public float Age = age;
+        public string OwnerName = ownerName;
     }
 
     private struct ImpactEffect(Vector2 position, float age)

@@ -726,6 +726,12 @@ public partial class PlayfieldSurface : Control
         _letterEffects.ExplodeWord(letters, position, new Color("#FFF0A8"), Mathf.Clamp(0.85f + count * 0.08f, 0.9f, 1.8f));
     }
 
+    public void ThrowDeathPhrase(Vector2 position, string reason)
+    {
+        string phrase = string.IsNullOrWhiteSpace(reason) ? "DEATH" : reason;
+        _letterEffects.ExplodeWord(phrase, position, new Color("#FF2BD6"), 1.45f);
+    }
+
     private void DrawProjectileFrame(Vector2 position, int frame, float scale)
     {
         if (_fireballExplosion is null)
