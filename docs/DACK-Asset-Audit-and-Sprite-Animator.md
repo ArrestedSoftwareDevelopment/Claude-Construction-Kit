@@ -245,6 +245,81 @@ Recommended panes:
 
 The live pixel pad should appear as an edit mode for an individual frame or small sprite profile.
 
+## Character Picker / Action Label Flow
+
+The outer creator-facing workflow should be a Character Picker, not a raw file browser. A creator should be able to:
+
+1. pick an existing character;
+2. preview its action labels at the current playfield scale;
+3. swap it into the player/enemy slot;
+4. edit/fork it into a new character;
+5. fine-tune the action labels and frame groups.
+
+Starter action vocabulary:
+
+- idle;
+- run;
+- turn;
+- jump-up;
+- jump-apex;
+- fall;
+- land;
+- crawl;
+- climb;
+- climb-up;
+- climb-down;
+- dig;
+- dig-up;
+- dig-down;
+- slide;
+- shoot;
+- run-shoot;
+- jump-shoot;
+- shoot-up;
+- shoot-down;
+- bounce / stomp-rebound;
+- power-up / buff;
+- hurt;
+- death;
+- special/custom.
+
+Control note: vertical intent and jump intent must stay separate. Up is reserved for climbing, crawling, entering upward routes, and later digging/interaction tools. Jump should default to Space so platforming, climbing, and digging can coexist without fighting over the same key.
+
+Imported packs will often need human labeling. Blob/grid detection can find frame candidates, but it cannot know which frames mean `turn`, `land`, or `shoot` without a creator pass. The first test picker can therefore ship with rough labels and an explicit “needs labeling” state. DACK should make that labeling feel like tuning a toy: click an action, scrub frames, drag frame cards into order, preview in-place, and save the resulting `.dackanim.json`.
+
+The smallest useful version is a strip editor: show the detected frame strip, choose an action, then set start/end frame endpoints. DACK can preview the selected range immediately on the live actor. That gives us the essential labeling loop before we build the prettier timeline:
+
+- select source strip/sheet;
+- detect candidate frames;
+- choose action label;
+- set start/end endpoints;
+- preview;
+- adjust;
+- save draft labels.
+
+Frame display should use compact renumberable sequences. The first useful layout is rows of eight frames, each thumbnail labeled with its detected frame number. A creator-facing `number from` control lets the same detected sequence display as zero-based importer indices, one-based human labels, or another preferred sequence base without changing the underlying data. Highlighted ranges make it clear which frames currently belong to idle, run, jump, and later turn/land/shoot.
+
+Labels themselves must be editable and expandable. The creator should not be trapped in our starter vocabulary. The strip editor needs:
+
+- editable action names;
+- editable start/end frame numbers;
+- add-label support;
+- a per-label ping-pong/reverse toggle, so a short range like three jump frames can preview/play as a five-frame forward-then-back motion;
+- visual range highlighting for every label;
+- save/export to `.dackanim.json`, including both creator-visible numbering and internal zero-based detected frame indices;
+- later: delete/reorder labels, duplicate ranges, and bind labels explicitly to engine motion states.
+
+Current RAD test:
+
+- `STICKMAN` uses the admitted OctoPyte stick figure clips.
+- `TGC PLAYER` uses The Game Creator's Pack `Player_DarkOutline.png` strip through local blob-detected frame loading.
+- The TGC mapping starts rough, but the prototype exposes a visual 8-column frame strip plus editable label names, numeric endpoints, and ping-pong toggles. Recognized labels like idle/run/jump-up/jump-down drive the current player animation; extra labels such as run-shoot, jump-shoot, climb-up/down, dig-up/down, shoot-up/down, bounce, and death can be added and highlighted ahead of full engine binding.
+- `SAVE TGC LABELS` writes `dack/assets/quarantine/game-creators-pack-graphics-prep/tgc-player.dackanim.json`, a local-only manifest that records the frame rectangles, displayed frame numbers, internal playback indices, editable label names, and ping-pong flags. This is the debugging lens for numbering/range mistakes.
+
+Swinging vines/ropes should wait for the visible spline/Bezier tool family. A straight-line placeholder would teach the wrong feel. The desired version is an authored curve with draggable handles, visible swing arc, optional attach/detach points, and animation labels for grab, swing, release, and land.
+
+Power-up animations can often be effect composites rather than separate sprite sheets. The cheap useful version is: play the actor's idle or current-state animation, then layer reusable DACK effects over it—rings, glows, color cycling, sparks, outline pulses, rotating text sigils, or Jeff-Minter-style neon bursts. This lets a creator define `Power Up`, `Shielded`, `Hasted`, `Poisoned`, `Charged`, or `Invincible` without requiring new hand-drawn frames for every character.
+
 ## Import Pipeline
 
 ### Stage 1: Current RAD path

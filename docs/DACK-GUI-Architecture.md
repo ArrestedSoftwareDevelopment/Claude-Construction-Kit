@@ -293,6 +293,15 @@ Examples:
 
 ## Phased Refactor Path
 
+### Cross-Cutting Editor Tools
+
+DACK should grow a visible motion/path editor family:
+
+- **Parabola editor first:** cheap and broadly useful. Define start/end, apex/height, gravity/flight time, preview ghost positions, and bind the result to jumps, thrown objects, arcing shots, enemy hops, bounce/stomp rebounds, pickups, and power-up travel.
+- **Bezier/spline editor next:** richer handles for patrol paths, flying enemies, swinging vines/ropes, racing curves, pinball ramps/wireforms, camera moves, particle ribbons, and authored enemy entrances.
+
+The parabola editor should be near-term because it is simple, legible, and directly connected to the platformer/projectile work already underway. Beziers should wait until the UI can support curve handles cleanly.
+
 ### Phase A: Replace RAD Toolbar with Shell Skeleton
 
 - Input Router: Esc menu toggle, Boss Key separation, cursor policy.

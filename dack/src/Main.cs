@@ -2,6 +2,8 @@ using Godot;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.IO;
+using System.Text.Json;
 
 namespace Dack;
 
@@ -43,6 +45,30 @@ public partial class Main : Control
     private HSlider _rangeSlider = null!;
     private HSlider _opacitySlider = null!;
     private HSlider _gravitySlider = null!;
+    private AnimationStripPreview _tgcStripPreview = null!;
+    private SpinBox _tgcNumberBase = null!;
+    private VBoxContainer _tgcClipRows = null!;
+    private readonly List<TgcClipRow> _tgcClipRowModels = [];
+    private readonly string[] _tgcPresetLabels =
+    [
+        "Run Shoot",
+        "Jump Shoot",
+        "Climb Up",
+        "Climb Down",
+        "Dig Up",
+        "Dig Down",
+        "Shoot Up",
+        "Shoot Down",
+        "Bounce",
+        "Turn",
+        "Land",
+        "Climb",
+        "Dig",
+        "Shoot",
+        "Hurt",
+        "Death",
+        "Special"
+    ];
     private ColorPickerButton _tintPicker = null!;
     private CheckBox _customTintCheck = null!;
     private BrickbatOverlay _brickbatOverlay = null!;
@@ -233,6 +259,88 @@ public partial class Main : Control
         _bindingLabel.AddThemeColorOverride("font_color", new Color("#52606D"));
         _bindingLabel.AddThemeFontSizeOverride("font_size", 13);
         side.AddChild(_bindingLabel);
+
+        side.AddChild(Heading("CHARACTER PICKER"));
+
+        HBoxContainer characterPicker = new();
+        side.AddChild(characterPicker);
+
+        Button stickman = Button("STICKMAN");
+        stickman.TooltipText = "Use the current OctoPyte stick figure animation set.";
+        stickman.Pressed += () => SetPlayerCharacter("Playable Scout", SpriteAnimationSet.TryLoadStickman(), "Stickman labels: idle, run, jump-up, jump-down. Turn is currently facing flip.");
+        characterPicker.AddChild(stickman);
+
+        Button gameCreatorPlayer = Button("TGC PLAYER");
+        gameCreatorPlayer.TooltipText = "Use The Game Creator's Pack player strip via local blob-detected frames.";
+        gameCreatorPlayer.Pressed += ApplyTgcClipRanges;
+        characterPicker.AddChild(gameCreatorPlayer);
+
+        side.AddChild(Heading("TGC STRIP EDITOR"));
+        side.AddChild(CockpitNote("Name actions, edit start/end frame numbers, and add labels. The preview highlights every labeled range."));
+        int maxTgcFrame = Mathf.Max(0, SpriteAnimationSet.GetGameCreatorPlayerFrameCount() - 1);
+        _tgcStripPreview = new AnimationStripPreview
+        {
+            Columns = 8,
+            SizeFlagsHorizontal = SizeFlags.ExpandFill
+        };
+        side.AddChild(_tgcStripPreview);
+
+        HBoxContainer numbering = new();
+        numbering.AddThemeConstantOverride("separation", 6);
+        Label numberLabel = new()
+        {
+            Text = "Number from",
+            CustomMinimumSize = new Vector2(92, 0),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        numberLabel.AddThemeColorOverride("font_color", new Color("#202A34"));
+        numberLabel.AddThemeFontSizeOverride("font_size", 12);
+        numbering.AddChild(numberLabel);
+        _tgcNumberBase = ClipEndpointSpin(0, 999);
+        _tgcNumberBase.ValueChanged += _ => UpdateTgcStripPreview();
+        numbering.AddChild(_tgcNumberBase);
+        side.AddChild(numbering);
+
+        _tgcClipRows = new VBoxContainer();
+        _tgcClipRows.AddThemeConstantOverride("separation", 4);
+        side.AddChild(_tgcClipRows);
+        AddTgcClipRow("Idle", 0, 2, maxTgcFrame);
+        AddTgcClipRow("Run", 3, 14, maxTgcFrame);
+        AddTgcClipRow("Jump Up", 15, 15, maxTgcFrame);
+        AddTgcClipRow("Jump Down", 16, 16, maxTgcFrame);
+        AddTgcClipRow("Run Shoot", Mathf.Min(17, maxTgcFrame), Mathf.Min(20, maxTgcFrame), maxTgcFrame);
+        AddTgcClipRow("Jump Shoot", Mathf.Min(21, maxTgcFrame), Mathf.Min(24, maxTgcFrame), maxTgcFrame);
+        AddTgcClipRow("Death", Mathf.Min(25, maxTgcFrame), maxTgcFrame, maxTgcFrame);
+        UpdateTgcStripPreview();
+
+        Button addPreset = Button("ADD PRESET LABEL");
+        addPreset.Pressed += () =>
+        {
+            string label = NextMissingPresetLabel();
+            int frame = Mathf.Clamp(_tgcClipRowModels.Count * 2, 0, maxTgcFrame);
+            AddTgcClipRow(label, frame, frame, maxTgcFrame);
+            UpdateTgcStripPreview();
+            _inspectorText.Text = $"{label} animation label added from the preset vocabulary. Edit its frame numbers to match the strip.";
+        };
+        side.AddChild(addPreset);
+
+        Button addLabel = Button("ADD LABEL");
+        addLabel.Pressed += () =>
+        {
+            int frame = Mathf.Clamp(_tgcClipRowModels.Count * 2, 0, maxTgcFrame);
+            AddTgcClipRow($"Action {_tgcClipRowModels.Count + 1}", frame, frame, maxTgcFrame);
+            UpdateTgcStripPreview();
+            _inspectorText.Text = "New animation label added. Rename it, then edit its start/end frame numbers.";
+        };
+        side.AddChild(addLabel);
+
+        Button applyTgcClips = Button("APPLY TGC LABELS");
+        applyTgcClips.Pressed += ApplyTgcClipRanges;
+        side.AddChild(applyTgcClips);
+
+        Button saveTgcClips = Button("SAVE TGC LABELS");
+        saveTgcClips.Pressed += SaveTgcClipLabels;
+        side.AddChild(saveTgcClips);
 
         _spritePad = new SpritePad();
         side.AddChild(_spritePad);
@@ -589,6 +697,12 @@ public partial class Main : Control
         pinball.AddChild(enter);
 
         pinball.AddChild(CockpitHeading("FIRST PARTS"));
+        pinball.AddChild(PinballShelfButton("Add Flipper", WorldObjectKind.PinballFlipper, "Pivot-to-tip flipper placeholder. A/B handles define pivot, length, and resting angle."));
+        pinball.AddChild(PinballShelfButton("Add Bumper", WorldObjectKind.PinballBumper, "Circular pop bumper placeholder. Drag A/B to place and scale radius."));
+        pinball.AddChild(PinballShelfButton("Add Plunger", WorldObjectKind.PinballPlunger, "Launch lane/plunger placeholder. A/B handles define lane and launch direction."));
+        pinball.AddChild(PinballShelfButton("Add Drain", WorldObjectKind.PinballDrain, "Drain/outlane placeholder. A/B handles set drain width."));
+        pinball.AddChild(PinballShelfButton("Add Rollover", WorldObjectKind.PinballRollover, "Small scoring/lit insert strip. A/B handles set position and width."));
+        pinball.AddChild(PinballShelfButton("Add Gate", WorldObjectKind.PinballGate, "One-way gate placeholder. A/B direction points toward allowed travel."));
         pinball.AddChild(CockpitNote(
             "Flippers, plunger lane, ball spawn, bumper, rollover, drain, gate, ramp rail, lit insert, jackpot target. "
             + "All should use direct handles: flipper sweep arc, bumper radius, drain width, gate direction, and plunger force."
@@ -939,6 +1053,252 @@ public partial class Main : Control
 
         _spritePad.Model = actor.Model;
         RefreshBindingText();
+    }
+
+    private void SetPlayerCharacter(string actorName, SpriteAnimationSet? animationSet, string note)
+    {
+        if (animationSet is null)
+        {
+            _inspectorText.Text = $"{actorName} could not be loaded. The raw/local source may be missing; keeping the current character.";
+            return;
+        }
+
+        _player.ActorName = actorName;
+        _player.AnimationSet = animationSet;
+        SelectActor(_player);
+        _inspectorText.Text = note + "\n\nThis is the seed of the Character Picker: choose a source, preview action labels, then edit/fine-tune clips.";
+        RefreshMotionText();
+    }
+
+    private void ApplyTgcClipRanges()
+    {
+        AnimationFrameRange idle = FindTgcClipRange(new AnimationFrameRange(0, 2), "idle");
+        AnimationFrameRange run = FindTgcClipRange(new AnimationFrameRange(3, 14), "run", "walk");
+        AnimationFrameRange jumpUp = FindTgcClipRange(new AnimationFrameRange(15, 15), "jump up", "jump", "rise");
+        AnimationFrameRange jumpDown = FindTgcClipRange(new AnimationFrameRange(16, 16), "jump down", "fall", "land");
+        bool idlePingPong = FindTgcClipPingPong("idle");
+        bool runPingPong = FindTgcClipPingPong("run", "walk");
+        bool jumpUpPingPong = FindTgcClipPingPong("jump up", "jump", "rise");
+        bool jumpDownPingPong = FindTgcClipPingPong("jump down", "fall", "land");
+        UpdateTgcStripPreview();
+
+        SetPlayerCharacter(
+            "TGC Player",
+            SpriteAnimationSet.TryLoadGameCreatorPlayer(idle, run, jumpUp, jumpDown, idlePingPong, runPingPong, jumpUpPingPong, jumpDownPingPong),
+            "TGC Player labels applied.\n\n"
+            + $"Idle {idle.Start}-{idle.End}; Run {run.Start}-{run.End}; Jump-up {jumpUp.Start}-{jumpUp.End}; Jump-down {jumpDown.Start}-{jumpDown.End}.\n\n"
+            + "PingPong turns short ranges into forward/back sequences, useful for smoothing jumps and other small motions. Extra labels such as Run Shoot, Jump Shoot, and Death are highlighted now and will bind to engine states as those states come online."
+        );
+    }
+
+    private void SaveTgcClipLabels()
+    {
+        string projectRoot = ProjectSettings.GlobalizePath("res://");
+        string outputPath = Path.GetFullPath(Path.Combine(
+            projectRoot,
+            "assets",
+            "quarantine",
+            "game-creators-pack-graphics-prep",
+            "tgc-player.dackanim.json"
+        ));
+
+        Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
+        int numberBase = Mathf.RoundToInt((float)(_tgcNumberBase?.Value ?? 0));
+        SpriteAnimationSet.TryLoadGameCreatorPlayerFramePreview(out _, out Rect2[] frameRects);
+
+        List<object> labels = [];
+        for (int i = 0; i < _tgcClipRowModels.Count; i++)
+        {
+            TgcClipRow row = _tgcClipRowModels[i];
+            AnimationFrameRange editorRange = SpinRange(row.Start, row.End);
+            AnimationFrameRange internalRange = DisplayToInternalRange(editorRange, numberBase, frameRects.Length);
+            labels.Add(new
+            {
+                name = string.IsNullOrWhiteSpace(row.Name.Text) ? $"Action {i + 1}" : row.Name.Text.Trim(),
+                editorStart = editorRange.Start,
+                editorEnd = editorRange.End,
+                internalStart = internalRange.Start,
+                internalEnd = internalRange.End,
+                pingPong = row.PingPong.ButtonPressed,
+                color = ClipColor(i).ToHtml(false)
+            });
+        }
+
+        object manifest = new
+        {
+            format = "dackanim",
+            version = 1,
+            source = "raw base assets/The Game Creator's Pack/The Game Creator's Pack/Graphic Pack/Player_DarkOutline.png",
+            sourceKind = "raw-local-evaluation",
+            frameNumberBase = numberBase,
+            note = "editorStart/editorEnd are the numbers shown in the strip editor; internalStart/internalEnd are zero-based detected frame indices used by playback.",
+            frames = frameRects.Select((rect, index) => new
+            {
+                index,
+                displayed = index + numberBase,
+                rect = new[] { rect.Position.X, rect.Position.Y, rect.Size.X, rect.Size.Y }
+            }).ToArray(),
+            labels
+        };
+
+        JsonSerializerOptions options = new() { WriteIndented = true };
+        File.WriteAllText(outputPath, JsonSerializer.Serialize(manifest, options));
+        _inspectorText.Text = $"TGC animation labels saved.\n\n{outputPath}\n\nThis file records displayed numbers, internal zero-based frame indices, frame rectangles, label names, and PingPong toggles.";
+    }
+
+    private AnimationFrameRange FindTgcClipRange(AnimationFrameRange fallback, params string[] names)
+    {
+        int numberBase = Mathf.RoundToInt((float)(_tgcNumberBase?.Value ?? 0));
+        int frameCount = SpriteAnimationSet.GetGameCreatorPlayerFrameCount();
+        foreach (TgcClipRow row in _tgcClipRowModels)
+        {
+            string normalized = NormalizeClipName(row.Name.Text);
+            foreach (string name in names)
+            {
+                if (normalized == NormalizeClipName(name))
+                    return DisplayToInternalRange(SpinRange(row.Start, row.End), numberBase, frameCount);
+            }
+        }
+
+        return fallback;
+    }
+
+    private bool FindTgcClipPingPong(params string[] names)
+    {
+        foreach (TgcClipRow row in _tgcClipRowModels)
+        {
+            string normalized = NormalizeClipName(row.Name.Text);
+            foreach (string name in names)
+            {
+                if (normalized == NormalizeClipName(name))
+                    return row.PingPong.ButtonPressed;
+            }
+        }
+
+        return false;
+    }
+
+    private void UpdateTgcStripPreview()
+    {
+        if (_tgcStripPreview is null
+            || _tgcNumberBase is null
+            || _tgcClipRows is null)
+        {
+            return;
+        }
+
+        _tgcStripPreview.NumberBase = Mathf.RoundToInt((float)_tgcNumberBase.Value);
+        _tgcStripPreview.SetLabels(GetTgcClipLabels());
+    }
+
+    private static AnimationFrameRange SpinRange(SpinBox start, SpinBox end)
+    {
+        return new AnimationFrameRange(
+            Mathf.RoundToInt((float)start.Value),
+            Mathf.RoundToInt((float)end.Value)
+        );
+    }
+
+    private static AnimationFrameRange DisplayToInternalRange(AnimationFrameRange editorRange, int numberBase, int frameCount)
+    {
+        if (frameCount <= 0)
+            return new AnimationFrameRange(0, 0);
+
+        int start = Mathf.Clamp(editorRange.Start - numberBase, 0, frameCount - 1);
+        int end = Mathf.Clamp(editorRange.End - numberBase, 0, frameCount - 1);
+        return new AnimationFrameRange(start, end);
+    }
+
+    private IReadOnlyList<AnimationClipLabel> GetTgcClipLabels()
+    {
+        List<AnimationClipLabel> labels = [];
+        int numberBase = Mathf.RoundToInt((float)(_tgcNumberBase?.Value ?? 0));
+        int frameCount = SpriteAnimationSet.GetGameCreatorPlayerFrameCount();
+        for (int i = 0; i < _tgcClipRowModels.Count; i++)
+        {
+            TgcClipRow row = _tgcClipRowModels[i];
+            string name = string.IsNullOrWhiteSpace(row.Name.Text) ? $"Action {i + 1}" : row.Name.Text.Trim();
+            AnimationFrameRange internalRange = DisplayToInternalRange(SpinRange(row.Start, row.End), numberBase, frameCount);
+            labels.Add(new AnimationClipLabel(name, internalRange, ClipColor(i), row.PingPong.ButtonPressed));
+        }
+
+        return labels;
+    }
+
+    private void AddTgcClipRow(string name, int start, int end, int maxFrame)
+    {
+        TgcClipRow row = BuildEditableClipRow(name, start, end, maxFrame);
+        _tgcClipRowModels.Add(row);
+        _tgcClipRows.AddChild(row.Row);
+    }
+
+    private string NextMissingPresetLabel()
+    {
+        foreach (string label in _tgcPresetLabels)
+        {
+            bool exists = _tgcClipRowModels.Any(row => NormalizeClipName(row.Name.Text) == NormalizeClipName(label));
+            if (!exists)
+                return label;
+        }
+
+        return $"Action {_tgcClipRowModels.Count + 1}";
+    }
+
+    private TgcClipRow BuildEditableClipRow(string name, int defaultStart, int defaultEnd, int maxFrame)
+    {
+        HBoxContainer row = new();
+        row.AddThemeConstantOverride("separation", 6);
+
+        LineEdit nameEdit = new()
+        {
+            Text = name,
+            CustomMinimumSize = new Vector2(96, 32),
+            PlaceholderText = "Label"
+        };
+        nameEdit.AddThemeFontSizeOverride("font_size", 12);
+        nameEdit.TextChanged += _ => UpdateTgcStripPreview();
+        row.AddChild(nameEdit);
+
+        SpinBox start = ClipEndpointSpin(defaultStart, maxFrame);
+        SpinBox end = ClipEndpointSpin(defaultEnd, maxFrame);
+        start.ValueChanged += _ => UpdateTgcStripPreview();
+        end.ValueChanged += _ => UpdateTgcStripPreview();
+        row.AddChild(start);
+        row.AddChild(end);
+
+        CheckBox pingPong = new()
+        {
+            Text = "↔",
+            TooltipText = "PingPong: play forward, then reverse the frames.",
+            CustomMinimumSize = new Vector2(36, 32),
+            FocusMode = FocusModeEnum.None
+        };
+        pingPong.Pressed += UpdateTgcStripPreview;
+        row.AddChild(pingPong);
+
+        return new TgcClipRow(row, nameEdit, start, end, pingPong);
+    }
+
+    private static string NormalizeClipName(string value)
+    {
+        return value.Trim().ToLowerInvariant().Replace("_", " ").Replace("-", " ");
+    }
+
+    private static Color ClipColor(int index)
+    {
+        Color[] colors =
+        [
+            new Color("#5CB8A7"),
+            new Color("#F4C95D"),
+            new Color("#B56CFF"),
+            new Color("#5CB8FF"),
+            new Color("#FF5C35"),
+            new Color("#FF2BD6"),
+            new Color("#8A5A37"),
+            new Color("#7EE787")
+        ];
+
+        return colors[index % colors.Length];
     }
 
     private void ForkSelected()
@@ -1476,7 +1836,7 @@ public partial class Main : Control
         EnsureAction("dack_right", Key.D, Key.Right);
         EnsureAction("dack_up", Key.W, Key.Up);
         EnsureAction("dack_down", Key.S, Key.Down);
-        EnsureAction("dack_jump", Key.Space, Key.W, Key.Up);
+        EnsureAction("dack_jump", Key.Space);
         EnsureAction("dack_shoot", Key.J, Key.X);
     }
 
@@ -1485,6 +1845,8 @@ public partial class Main : Control
         StringName action = actionName;
         if (!InputMap.HasAction(action))
             InputMap.AddAction(action);
+        else
+            InputMap.ActionEraseEvents(action);
 
         foreach (Key key in keys)
         {
@@ -1515,6 +1877,44 @@ public partial class Main : Control
         return button;
     }
 
+    private static HBoxContainer BuildClipRangeRow(string labelText, out SpinBox start, out SpinBox end, int defaultStart, int defaultEnd, int maxFrame)
+    {
+        HBoxContainer row = new();
+        row.AddThemeConstantOverride("separation", 6);
+
+        Label label = new()
+        {
+            Text = labelText,
+            CustomMinimumSize = new Vector2(64, 0),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        label.AddThemeFontSizeOverride("font_size", 12);
+        label.AddThemeColorOverride("font_color", new Color("#202A34"));
+        row.AddChild(label);
+
+        start = ClipEndpointSpin(defaultStart, maxFrame);
+        end = ClipEndpointSpin(defaultEnd, maxFrame);
+        row.AddChild(start);
+        row.AddChild(end);
+        return row;
+    }
+
+    private static SpinBox ClipEndpointSpin(int value, int maxFrame)
+    {
+        SpinBox spin = new()
+        {
+            MinValue = 0,
+            MaxValue = Mathf.Max(0, maxFrame),
+            Value = Mathf.Clamp(value, 0, Mathf.Max(0, maxFrame)),
+            Step = 1,
+            CustomMinimumSize = new Vector2(70, 32),
+            FocusMode = FocusModeEnum.Click
+        };
+        spin.GetLineEdit().FocusMode = FocusModeEnum.Click;
+        spin.GetLineEdit().SelectAllOnFocus = true;
+        return spin;
+    }
+
     private Button ShelfButton(string text, WorldObjectKind kind, string description)
     {
         Button button = Button(text);
@@ -1524,6 +1924,20 @@ public partial class Main : Control
             SetPlaysetMode(PlaysetMode.Platformer);
             _playfield.AddPlacedObject(kind);
             _inspectorText.Text = $"{text} placed.\n\n{description}\n\nDrag either A/B endpoint handle on the playfield to move, scale, or angle it.";
+            RefreshCockpitStatus();
+        };
+        return button;
+    }
+
+    private Button PinballShelfButton(string text, WorldObjectKind kind, string description)
+    {
+        Button button = Button(text);
+        button.TooltipText = description;
+        button.Pressed += () =>
+        {
+            SetPlaysetMode(PlaysetMode.Pinball);
+            _playfield.AddPlacedObject(kind);
+            _inspectorText.Text = $"{text} placed.\n\n{description}\n\nThis is a pinball construction placeholder: draggable now, physics binding later.";
             RefreshCockpitStatus();
         };
         return button;
@@ -1556,6 +1970,12 @@ public partial class Main : Control
             WorldObjectKind.StartPoint => new Color("#B56CFF"),
             WorldObjectKind.HiddenSwitch => new Color("#FF2BD6"),
             WorldObjectKind.Checkpoint => new Color("#5CB8A7"),
+            WorldObjectKind.PinballFlipper => new Color("#FF5C35"),
+            WorldObjectKind.PinballBumper => new Color("#5CB8A7"),
+            WorldObjectKind.PinballPlunger => new Color("#B56CFF"),
+            WorldObjectKind.PinballDrain => new Color("#202A34"),
+            WorldObjectKind.PinballRollover => new Color("#F4C95D"),
+            WorldObjectKind.PinballGate => new Color("#5CB8FF"),
             _ => new Color("#5CB8A7")
         };
     }
@@ -1629,4 +2049,12 @@ public partial class Main : Control
         public Vector2 Velocity = velocity;
         public float Life = life;
     }
+
+    private sealed record TgcClipRow(
+        HBoxContainer Row,
+        LineEdit Name,
+        SpinBox Start,
+        SpinBox End,
+        CheckBox PingPong
+    );
 }

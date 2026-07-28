@@ -78,6 +78,12 @@ dotnet build DACK.csproj
 - Endpoint-built ramps, conveyors, elevators, and ladders are live world objects for editor-authored additions; screenshot mode currently focuses on text-only terrain.
 - The prototype opens as playfield-only real estate; use the floating toolbar to restore the sprite pad or switch playsets.
 - The playable scout uses Stickman Pack idle, run, and jump animation frames.
+- The right-side prototype now includes a tiny Character Picker: `STICKMAN` restores the admitted stick figure, while `TGC PLAYER` tests a raw-vault strip from The Game Creator's Pack. A small TGC strip editor displays detected frames in renumberable rows of eight, supports editable action labels, preset labels, editable start/end frame numbers, per-label ping-pong toggles, and add-label highlighting, proving the picker/edit/fork/label workflow for actions like idle, run, run-shoot, jump-shoot, climb-up/down, dig-up/down, shoot-up/down, bounce/stomp, turn, jump, land, hurt, and death.
+- `SAVE TGC LABELS` writes a local-only `.dackanim.json` manifest under `dack/assets/quarantine/game-creators-pack-graphics-prep/`, including displayed frame numbers, internal detected indices, frame rectangles, labels, and ping-pong flags so numbering mistakes can be inspected.
+- Platformer jump is now Space-only. Up remains reserved for climbing/crawling/upward movement so ladders, digging, and vertical games do not fight the jump binding.
+- Swinging vines/ropes belong with the upcoming spline/Bezier tool family so they can use graceful visible arcs and draggable curve handles rather than stiff line placeholders.
+- A parabola/path editor belongs on the roadmap. Parabolas are the cheap first version: start/end/apex handles for jumps, tossed objects, arcing shots, enemy hops, bounce rebounds, and power-up travel. Bezier/spline paths come after for vines, patrols, racing curves, pinball ramps, and prettier motion.
+- Power-up animations can start as idle/current animation plus reusable DACK visual effects: glow, rings, sparks, color cycling, outline pulses, rotating symbols, and other ridiculous neon blessings.
 - Use the floating playset toolbar to switch between **Platformer** and **Brickbat**.
 - Playsets intentionally share the same cloned page state until you press **Reset** or start a new configured game. Brickbat can erase/deform text, then Platformer can inherit those holes as changed terrain.
 - Use **Floor On/Off** to toggle the platformer safety floor. Floor On keeps a bottom catch surface; Floor Off allows death-plunge levels.

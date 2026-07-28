@@ -293,6 +293,12 @@ public partial class PlayfieldSurface : Control
             WorldObjectKind.Checkpoint => CreateMarker(center, unit, MarkerRole.Midpoint, true),
             WorldObjectKind.StartPoint => CreateMarker(center, unit, MarkerRole.Start, false),
             WorldObjectKind.HiddenSwitch => CreateMarker(center, unit, MarkerRole.Switch, false),
+            WorldObjectKind.PinballFlipper => new WorldObject(kind, center + new Vector2(-unit * 8f, unit * 12f), center + new Vector2(unit * 10f, unit * 9f), 1.25f, 12f, 0f, 5f, MarkerRole.None, true, false, default, 0.92f),
+            WorldObjectKind.PinballBumper => new WorldObject(kind, center, center + new Vector2(unit * 5f, 0), 1.2f, 0f, 0f, 5f, MarkerRole.None, true, false, default, 0.92f),
+            WorldObjectKind.PinballPlunger => new WorldObject(kind, center + new Vector2(unit * 18f, unit * 16f), center + new Vector2(unit * 18f, -unit * 12f), 1.1f, 12f, 0f, 5f, MarkerRole.None, true, false, default, 0.9f),
+            WorldObjectKind.PinballDrain => new WorldObject(kind, center + new Vector2(-unit * 12f, unit * 18f), center + new Vector2(unit * 12f, unit * 18f), 1.1f, 0f, 0f, 5f, MarkerRole.None, true, false, default, 0.9f),
+            WorldObjectKind.PinballRollover => new WorldObject(kind, center + new Vector2(-unit * 5f, -unit * 4f), center + new Vector2(unit * 5f, -unit * 4f), 0.85f, 0f, 0f, 5f, MarkerRole.None, true, false, default, 0.88f),
+            WorldObjectKind.PinballGate => new WorldObject(kind, center + new Vector2(-unit * 5f, unit * 2f), center + new Vector2(unit * 6f, -unit * 4f), 0.75f, 0f, 0f, 5f, MarkerRole.None, true, false, default, 0.88f),
             _ => new WorldObject(kind, center - new Vector2(unit * 8f, 0), center + new Vector2(unit * 8f, 0), 0.8f)
         };
 
@@ -649,6 +655,24 @@ public partial class PlayfieldSurface : Control
 
         foreach (WorldObject hiddenSwitch in ObjectsOfKind(WorldObjectKind.HiddenSwitch))
             DrawEditorOnlyObject(hiddenSwitch, "SWITCH", new Color("#FF2BD6"));
+
+        foreach (WorldObject flipper in ObjectsOfKind(WorldObjectKind.PinballFlipper))
+            DrawPinballFlipper(flipper);
+
+        foreach (WorldObject bumper in ObjectsOfKind(WorldObjectKind.PinballBumper))
+            DrawPinballBumper(bumper);
+
+        foreach (WorldObject plunger in ObjectsOfKind(WorldObjectKind.PinballPlunger))
+            DrawPinballPlunger(plunger);
+
+        foreach (WorldObject drain in ObjectsOfKind(WorldObjectKind.PinballDrain))
+            DrawPinballDrain(drain);
+
+        foreach (WorldObject rollover in ObjectsOfKind(WorldObjectKind.PinballRollover))
+            DrawPinballRollover(rollover);
+
+        foreach (WorldObject gate in ObjectsOfKind(WorldObjectKind.PinballGate))
+            DrawPinballGate(gate);
 
         DrawSelectedWorldObjectHandles();
     }
@@ -1271,6 +1295,77 @@ public partial class PlayfieldSurface : Control
         Vector2 flagC = topPoint + new Vector2(0, TextUnitPixels * 2.8f);
         DrawColoredPolygon([flagA, flagB, flagC], flag);
         DrawPolyline([flagA, flagB, flagC, flagA], new Color("#F7F5EF"), 1.5f);
+    }
+
+    private void DrawPinballFlipper(WorldObject flipper)
+    {
+        Vector2 start = flipper.ResolvePoint(flipper.Start, TextUnitPixels, ElapsedSeconds);
+        Vector2 end = flipper.ResolvePoint(flipper.End, TextUnitPixels, ElapsedSeconds);
+        Color body = flipper.Styled(new Color("#FF5C35"));
+        DrawCircle(start + new Vector2(2, 3), TextUnitPixels * 1.45f, new Color(0, 0, 0, 0.24f));
+        DrawLine(start + new Vector2(3, 4), end + new Vector2(3, 4), new Color(0, 0, 0, 0.20f), TextUnitPixels * 1.25f);
+        DrawLine(start, end, body, TextUnitPixels * 1.12f);
+        DrawLine(start, end, new Color("#FFF0A8"), 2f);
+        DrawCircle(start, TextUnitPixels * 1.15f, new Color("#202A34"));
+        DrawCircle(start, TextUnitPixels * 1.15f, new Color("#F7F5EF"), false, 1.5f);
+    }
+
+    private void DrawPinballBumper(WorldObject bumper)
+    {
+        Vector2 center = bumper.ResolvePoint(bumper.Start, TextUnitPixels, ElapsedSeconds);
+        float radius = Mathf.Max(TextUnitPixels * 3f, center.DistanceTo(bumper.End));
+        Color body = bumper.Styled(new Color("#5CB8A7"));
+        DrawCircle(center + new Vector2(3, 4), radius + 3f, new Color(0, 0, 0, 0.22f));
+        DrawCircle(center, radius, body);
+        DrawCircle(center, radius * 0.63f, new Color("#FFF0A8", body.A * 0.82f));
+        DrawCircle(center, radius, new Color("#F7F5EF"), false, 2f);
+        DrawString(ThemeDB.FallbackFont, center + new Vector2(-radius * 0.55f, 4f), "POP", HorizontalAlignment.Center, radius * 1.1f, 12, new Color("#202A34"));
+    }
+
+    private void DrawPinballPlunger(WorldObject plunger)
+    {
+        Vector2 start = plunger.ResolvePoint(plunger.Start, TextUnitPixels, ElapsedSeconds);
+        Vector2 end = plunger.ResolvePoint(plunger.End, TextUnitPixels, ElapsedSeconds);
+        Color body = plunger.Styled(new Color("#B56CFF"));
+        DrawLine(start + new Vector2(3, 4), end + new Vector2(3, 4), new Color(0, 0, 0, 0.22f), TextUnitPixels * 1.15f);
+        DrawLine(start, end, new Color("#52606D", body.A * 0.75f), TextUnitPixels * 0.75f);
+        DrawLine(start, end, body, 3f);
+        DrawCircle(start, TextUnitPixels * 1.7f, new Color("#FFF0A8", body.A));
+        DrawCircle(end, TextUnitPixels * 0.85f, new Color("#F7F5EF", body.A));
+    }
+
+    private void DrawPinballDrain(WorldObject drain)
+    {
+        Vector2 start = drain.ResolvePoint(drain.Start, TextUnitPixels, ElapsedSeconds);
+        Vector2 end = drain.ResolvePoint(drain.End, TextUnitPixels, ElapsedSeconds);
+        Color body = drain.Styled(new Color("#202A34"));
+        DrawLine(start + new Vector2(2, 4), end + new Vector2(2, 4), new Color(0, 0, 0, 0.28f), TextUnitPixels * 1.55f);
+        DrawLine(start, end, body, TextUnitPixels * 1.35f);
+        DrawLine(start, end, new Color("#FF2BD6", body.A), 2.5f);
+        DrawString(ThemeDB.FallbackFont, (start + end) * 0.5f + new Vector2(-34f, -8f), "DRAIN", HorizontalAlignment.Center, 68f, 12, new Color("#FFF0A8", body.A));
+    }
+
+    private void DrawPinballRollover(WorldObject rollover)
+    {
+        Vector2 start = rollover.ResolvePoint(rollover.Start, TextUnitPixels, ElapsedSeconds);
+        Vector2 end = rollover.ResolvePoint(rollover.End, TextUnitPixels, ElapsedSeconds);
+        Color body = rollover.Styled(new Color("#F4C95D"));
+        DrawLine(start + new Vector2(2, 3), end + new Vector2(2, 3), new Color(0, 0, 0, 0.20f), TextUnitPixels * 0.9f);
+        DrawLine(start, end, body, TextUnitPixels * 0.72f);
+        DrawLine(start, end, new Color("#F7F5EF", body.A), 1.5f);
+    }
+
+    private void DrawPinballGate(WorldObject gate)
+    {
+        Vector2 start = gate.ResolvePoint(gate.Start, TextUnitPixels, ElapsedSeconds);
+        Vector2 end = gate.ResolvePoint(gate.End, TextUnitPixels, ElapsedSeconds);
+        Vector2 direction = (end - start).LengthSquared() < 0.01f ? Vector2.Right : (end - start).Normalized();
+        Vector2 normal = new(-direction.Y, direction.X);
+        Color body = gate.Styled(new Color("#5CB8FF"));
+        DrawLine(start + new Vector2(2, 3), end + new Vector2(2, 3), new Color(0, 0, 0, 0.20f), TextUnitPixels * 0.6f);
+        DrawLine(start, end, body, TextUnitPixels * 0.45f);
+        DrawLine(end - direction * TextUnitPixels * 1.6f + normal * TextUnitPixels * 0.85f, end, new Color("#FFF0A8", body.A), 2f);
+        DrawLine(end - direction * TextUnitPixels * 1.6f - normal * TextUnitPixels * 0.85f, end, new Color("#FFF0A8", body.A), 2f);
     }
 
     private void DrawEditorOnlyObject(WorldObject worldObject, string label, Color color)
