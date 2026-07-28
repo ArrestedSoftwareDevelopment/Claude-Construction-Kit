@@ -3,6 +3,28 @@
 This is the first Desktop Arena Construction Kit proof of concept. It targets
 Godot 4.7.1 Mono and .NET 10.
 
+RAD status: the static screenshot proof has done its job. It proved text-as-terrain,
+text-as-target, clone-only erasure, cross-playset deformation, platformer
+projectiles as text mutation, reusable effects, and the live-linked sprite pad.
+The next major work should move from "floating game toolbar over screenshot" to
+the real editor shell: Live Desktop capture, asset shelf, draggable toolkit
+parts, direct manipulation handles, and property inspectors.
+
+GUI direction is organized in `../docs/DACK-GUI-Architecture.md`: a collapsible
+construction cockpit with Play / Build / Understand moods, toolkit shelves,
+direct handles, Word Sense status, and an Understanding Overlay for engine
+detections, invisible logic, and clone mutations.
+
+Asset and animation direction is organized in
+`../docs/DACK-Asset-Audit-and-Sprite-Animator.md`: current approved assets,
+raw-vault candidates, provenance rules, and the split between the live-linked
+sprite pad and the future sprite animator/catalog module.
+
+Level storage and sharing direction is organized in
+`../docs/DACK-Level-Snapshot-Format.md`: the Snapshot workflow, `.dacklevel`
+and `.dackpack` layouts, source-clone privacy policy, cached Word Sense/OCR
+labels, placed toolkit objects, and mutation variants.
+
 ## Development Environment
 
 - Godot: 4.7.1 stable Mono, expected at `../Godot_v4.7.1-stable_mono_win64/`.
@@ -28,9 +50,16 @@ dotnet build DACK.csproj
 
 ## Prototype controls
 
+- Press **Esc** to toggle the first DACK Cockpit overlay. This is the beginning
+  of the product UI shell: Play / Build / Understand, platformer shelf,
+  inspector notes, Word Sense status, and pinball asset curation notes.
+- The always-on strip is intentionally shrinking into global controls only:
+  Platformer, Brickbat, Reset, Cockpit, Boss. Toolkit-specific controls now
+  move into contextual Cockpit pages; Brickbat owns its paddle orientation,
+  letter/word grain, and reset controls there.
 - Use left/right arrows or A/D to move the playable scout.
 - Press Space, W, or Up to jump.
-- Press J or X to shoot in Platformer mode. Shots travel in the scout's facing direction and erase captured-page text on impact. This started as a platformer projectile, but it is already behaving like a reusable text-mutation verb: shots can remove letters/words and alter the shared cloned terrain for later playsets.
+- Press J or X to shoot in Platformer mode. Shots travel in the scout's facing direction and erase captured-page text on impact. This started as a platformer projectile, but it is already behaving like a reusable text-mutation verb: shots can remove letters/words and alter the shared cloned terrain for later playsets. Shots also queue lazy OCR for word-shaped regions ahead of their path, making projectile targeting a natural way to prioritize which words the engine should read next.
 - Choose **Pitfall** for horizontal platforming or **Climber** for vertical ladder play.
 - In Climber mode, dense captured text can act as a crawl surface prototype: hold Up/Down while touching single-spaced text to crawl through the text row. Dedicated crawl art is still needed.
 - Adjust the character scale slider to match the apparent text size of the playfield; the demo defaults to a small but visible roughly 32 px-tall office-platformer character.
@@ -44,6 +73,31 @@ dotnet build DACK.csproj
 - Use the floating playset toolbar to switch between **Platformer** and **Brickbat**.
 - Playsets intentionally share the same cloned page state until you press **Reset** or start a new configured game. Brickbat can erase/deform text, then Platformer can inherit those holes as changed terrain.
 - Use **Floor On/Off** to toggle the platformer safety floor. Floor On keeps a bottom catch surface; Floor Off allows death-plunge levels.
+- In the Cockpit's Platformer Shelf, add overlay parts to the current playfield:
+  ladder, ramp, slide, conveyor, elevator, checkpoint, start point, and hidden
+  switch. These are DACK
+  construction objects layered over the cloned page; they do not edit the
+  source document or screenshot pixels. Click a placed object to select it,
+  drag the center grip/body to move it, or drag its **A/B endpoint handles** to
+  scale or angle it; the inspector updates live and collision follows the edited
+  geometry.
+- Selected toolkit objects now expose first-pass attributes in the inspector:
+  speed/force, thickness/collision pad, reverse direction, and a
+  **Ramp Up / Slide Down** normalization button. Elevators also expose a
+  range-of-motion slider and draw their travel rail/limits in the editor.
+  Conveyors can be reversed by flipping speed direction. Slides have their own
+  downhill push instead of piggybacking on generic ramp detection.
+- Platformer world rules now expose separate toggles for captured text behavior:
+  **Text Terrain**, **Text Crawl**, and **Shot Text Damage**. These are currently
+  player/global rules; the intended product model is per-actor capabilities so
+  enemies, projectiles, and the player can each decide whether text is solid,
+  climbable, destructible, ignored, or semantically meaningful.
+- Start points and hidden switches are the first editor-only logic objects:
+  visible while the Cockpit is open, hidden during play. The latest start point
+  controls the scout spawn.
+- In the Cockpit's Brickbat Page, switch paddle orientation and target grain.
+  This is the first contextual toolkit page, replacing the old crowded toolbar
+  buttons.
 - In Brickbat mode, detected letters or words become invisible collision objects; when struck, the cloned page visually erases that text object. The mouse controls the paddle.
 - Brickbat starts with three balls, tracks score, hits, remaining targets, and balls, and now treats bonus effects as big analog arcade typography: colorful, fading, rotating, strobing text. Laser bonuses pick a random 10-100% strength, fire after a short arming delay, and delete/score the intersected column of text.
 - Click one of the three actors to select it.
@@ -104,6 +158,8 @@ Brickbat should graduate from "a Breakout-like proof of concept" into a document
 
 Pinball belongs beside Brickbat, Racing, and Platformer as a future construction-kit mode. The creator places flippers, a plunger lane, bumpers, rollovers, drop targets, ramps, gates, drains, nudges, bonus inserts, jackpot/multiball rules, and score logic directly onto the cloned page. Document gutters can become lanes, headings/icons/pillboxes can become bumpers or lit inserts, bullet lists can become drop targets, and semantic words can become missions or jackpots. It should reuse the same effects deck heavily: flashing inserts, analog score text, word explosions, jackpot banners, and big ridiculous neon.
 
+Pinball should also use the textmode/BBS layer as actual table art, not just UI. Starter board skin ideas: office memo table, dungeon terminal table, neon BBS jackpot board, sci-fi system-console table, and literary word-processor table. These can be generated from open FIGlet-style banners, box drawing, CP437-like glyphs, DACK procedural borders, and carefully licensed curated art.
+
 Builder rules to design:
 
 - **Table geometry**: document/page bounds, gutters, detected text blocks, manually painted rails, one-way gates, ramps, holes, kickers, lanes, outlanes, drain zones, and safe launch lanes.
@@ -128,15 +184,70 @@ Current effect vocabulary:
 - **LaserArmed**: warning caption and charging burst.
 - **LaserColumn**: full beam render plus score/miss caption.
 - **RoundBanner**: oversized end-state typography with shockwaves.
-- **ExplodeWord**: breaks a word into oversized glowing letter shards, each flying along a randomized arcing/spline-like path with independent scale, spin, palette, and fade.
+- **ExplodeWord**: breaks a known word into oversized glowing letter shards, each flying along a randomized arcing/spline-like path with independent scale, spin, palette, and fade. Rectangle-only hits can use generic text shrapnel; true struck-word shards require OCR/UIA/native labels.
 
 Style target: deliberately excessive analog/neon energy — strobing color, fading glow, rotating text, shock rings, particle sparks, and radial bursts. Each burst chooses one strong solid event color so it reads clearly, while consecutive bursts vary wildly across the arcade palette. Effects render at reduced opacity and gameplay-critical objects can redraw above them with high-contrast/inverted treatments so spectacle never hides the ball, player, or cursor-equivalent object. This is the seed of a skinnable effects deck, not a one-off Brickbat flourish.
+
+## Textmode / BBS opaque art layer
+
+The next visual vocabulary layer should be an opaque ASCII/ANSI/BBS-style display layer. It can cover regions of the cloned page as an intentional skin, not merely sit transparently over it. Use cases:
+
+- RPG/Roguelike: terminal dungeon maps, monster glyphs, inventory panels, fog of war.
+- Snake/Maze chase: pellet fields, maze walls, tunnel labels, power-state banners, enemy glyphs, route overlays.
+- Pinball: full table-board art, backglass, score reels, lit inserts, jackpot banners, attract mode.
+- Brickbat: bonus typography, title cards, target-wall skins, score panels.
+- Platformer: BBS ladders, ramps, checkpoint signs, enemy glyphs, level title cards.
+- Racing/Tower Defense/Action: route boards, warning signs, wave banners, squad command panels.
+
+Source policy: generated/open textmode first. Good candidate directions include FIGlet/FIGfont-style generated banners, DACK-created CP437-like borders and glyphs, and curated ASCII/ANSI art only when license/provenance is explicit. Avoid random web ASCII art unless it has a clear redistributable license.
+
+## Source family → toolkit affinity
+
+The editor should recommend toolkits based on the captured source's visual grammar, not a fixed list of blessed apps. "Supported" means DACK understands useful source families and app archetypes. If Windows can render it, the capture path can usually clone it; the source-family presets simply help DACK choose a sensible first toolkit, shelf, detector, and onboarding path.
+
+Examples matter because they reveal visual grammar: GIMP and Krita behave like raster/image editors; OpenOffice Writer behaves like a rich text document; OpenOffice Calc behaves like a spreadsheet; TextPad behaves like a plain text editor; Windows itself behaves like a desktop/icon/window playfield.
+
+| Source family / examples | Best-fit starting toolkits |
+| --- | --- |
+| Windows desktop / OS shell: desktop, taskbar, dialogs, File Explorer, icons, windows | Action, RPG/adventure, Tower Defense, Collection/casual, Pinball toybox, Snake/Maze chase, Boss Key scenarios |
+| Rich text / office documents: Word, OpenOffice/LibreOffice Writer, WordPad, Markdown previews | Platformer, Brickbat, RPG/Roguelike, Tower Defense, Action/Word War, Snake/Maze chase, BBS/textmode |
+| Plain text / code editors: TextPad, Notepad, VS Code, terminal editors | RPG/Roguelike, Snake/Maze chase, Platformer, Brickbat, BBS/textmode, hacking/casual, Tower Defense |
+| Spreadsheets / grid apps: Excel, OpenOffice/LibreOffice Calc, CSV/table viewers | Brickbat, Tower Defense, Puzzle, Snake/Maze chase, Racing routes, grid shooters, RPG tile maps |
+| Slides / presentation canvases: PowerPoint, OpenOffice/LibreOffice Impress, diagram slides | Racing, Pinball, Brickbat, Action arena, Tower Defense |
+| Raster/image editors: Photoshop, Krita, GIMP, Paint.NET, MS Paint | Pinball, Racing, Platformer, Space Shooter backdrop, art-board action arena |
+| Vector/diagram/CAD-like apps: Illustrator, Inkscape, LibreOffice Draw, CAD canvases | Racing, Pinball, Platformer ramps, Tower Defense routes |
+| Browser dashboards/web apps | Casual, Brickbat, Tower Defense, Action arena, Puzzle |
+| Email/chat/task apps | Catch/Kaboom, Tower Defense, Action defense, Casual sorting, Brickbat |
+| Calendar/timelines/project boards | Racing, Tower Defense, Route planning, Casual scheduling |
+| PDF/document viewers | Platformer, Brickbat, RPG/BBS, Puzzle, Tower Defense |
+| Paint/whiteboards | Pinball, Racing, Platformer, Action sandbox, Puzzle |
+| Terminal/console/logs | RPG/Roguelike, BBS mode, Tower Defense/log defense, Brickbat |
+
+Pinball feels most native to visual/layered/canvas sources — Photoshop, Illustrator, PowerPoint, Paint/whiteboards, and desktop/icon layouts. Word can host a pinball table, especially a BBS/text-themed one, but Word's strongest native games are text traversal, text destruction, semantic word-objects, and writing-reactive play.
+
+## Snake / Maze chase kit note
+
+Snake/Maze chase belongs beside RPG/Roguelike and Brickbat as a text/grid-native arcade toolkit. The generic family covers snake growth games, maze chase games, pellet collection, route planning, pursuit/evasion, tunnels, doors, power states, and grid hazards without depending on any single named classic.
+
+Builder rules to design:
+
+- **Maze sources**: text lines, spreadsheet cells, desktop icons, window boundaries, margins/gutters, manually painted walls, semantic words, and BBS/ASCII opaque art.
+- **Collectibles**: letters, punctuation, OCR-discovered words, icons, cells, colored chips, manually placed pellets, and bonus anchors.
+- **Word-goal play**: seek target words, avoid forbidden words, collect words by category, grow from approved words, shrink or poison on taboo words, and form odd phrase chains from the route taken through a document.
+- **Paragraph tunneling**: the snake can carve through paragraph text as mutable terrain, eating letters before OCR is ready and then using Word Sense labels to steer toward or away from known words.
+- **Actor rules**: snake length/growth, head/body collision, wrap tunnels, player speed, turn buffering, chase enemies, flee enemies, patrol enemies, and Inky/Pinky/Blinky/Clyde-like behavior presets expressed generically.
+- **Power states**: temporary invulnerability, reverse chase, slow/freeze enemies, double score, text magnet, tunnel reveal, wall-eating, and clone-only terrain deformation.
+- **Construction UI**: paint maze walls, mark pellets, drag tunnel endpoints, place enemy homes/spawns, define patrol/chase zones, set wrap edges, and preview route heatmaps.
+- **Cross-playset mutation**: Brickbat or platformer projectiles can punch holes into a page, then Snake/Maze can inherit those holes as altered corridors, blocked lanes, or dangerous gaps until the clone is reset.
 
 ## Semantic word-object concept
 
 The recurring DACK mechanic is that text can remain readable while also becoming gameplay.
 
 - Fast image analysis finds letters, words, lines, background regions, gutters, and margins without waiting for OCR.
+- Lazy OCR is a background service over those regions, not a blocking import step. Brickbat queues word targets near balls/paddles; Platformer queues words along projectile rays; later Pinball and Snake/Maze can queue lit targets, lanes, pellets, doors, and power words.
+- End-user packaging should call this **Word Sense** or **Page Reading**. Gameplay never requires it: generic `TEXT` labels, score text, glyph shards, and toolkit-specific fallback effects stay available when OCR is missing or late.
+- Provider plan: the RAD build uses command-line Tesseract because it was the fastest proof. Product builds should prefer an embedded Tesseract/libtesseract provider behind the same service boundary, with external `tesseract.exe` discovery as a fallback. Heavier PaddleOCR-style providers stay research-only for now; commercial OCR libraries are not a good core dependency for an open-source/community tool.
 - The detector should find light/colored sub-headers as text when they contrast with the page, not only dark body text.
 - Non-text UI/document objects such as icons, pillboxes, badges, buttons, and colored labels are bonus anchors: ideal places to attach power-ups, targets, or semantic behaviors.
 - Optional OCR can run later as a slow-reveal layer, highlighting meaningful words after play begins.
@@ -146,6 +257,7 @@ The recurring DACK mechanic is that text can remain readable while also becoming
   - `BRIDGE` spans whitespace.
   - `KEY` and `DOOR` become lock/unlock objects.
   - `FOOTNOTE`, `BOOKMARK`, `DRAFT`, and `RED PEN` become literary power-ups.
+- OCR also enables word-goal versions of existing games: seek, avoid, collect, erase, protect, quarantine, or tunnel toward words by category. A Snake/Maze ruleset might tunnel through paragraphs looking for `KEY` or food words while avoiding `TARPIT`, `POISON`, or deadlines.
 - Every semantic object should support text, graphic, or hybrid presentation.
 - A word can summon an editor tool without trapping the creator in the word's typography. For example, `LADDER` may start on the word, then expose draggable endpoints so it can be stretched, angled, offset, or detached while remaining linked to the source word.
 
@@ -162,11 +274,35 @@ Design questions: tool range, dig speed, cooldown, material hardness, whether te
 
 ## Toolkit overlay note
 
-The floating toolbar is only the quick switcher. Each genre needs a larger expandable toolkit overlay: Platformer gets text ramps, paragraph slanting, crawl surfaces, ladders, checkpoints, elevators, slides, and enemy tools; Brickbat gets scoring, target grain, power-ups, multiball/laser tuning, and target filters; Racing gets track drawing, start/finish/checkpoints, laps, boosts, and hazards.
+The floating toolbar is only the RAD quick switcher. The product UI needs a real construction shell:
+
+- **Esc main menu**: Esc should toggle the normal DACK game/editor menu on and off. It is not the Boss Key. Boss Key hides/neutralizes DACK; Esc reveals ordinary controls. The menu can fade after N unattended seconds and return instantly on Esc, mouse movement, or interaction.
+- **Source/live-capture panel**: choose desktop, monitor, window, region, image, or text grid; freeze/resample the live source; show a visible Live Desktop indicator.
+- **Asset shelf / parts palette**: draggable assets with thumbnails, categories, license/source badges, and live placement previews.
+- **Toolkit shelf categories**: Platformer gets text ramps, paragraph slanting, crawl surfaces, ladders, checkpoints, elevators, slides, diggable terrain, projectiles, and enemy tools; Brickbat gets scoring, target grain, power-ups, multiball/laser tuning, paddles, target recipes, and persistence; Racing gets track drawing, start/finish/checkpoints, laps, boosts, hazards, and route tools; Pinball gets flippers, balls, plunger lanes, bumpers, rollovers, ramps, gates, drains, nudges, inserts, jackpots, and multiball logic; Snake/Maze gets maze walls, pellets, tunnels, enemy homes, chase/flee presets, wrap edges, power states, growth rules, and route heatmaps.
+- **Direct handles + inspector**: drag an asset onto the playfield, release to place, then immediately edit flipper arcs, ramp splines, ladder endpoints, bumper radii, patrol paths, trigger bounds, and numeric properties.
+- **Gameplay-aware HUD**: score/stat panels should find whitespace, fade or slide when a ball/player/projectile approaches, and never obscure gameplay-critical objects.
+- **Preflight cleanup**: Brickbat should blank letters too close to the paddle/drain/launch zone before the game starts, recorded as a reversible clone-only preflight mutation.
+- **One-click play collapse**: authoring UI can collapse away for fullscreen testing, then return without resetting the cloned/deformed playfield.
+
+## Refactor plan: RAD toolbar to product shell
+
+Suggested build order:
+
+1. Add an input router: Esc toggles main menu, Boss Key remains privacy escape, F1 becomes debug/RAD-only.
+2. Add a UI shell controller: main menu, editor shell, toolkit overlay, HUD, fade timers, play/edit/menu state.
+3. Add a HUD manager: whitespace placement, approach-radius fade, gameplay-critical redraw above effects/HUD.
+4. Add Brickbat preflight cleanup: blank text near paddle/drain/launch zone before ball launch.
+5. Add minimum viable asset shelf: draggable items, placement preview, source/license badge, direct handles.
+6. Add source provider interface: SnapshotImageSource first, then LiveDesktopSource.
+7. Move screenshot import/detection behind SnapshotImageSource so Live Desktop can share the same environmental map.
+8. Start Pinball only after the shelf/handles/source-provider shell exists.
 
 ## Racing kit note
 
 Racing is a natural future toolkit because the minimum authoring model is small: draw or derive a track, place a starting point, and optionally add finish/checkpoints/laps. Tracks can come from creator splines, document margins, process diagrams, spreadsheet paths, presentation arrows, or semantic words such as `START`, `FINISH`, `CHECKPOINT`, `BOOST`, `OIL`, `TARPIT`, and `SHORTCUT`.
+
+Snake/Maze can share some of the same route-preview tools, but its play language is collect/grow/chase/evade rather than lap/checkpoint/time-trial.
 
 ## Sprite scale note
 

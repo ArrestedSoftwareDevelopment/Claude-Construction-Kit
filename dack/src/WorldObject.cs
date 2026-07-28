@@ -7,8 +7,12 @@ public enum WorldObjectKind
     Platform,
     Ladder,
     Ramp,
+    Slide,
     Conveyor,
-    Elevator
+    Elevator,
+    Checkpoint,
+    StartPoint,
+    HiddenSwitch
 }
 
 public sealed record WorldObject(
@@ -17,9 +21,22 @@ public sealed record WorldObject(
     Vector2 End,
     float ThicknessUnits = 0.8f,
     float SpeedUnits = 0f,
-    float Phase = 0f
+    float Phase = 0f,
+    float RangeUnits = 5f
 )
 {
+    public Vector2 Center => (Start + End) * 0.5f;
+    public bool IsEditorOnly => Kind is WorldObjectKind.StartPoint or WorldObjectKind.HiddenSwitch;
+
+    public WorldObject Translated(Vector2 delta)
+    {
+        return this with
+        {
+            Start = Start + delta,
+            End = End + delta
+        };
+    }
+
     public Rect2 Bounds(float unit, float elapsed = 0f)
     {
         Vector2 start = ResolvePoint(Start, unit, elapsed);
@@ -35,8 +52,15 @@ public sealed record WorldObject(
         if (Kind != WorldObjectKind.Elevator)
             return point;
 
-        float lift = Mathf.Sin(elapsed * SpeedUnits + Phase) * unit * 5f;
+        float lift = Mathf.Sin(elapsed * SpeedUnits + Phase) * unit * RangeUnits;
         return point + new Vector2(0, lift);
+    }
+
+    public Vector2 ElevatorRangeVector(float unit)
+    {
+        return Kind == WorldObjectKind.Elevator
+            ? new Vector2(0, unit * RangeUnits)
+            : Vector2.Zero;
     }
 
     public float SurfaceYAt(float x, float unit, float elapsed = 0f)
@@ -66,5 +90,19 @@ public sealed record WorldObject(
         Vector2 end = ResolvePoint(End, unit, elapsed);
         Vector2 direction = end - start;
         return direction.LengthSquared() < 0.001f ? Vector2.Right : direction.Normalized();
+    }
+
+    public Vector2 MotionDirection(float unit, float elapsed = 0f)
+    {
+        Vector2 direction = Direction(unit, elapsed);
+        return SpeedUnits < 0 ? -direction : direction;
+    }
+
+    public Vector2 DownhillDirection(float unit, float elapsed = 0f)
+    {
+        Vector2 start = ResolvePoint(Start, unit, elapsed);
+        Vector2 end = ResolvePoint(End, unit, elapsed);
+        Vector2 downhill = start.Y > end.Y ? start - end : end - start;
+        return downhill.LengthSquared() < 0.001f ? MotionDirection(unit, elapsed) : downhill.Normalized();
     }
 }

@@ -30,6 +30,14 @@ public partial class Main : Control
     private PanelContainer _playsetToolbar = null!;
     private HBoxContainer _playsetToolbarRow = null!;
     private Button _playsetToolbarToggle = null!;
+    private PanelContainer _cockpit = null!;
+    private Label _cockpitStatus = null!;
+    private Label _inspectorText = null!;
+    private Label _attributeText = null!;
+    private HSlider _speedSlider = null!;
+    private HSlider _thicknessSlider = null!;
+    private HSlider _rangeSlider = null!;
+    private HSlider _gravitySlider = null!;
     private BrickbatOverlay _brickbatOverlay = null!;
     private ActorView _selectedActor = null!;
     private ActorView _player = null!;
@@ -40,8 +48,12 @@ public partial class Main : Control
     private Vector2 _playerVelocity;
     private bool _playerOnGround;
     private bool _platformerSafetyFloor = true;
+    private bool _textTerrainEnabled = true;
+    private bool _textDestructionEnabled = true;
+    private bool _updatingAttributeControls;
     private PlatformerMode _platformerMode = PlatformerMode.Horizontal;
     private PlaysetMode _playsetMode = PlaysetMode.Platformer;
+    private float _gravityScale = 1f;
     private float _textUnitPixels = 7f;
 
     public override void _Ready()
@@ -59,6 +71,9 @@ public partial class Main : Control
     {
         _elapsed += delta;
         _playfield.ElapsedSeconds = (float)_elapsed;
+        if (_cockpit is not null && _cockpit.Visible)
+            RefreshCockpitStatus();
+
         UpdatePlayer(delta);
 
         for (int i = 1; i < _actors.Count; i++)
@@ -94,6 +109,14 @@ public partial class Main : Control
                  && toolbarKey.Keycode == Key.F1)
         {
             TogglePlaysetToolbar();
+            GetViewport().SetInputAsHandled();
+        }
+        else if (@event is InputEventKey escKey
+                 && escKey.Pressed
+                 && !escKey.Echo
+                 && escKey.Keycode == Key.Escape)
+        {
+            ToggleCockpit();
             GetViewport().SetInputAsHandled();
         }
     }
@@ -166,7 +189,14 @@ public partial class Main : Control
             SizeFlagsVertical = SizeFlags.ExpandFill
         };
         playfieldMargin.AddChild(_playfield);
+        _playfield.WorldObjectSelectionChanged += text =>
+        {
+            if (_inspectorText is not null)
+                _inspectorText.Text = text;
+        };
+        _playfield.WorldObjectSelectionObjectChanged += UpdateAttributeControls;
         BuildPlaysetToolbar();
+        BuildCockpit();
 
         _sidebar = new PanelContainer
         {
@@ -317,7 +347,306 @@ public partial class Main : Control
         side.AddChild(_motionLabel);
 
         _sidebar.Visible = false;
+        _cockpit.Visible = false;
+        _playfield.ShowEditorOnlyObjects = false;
         BuildBossOverlay();
+    }
+
+    private void BuildCockpit()
+    {
+        _cockpit = new PanelContainer
+        {
+            Position = new Vector2(24, 24),
+            CustomMinimumSize = new Vector2(1160, 520),
+            MouseFilter = MouseFilterEnum.Stop
+        };
+        _cockpit.AddThemeStyleboxOverride("panel", FlatStyle("#202A34", 10));
+        _playfield.AddChild(_cockpit);
+
+        MarginContainer margin = Margins(16, 14, 16, 14);
+        _cockpit.AddChild(margin);
+        VBoxContainer root = new();
+        root.AddThemeConstantOverride("separation", 12);
+        margin.AddChild(root);
+
+        HBoxContainer top = new();
+        root.AddChild(top);
+
+        Label title = new()
+        {
+            Text = "DACK COCKPIT  //  PLAY  BUILD  UNDERSTAND",
+            SizeFlagsHorizontal = SizeFlags.ExpandFill
+        };
+        title.AddThemeColorOverride("font_color", new Color("#F7F5EF"));
+        title.AddThemeFontSizeOverride("font_size", 18);
+        top.AddChild(title);
+
+        _cockpitStatus = new Label
+        {
+            Text = "Esc hides cockpit  •  Ctrl+Alt+B Boss Key",
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        _cockpitStatus.AddThemeColorOverride("font_color", new Color("#AAB7C4"));
+        _cockpitStatus.AddThemeFontSizeOverride("font_size", 12);
+        top.AddChild(_cockpitStatus);
+
+        Button close = Button("ESC / CLOSE");
+        close.Pressed += ToggleCockpit;
+        top.AddChild(close);
+
+        HBoxContainer columns = new()
+        {
+            SizeFlagsVertical = SizeFlags.ExpandFill
+        };
+        columns.AddThemeConstantOverride("separation", 12);
+        root.AddChild(columns);
+
+        columns.AddChild(BuildShelfPanel());
+        columns.AddChild(BuildBrickbatPanel());
+        columns.AddChild(BuildInspectorPanel());
+        columns.AddChild(BuildUnderstandingPanel());
+    }
+
+    private Control BuildShelfPanel()
+    {
+        PanelContainer panel = CockpitPanel(260);
+        VBoxContainer shelf = PanelVBox(panel);
+        shelf.AddChild(CockpitHeading("PLATFORMER SHELF"));
+        shelf.AddChild(ShelfButton("Add Ladder", WorldObjectKind.Ladder, "Climbable vertical tool; later: draggable endpoints."));
+        shelf.AddChild(ShelfButton("Add Ramp", WorldObjectKind.Ramp, "Diagonal standable line for paragraph slants / Donkey Kong feel."));
+        shelf.AddChild(ShelfButton("Add Slide", WorldObjectKind.Slide, "Sloped acceleration surface; currently uses ramp physics with slide push."));
+        shelf.AddChild(ShelfButton("Add Conveyor", WorldObjectKind.Conveyor, "Moving belt surface; useful for office machinery and factory text."));
+        shelf.AddChild(ShelfButton("Add Elevator", WorldObjectKind.Elevator, "Moving platform proof; later gets visible endpoints and timing."));
+        shelf.AddChild(ShelfButton("Add Checkpoint", WorldObjectKind.Checkpoint, "Visible marker now; spawn binding comes next."));
+        shelf.AddChild(ShelfButton("Add Start Point", WorldObjectKind.StartPoint, "Editor-only spawn marker. Visible while building, hidden during play."));
+        shelf.AddChild(ShelfButton("Add Hidden Switch", WorldObjectKind.HiddenSwitch, "Invisible gameplay logic: visible in editor, hidden from the player."));
+
+        Button floor = Button(_platformerSafetyFloor ? "Safety Floor: On" : "Safety Floor: Off");
+        floor.Pressed += () =>
+        {
+            _platformerSafetyFloor = !_platformerSafetyFloor;
+            floor.Text = _platformerSafetyFloor ? "Safety Floor: On" : "Safety Floor: Off";
+            SetPlaysetMode(PlaysetMode.Platformer);
+            SnapPlayerToStart();
+            _inspectorText.Text = _platformerSafetyFloor
+                ? "Platformer safety floor enabled. Falling below the document catches the player."
+                : "Platformer safety floor disabled. Gutter/plunge/death-pit levels can now work.";
+        };
+        shelf.AddChild(floor);
+
+        Button textTerrain = Button(_textTerrainEnabled ? "Text Terrain: On" : "Text Terrain: Off");
+        textTerrain.Pressed += () =>
+        {
+            _textTerrainEnabled = !_textTerrainEnabled;
+            textTerrain.Text = _textTerrainEnabled ? "Text Terrain: On" : "Text Terrain: Off";
+            _inspectorText.Text = _textTerrainEnabled
+                ? "Player text terrain enabled. Captured letters/words can support the scout."
+                : "Player text terrain disabled. Only explicit platforms/ramps/elevators/conveyors/floor support the scout.";
+        };
+        shelf.AddChild(textTerrain);
+
+        Button textCrawl = Button(_playfield.TextCrawlEnabled ? "Text Crawl: On" : "Text Crawl: Off");
+        textCrawl.Pressed += () =>
+        {
+            _playfield.TextCrawlEnabled = !_playfield.TextCrawlEnabled;
+            textCrawl.Text = _playfield.TextCrawlEnabled ? "Text Crawl: On" : "Text Crawl: Off";
+            _inspectorText.Text = _playfield.TextCrawlEnabled
+                ? "Player text crawl enabled. Dense single-spaced text can act like climb/crawl surface in Climber mode."
+                : "Player text crawl disabled. Use explicit ladders or other tools for climbing.";
+        };
+        shelf.AddChild(textCrawl);
+
+        Button textDestruction = Button(_textDestructionEnabled ? "Shot Text Damage: On" : "Shot Text Damage: Off");
+        textDestruction.Pressed += () =>
+        {
+            _textDestructionEnabled = !_textDestructionEnabled;
+            textDestruction.Text = _textDestructionEnabled ? "Shot Text Damage: On" : "Shot Text Damage: Off";
+            _inspectorText.Text = _textDestructionEnabled
+                ? "Platformer shots can erase captured text in the working clone."
+                : "Platformer shots no longer damage text; useful for no-destruction traversal tests.";
+        };
+        shelf.AddChild(textDestruction);
+
+        Button clear = Button("CLEAR PLACED PARTS");
+        clear.Pressed += () =>
+        {
+            _playfield.ClearPlacedObjects();
+            _inspectorText.Text = "Placed toolkit parts cleared. Captured document pixels and Brickbat mutations remain separate.";
+        };
+        shelf.AddChild(clear);
+
+        shelf.AddChild(CockpitNote("These are DACK overlay objects. They do not edit the source document or screenshot clone."));
+        return panel;
+    }
+
+    private Control BuildBrickbatPanel()
+    {
+        PanelContainer panel = CockpitPanel(250);
+        VBoxContainer brickbat = PanelVBox(panel);
+        brickbat.AddChild(CockpitHeading("BRICKBAT PAGE"));
+        brickbat.AddChild(CockpitNote("Brickbat-specific controls live here now instead of crowding the always-on strip."));
+
+        Button enter = Button("ENTER BRICKBAT");
+        enter.Pressed += () => SetPlaysetMode(PlaysetMode.Brickbat);
+        brickbat.AddChild(enter);
+
+        Button paddle = Button(_brickbatOverlay.SidePaddle ? "Paddle: Side" : "Paddle: Bottom");
+        paddle.Pressed += () =>
+        {
+            _brickbatOverlay.SidePaddle = !_brickbatOverlay.SidePaddle;
+            paddle.Text = _brickbatOverlay.SidePaddle ? "Paddle: Side" : "Paddle: Bottom";
+            SetPlaysetMode(PlaysetMode.Brickbat);
+            _brickbatOverlay.ResetGame();
+            _inspectorText.Text = _brickbatOverlay.SidePaddle
+                ? "Brickbat side-paddle mode. Useful for vertical/side-wall target clearing."
+                : "Brickbat bottom-paddle mode. Standard document brick-clearing layout.";
+        };
+        brickbat.AddChild(paddle);
+
+        Button grain = Button(_brickbatOverlay.BrickGranularity == TextObjectGranularity.Letter ? "Targets: Letters" : "Targets: Words");
+        grain.Pressed += () =>
+        {
+            _brickbatOverlay.BrickGranularity = _brickbatOverlay.BrickGranularity == TextObjectGranularity.Letter
+                ? TextObjectGranularity.Word
+                : TextObjectGranularity.Letter;
+            grain.Text = _brickbatOverlay.BrickGranularity == TextObjectGranularity.Letter ? "Targets: Letters" : "Targets: Words";
+            SetPlaysetMode(PlaysetMode.Brickbat);
+            _brickbatOverlay.ResetGame();
+            _inspectorText.Text = _brickbatOverlay.BrickGranularity == TextObjectGranularity.Letter
+                ? "Brickbat target grain set to letters. Fine-grained page destruction; OCR labels can still bleed in from nearby word regions."
+                : "Brickbat target grain set to words. Larger targets, +50 scoring, stronger Word Sense / found-poem behavior.";
+        };
+        brickbat.AddChild(grain);
+
+        Button reset = Button("RESET BRICKBAT");
+        reset.Pressed += () =>
+        {
+            SetPlaysetMode(PlaysetMode.Brickbat);
+            _brickbatOverlay.ResetGame();
+            _inspectorText.Text = "Brickbat reset. Clone damage returns to the captured/source image for this run.";
+        };
+        brickbat.AddChild(reset);
+
+        brickbat.AddChild(CockpitHeading("LATER"));
+        brickbat.AddChild(CockpitNote("Target recipes, bonus deck, laser settings, persistence policy, HUD style, and word-goal filters belong on this page."));
+        return panel;
+    }
+
+    private Control BuildInspectorPanel()
+    {
+        PanelContainer panel = CockpitPanel(330);
+        VBoxContainer inspector = PanelVBox(panel);
+        inspector.AddChild(CockpitHeading("INSPECTOR"));
+        _inspectorText = CockpitNote(
+            "Select or place a toolkit object.\n\n"
+            + "First pass supports placement from the shelf. Next pass should add direct handles: drag endpoints, set origin, bind to words, toggle text/graphic/hybrid, and fork shared assets."
+        );
+        inspector.AddChild(_inspectorText);
+
+        inspector.AddChild(CockpitHeading("ATTRIBUTES"));
+        _attributeText = CockpitNote("Select a placed object to edit speed, direction, thickness, and slope behavior.");
+        inspector.AddChild(_attributeText);
+
+        _speedSlider = AttributeSlider(-12, 12, 0, 0.5);
+        _speedSlider.ValueChanged += value =>
+        {
+            if (_updatingAttributeControls)
+                return;
+
+            _playfield.SetSelectedSpeed((float)value);
+            UpdateAttributeControls(_playfield.GetSelectedWorldObject());
+        };
+        inspector.AddChild(CockpitNote("Speed / force"));
+        inspector.AddChild(_speedSlider);
+
+        _thicknessSlider = AttributeSlider(0.3, 3.0, 0.8, 0.1);
+        _thicknessSlider.ValueChanged += value =>
+        {
+            if (_updatingAttributeControls)
+                return;
+
+            _playfield.SetSelectedThickness((float)value);
+            UpdateAttributeControls(_playfield.GetSelectedWorldObject());
+        };
+        inspector.AddChild(CockpitNote("Thickness / collision pad"));
+        inspector.AddChild(_thicknessSlider);
+
+        _rangeSlider = AttributeSlider(0, 16, 5, 0.5);
+        _rangeSlider.ValueChanged += value =>
+        {
+            if (_updatingAttributeControls)
+                return;
+
+            _playfield.SetSelectedRange((float)value);
+            UpdateAttributeControls(_playfield.GetSelectedWorldObject());
+        };
+        inspector.AddChild(CockpitNote("Range of motion"));
+        inspector.AddChild(_rangeSlider);
+
+        Button reverse = Button("REVERSE DIRECTION");
+        reverse.Pressed += () =>
+        {
+            _playfield.ReverseSelectedDirection();
+            UpdateAttributeControls(_playfield.GetSelectedWorldObject());
+        };
+        inspector.AddChild(reverse);
+
+        Button normalize = Button("RAMP UP / SLIDE DOWN");
+        normalize.Pressed += () =>
+        {
+            _playfield.NormalizeSelectedSlope();
+            UpdateAttributeControls(_playfield.GetSelectedWorldObject());
+        };
+        inspector.AddChild(normalize);
+
+        inspector.AddChild(CockpitHeading("WORLD RULES"));
+        _gravitySlider = AttributeSlider(0.25, 2.0, _gravityScale, 0.05);
+        _gravitySlider.ValueChanged += value =>
+        {
+            if (_updatingAttributeControls)
+                return;
+
+            _gravityScale = (float)value;
+            UpdateAttributeControls(_playfield.GetSelectedWorldObject());
+        };
+        inspector.AddChild(CockpitNote("Player gravity scale"));
+        inspector.AddChild(_gravitySlider);
+
+        Button spritePad = Button("TOGGLE SPRITE PAD");
+        spritePad.Pressed += ToggleSpritePanel;
+        inspector.AddChild(spritePad);
+
+        Button platformer = Button("PLATFORMER MODE");
+        platformer.Pressed += () => SetPlaysetMode(PlaysetMode.Platformer);
+        inspector.AddChild(platformer);
+
+        Button resetScout = Button("RESET SCOUT START");
+        resetScout.Pressed += SnapPlayerToStart;
+        inspector.AddChild(resetScout);
+
+        inspector.AddChild(CockpitHeading("PINBALL ASSET NOTE"));
+        inspector.AddChild(CockpitNote(
+            "VerzatileDev pinball source PNGs are huge (~3937×3937 / ~118 MB each). "
+            + "Do not shelf-import them raw. Next step is a curated pinball-parts sheet: flipper, ball, bumper, plunger, insert, gate, drain, ramp segment."
+        ));
+        return panel;
+    }
+
+    private Control BuildUnderstandingPanel()
+    {
+        PanelContainer panel = CockpitPanel(280);
+        VBoxContainer understand = PanelVBox(panel);
+        understand.AddChild(CockpitHeading("UNDERSTAND"));
+        understand.AddChild(CockpitNote(
+            "Layer toggles will live here: source clone, text boxes, word labels, collision, placed objects, invisible logic, mutations, routes, and HUD avoidance."
+        ));
+        understand.AddChild(CockpitHeading("WORD SENSE"));
+        understand.AddChild(CockpitNote(_playfield.Ocr.StatusText));
+        understand.AddChild(CockpitHeading("NEXT HANDLES"));
+        understand.AddChild(CockpitNote(
+            "Ladder endpoints, elevator rails, ramp splines, checkpoint spawn binding, and pinball flipper arcs are the first handle family to build."
+        ));
+        return panel;
     }
 
     private void BuildPlaysetToolbar()
@@ -367,38 +696,9 @@ public partial class Main : Control
         };
         _playsetToolbarRow.AddChild(reset);
 
-        Button floor = Button("FLOOR ON");
-        floor.Pressed += () =>
-        {
-            _platformerSafetyFloor = !_platformerSafetyFloor;
-            floor.Text = _platformerSafetyFloor ? "FLOOR ON" : "FLOOR OFF";
-            SnapPlayerToStart();
-        };
-        _playsetToolbarRow.AddChild(floor);
-
-        Button side = Button("SIDE PADDLE");
-        side.Pressed += () =>
-        {
-            _brickbatOverlay.SidePaddle = !_brickbatOverlay.SidePaddle;
-            side.Text = _brickbatOverlay.SidePaddle ? "BOTTOM PADDLE" : "SIDE PADDLE";
-            _brickbatOverlay.ResetGame();
-        };
-        _playsetToolbarRow.AddChild(side);
-
-        Button grain = Button("LETTER BRICKS");
-        grain.Pressed += () =>
-        {
-            _brickbatOverlay.BrickGranularity = _brickbatOverlay.BrickGranularity == TextObjectGranularity.Letter
-                ? TextObjectGranularity.Word
-                : TextObjectGranularity.Letter;
-            grain.Text = _brickbatOverlay.BrickGranularity == TextObjectGranularity.Letter ? "LETTER BRICKS" : "WORD BRICKS";
-            _brickbatOverlay.ResetGame();
-        };
-        _playsetToolbarRow.AddChild(grain);
-
-        Button spritePad = Button("SPRITE PAD");
-        spritePad.Pressed += ToggleSpritePanel;
-        _playsetToolbarRow.AddChild(spritePad);
+        Button cockpit = Button("COCKPIT");
+        cockpit.Pressed += ToggleCockpit;
+        _playsetToolbarRow.AddChild(cockpit);
 
         Button boss = Button("BOSS");
         boss.Pressed += ToggleBossMode;
@@ -510,6 +810,15 @@ public partial class Main : Control
         UpdateCursorMode();
     }
 
+    private void ToggleCockpit()
+    {
+        _cockpit.Visible = !_cockpit.Visible;
+        _playfield.ShowEditorOnlyObjects = _cockpit.Visible;
+        _playfield.QueueRedraw();
+        RefreshCockpitStatus();
+        UpdateCursorMode();
+    }
+
     private void TogglePlaysetToolbar()
     {
         bool collapsed = _playsetToolbarRow.GetChildCount() > 1 && _playsetToolbarRow.GetChild<Button>(1).Visible;
@@ -519,6 +828,15 @@ public partial class Main : Control
 
         _playsetToolbarToggle.Text = collapsed ? "+" : "-";
         UpdateCursorMode();
+    }
+
+    private void RefreshCockpitStatus()
+    {
+        if (_cockpitStatus is null)
+            return;
+
+        string mode = _playsetMode == PlaysetMode.Brickbat ? "Brickbat" : "Platformer";
+        _cockpitStatus.Text = $"{mode}  •  {_playfield.Ocr.StatusText}  •  Esc hides cockpit";
     }
 
     private void SetPlaysetMode(PlaysetMode mode)
@@ -532,6 +850,7 @@ public partial class Main : Control
         if (!brickbat)
             SnapPlayerToStart();
 
+        RefreshCockpitStatus();
         UpdateCursorMode();
     }
 
@@ -560,12 +879,12 @@ public partial class Main : Control
         bool downHeld = Input.IsActionPressed("dack_down");
         Rect2 actorBounds = new(_playerPosition, _player.Size);
         bool onLadder = _playfield.IsTouchingLadder(actorBounds);
-        bool onSlide = _playfield.IsTouchingRamp(actorBounds);
+        Vector2 slideVelocity = _playfield.GetSlideVelocity(actorBounds);
 
         float maxSpeed = motionUnit * 16f;
         float acceleration = motionUnit * 70f;
         float friction = motionUnit * 78f;
-        float gravity = motionUnit * 58f;
+        float gravity = motionUnit * 58f * _gravityScale;
         float jumpSpeed = motionUnit * 24f;
         Vector2 conveyorVelocity = _playfield.GetConveyorVelocity(actorBounds);
 
@@ -596,8 +915,12 @@ public partial class Main : Control
             _playerVelocity.Y += gravity * dt;
         }
 
-        if (onSlide)
-            _playerVelocity.X = Mathf.MoveToward(_playerVelocity.X, motionUnit * 9f, motionUnit * 30f * dt);
+        if (slideVelocity != Vector2.Zero)
+        {
+            _playerVelocity.X = Mathf.MoveToward(_playerVelocity.X, slideVelocity.X, Mathf.Abs(slideVelocity.X) * 4f * dt + motionUnit * 12f * dt);
+            if (slideVelocity.Y > 0)
+                _playerVelocity.Y += slideVelocity.Y * 0.18f * dt;
+        }
 
         if (conveyorVelocity != Vector2.Zero)
             _playerVelocity.X += conveyorVelocity.X * dt;
@@ -657,6 +980,7 @@ public partial class Main : Control
             PlayerShot shot = _playerShots[i];
             shot.Position += shot.Velocity * dt;
             shot.Life -= dt;
+            QueueProjectileOcrTarget(shot);
 
             Rect2 shotBounds = new(shot.Position - new Vector2(4f, 4f), new Vector2(8f, 8f));
             if (shot.Life <= 0f || !playBounds.HasPoint(shot.Position) || TryHitTextObject(shotBounds))
@@ -668,9 +992,45 @@ public partial class Main : Control
         PushShotPositionsToPlayfield();
     }
 
+    private void QueueProjectileOcrTarget(PlayerShot shot)
+    {
+        if (!_playfield.HasCapturedPage || shot.Velocity.LengthSquared() <= 0.01f)
+            return;
+
+        Vector2 direction = shot.Velocity.Normalized();
+        Rect2? bestWord = null;
+        float bestScore = float.PositiveInfinity;
+
+        foreach (Rect2 word in _playfield.GetTextObjectRegions(TextObjectGranularity.Word))
+        {
+            if (_playfield.Ocr.TryGetLabel(word, out _))
+                continue;
+
+            Vector2 offset = word.GetCenter() - shot.Position;
+            float ahead = offset.Dot(direction);
+            if (ahead < 0f || ahead > _textUnitPixels * 42f)
+                continue;
+
+            float lateral = Mathf.Abs(direction.Cross(offset));
+            float allowedLateral = Mathf.Max(word.Size.Y * 1.8f, _textUnitPixels * 3f);
+            if (lateral > allowedLateral)
+                continue;
+
+            float score = ahead + lateral * 4f;
+            if (score < bestScore)
+            {
+                bestScore = score;
+                bestWord = word;
+            }
+        }
+
+        if (bestWord is Rect2 target && _playfield.TryCreateOcrSample(target, out Image? sample) && sample is not null)
+            _playfield.Ocr.QueueRegion(target, sample);
+    }
+
     private bool TryHitTextObject(Rect2 shotBounds)
     {
-        if (!_playfield.HasCapturedPage)
+        if (!_textDestructionEnabled || !_playfield.HasCapturedPage)
             return false;
 
         foreach (Rect2 letter in _playfield.GetTextObjectRegions(TextObjectGranularity.Letter))
@@ -782,11 +1142,14 @@ public partial class Main : Control
             yield break;
         }
 
-        foreach (Rect2 word in _playfield.GetTextObjectRegions(TextObjectGranularity.Letter))
-            yield return new Rect2(
-                word.Position + new Vector2(0, 2f),
-                new Vector2(word.Size.X, Mathf.Max(2f, Mathf.Min(word.Size.Y, _textUnitPixels * 0.45f)))
-            );
+        if (_textTerrainEnabled)
+        {
+            foreach (Rect2 word in _playfield.GetTextObjectRegions(TextObjectGranularity.Letter))
+                yield return new Rect2(
+                    word.Position + new Vector2(0, 2f),
+                    new Vector2(word.Size.X, Mathf.Max(2f, Mathf.Min(word.Size.Y, _textUnitPixels * 0.45f)))
+                );
+        }
 
         if (_platformerSafetyFloor)
             yield return new Rect2(_playfield.PlayBounds.Position.X, _playfield.PlayBounds.End.Y - 4f, _playfield.PlayBounds.Size.X, 4f);
@@ -818,7 +1181,7 @@ public partial class Main : Control
 
     private void UpdateCursorMode()
     {
-        Input.MouseMode = _bossMode || _sidebar.Visible || IsPlaysetToolbarExpanded()
+        Input.MouseMode = _bossMode || _sidebar.Visible || (_cockpit is not null && _cockpit.Visible) || IsPlaysetToolbarExpanded()
             ? Input.MouseModeEnum.Visible
             : Input.MouseModeEnum.Hidden;
     }
@@ -834,7 +1197,10 @@ public partial class Main : Control
             return;
 
         ApplyActorScale();
-        if (_platformerMode == PlatformerMode.Vertical)
+        Vector2? editorStart = _playfield.GetEditorStartPosition(_player.Size);
+        if (editorStart is not null)
+            _playerPosition = editorStart.Value;
+        else if (_platformerMode == PlatformerMode.Vertical)
             _playerPosition = new Vector2(_playfield.Size.X * 0.21f, _playfield.Size.Y * 0.72f - _player.Size.Y);
         else
             _playerPosition = _playfield.GetSpawnPosition(_player.Size);
@@ -858,7 +1224,49 @@ public partial class Main : Control
 
         string mode = _platformerMode == PlatformerMode.Horizontal ? "horizontal run" : "vertical climb";
         string ground = _playerOnGround ? "grounded" : "airborne";
-        _motionLabel.Text = $"{mode}  |  text unit {_textUnitPixels:0}px  |  actor {_player.Size.Y:0}px tall  |  {ground}";
+        _motionLabel.Text = $"{mode}  |  text unit {_textUnitPixels:0}px  |  actor {_player.Size.Y:0}px tall  |  gravity {_gravityScale:0.00}x  |  {ground}";
+    }
+
+    private void UpdateAttributeControls(WorldObject? selected)
+    {
+        if (_attributeText is null || _speedSlider is null || _thicknessSlider is null || _rangeSlider is null || _gravitySlider is null)
+            return;
+
+        _updatingAttributeControls = true;
+        _gravitySlider.Value = _gravityScale;
+        if (selected is null)
+        {
+            _speedSlider.Editable = false;
+            _thicknessSlider.Editable = false;
+            _rangeSlider.Editable = false;
+            _speedSlider.Value = 0;
+            _thicknessSlider.Value = 0.8;
+            _rangeSlider.Value = 5;
+            _attributeText.Text =
+                "No placed object selected.\n\n"
+                + $"Gravity: {_gravityScale:0.00}x\n"
+                + $"Text terrain: {(_textTerrainEnabled ? "on" : "off")}\n"
+                + $"Text crawl: {(_playfield.TextCrawlEnabled ? "on" : "off")}\n"
+                + $"Shot text damage: {(_textDestructionEnabled ? "on" : "off")}";
+            _updatingAttributeControls = false;
+            return;
+        }
+
+        _speedSlider.Editable = true;
+        _thicknessSlider.Editable = true;
+        _rangeSlider.Editable = selected.Kind == WorldObjectKind.Elevator;
+        _speedSlider.Value = selected.SpeedUnits;
+        _thicknessSlider.Value = selected.ThicknessUnits;
+        _rangeSlider.Value = selected.RangeUnits;
+        _attributeText.Text =
+            $"{selected.Kind}\n"
+            + $"Speed/force: {selected.SpeedUnits:0.0}\n"
+            + $"Thickness: {selected.ThicknessUnits:0.0}\n"
+            + $"Range: {selected.RangeUnits:0.0} text units\n"
+            + $"Gravity: {_gravityScale:0.00}x\n"
+            + (selected.IsEditorOnly ? "Editor-only: visible while building, hidden during play.\n" : "")
+            + "Reverse flips conveyors by speed; other line tools swap A/B endpoints.";
+        _updatingAttributeControls = false;
     }
 
     private static void EnsureInputActions()
@@ -904,6 +1312,75 @@ public partial class Main : Control
         };
         button.AddThemeFontSizeOverride("font_size", 12);
         return button;
+    }
+
+    private Button ShelfButton(string text, WorldObjectKind kind, string description)
+    {
+        Button button = Button(text);
+        button.TooltipText = description;
+        button.Pressed += () =>
+        {
+            SetPlaysetMode(PlaysetMode.Platformer);
+            _playfield.AddPlacedObject(kind);
+            _inspectorText.Text = $"{text} placed.\n\n{description}\n\nDrag either A/B endpoint handle on the playfield to move, scale, or angle it.";
+            RefreshCockpitStatus();
+        };
+        return button;
+    }
+
+    private static HSlider AttributeSlider(double min, double max, double value, double step)
+    {
+        HSlider slider = new()
+        {
+            MinValue = min,
+            MaxValue = max,
+            Value = value,
+            Step = step,
+            CustomMinimumSize = new Vector2(0, 26),
+            SizeFlagsHorizontal = SizeFlags.ExpandFill
+        };
+        slider.FocusMode = FocusModeEnum.None;
+        return slider;
+    }
+
+    private static PanelContainer CockpitPanel(float width)
+    {
+        PanelContainer panel = new()
+        {
+            CustomMinimumSize = new Vector2(width, 0),
+            SizeFlagsVertical = SizeFlags.ExpandFill
+        };
+        panel.AddThemeStyleboxOverride("panel", FlatStyle("#F7F5EF", 8));
+        return panel;
+    }
+
+    private static VBoxContainer PanelVBox(PanelContainer panel)
+    {
+        MarginContainer margin = Margins(12, 12, 12, 12);
+        panel.AddChild(margin);
+        VBoxContainer box = new();
+        box.AddThemeConstantOverride("separation", 8);
+        margin.AddChild(box);
+        return box;
+    }
+
+    private static Label CockpitHeading(string text)
+    {
+        Label label = Heading(text);
+        label.AddThemeColorOverride("font_color", new Color("#FF5C35"));
+        return label;
+    }
+
+    private static Label CockpitNote(string text)
+    {
+        Label label = new()
+        {
+            Text = text,
+            AutowrapMode = TextServer.AutowrapMode.WordSmart
+        };
+        label.AddThemeColorOverride("font_color", new Color("#52606D"));
+        label.AddThemeFontSizeOverride("font_size", 12);
+        return label;
     }
 
     private static MarginContainer Margins(int left, int top, int right, int bottom)

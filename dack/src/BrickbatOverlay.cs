@@ -5,10 +5,11 @@ namespace Dack;
 
 public partial class BrickbatOverlay : Control
 {
-    private readonly List<Rect2> _bricks = [];
+    private readonly List<BrickbatTarget> _bricks = [];
     private readonly List<Vector2> _ballPositions = [];
     private readonly List<Vector2> _ballVelocities = [];
     private readonly PsychedelicEffects _effects = new();
+    private readonly List<string> _recentDestroyedWords = [];
     private Rect2 _paddle;
     private Rect2 _laserBeam;
     private bool _initialized;
@@ -41,6 +42,7 @@ public partial class BrickbatOverlay : Control
             ResetGame();
 
         UpdatePaddle();
+        QueueNearbyOcrTargets();
         UpdateBall((float)delta);
         UpdateEffects((float)delta);
         QueueRedraw();
@@ -101,13 +103,13 @@ public partial class BrickbatOverlay : Control
             foreach (Rect2 platform in Playfield.GetTextObjectRegions(BrickGranularity))
             {
                 if (platform.Size.X >= 3f && platform.Position.Y > playBounds.Position.Y + 40f && platform.Position.Y < playBounds.End.Y - 80f)
-                    _bricks.Add(platform);
+                    _bricks.Add(new BrickbatTarget(platform, BrickGranularity == TextObjectGranularity.Word));
             }
 
             foreach (Rect2 anchor in Playfield.GetTextObjectRegions(TextObjectGranularity.BonusAnchor))
             {
                 if (anchor.Position.Y > playBounds.Position.Y + 30f && anchor.Position.Y < playBounds.End.Y - 70f)
-                    _bricks.Add(anchor);
+                    _bricks.Add(new BrickbatTarget(anchor, false));
             }
         }
 
@@ -132,6 +134,7 @@ public partial class BrickbatOverlay : Control
 
         _score = 0;
         _hits = 0;
+        _recentDestroyedWords.Clear();
         _laserStrength = 0;
         _laserFlashSeconds = 0;
         _laserDelaySeconds = -1;
@@ -208,10 +211,10 @@ public partial class BrickbatOverlay : Control
 
             for (int i = _bricks.Count - 1; i >= 0; i--)
             {
-                if (!ball.Intersects(_bricks[i], true))
+                if (!ball.Intersects(_bricks[i].Bounds, true))
                     continue;
 
-                BounceFrom(_bricks[i], ref ballPosition, ref ballVelocity);
+                BounceFrom(_bricks[i].Bounds, ref ballPosition, ref ballVelocity);
                 HitBrick(i, ballPosition);
                 break;
             }
@@ -259,13 +262,15 @@ public partial class BrickbatOverlay : Control
 
     private void HitBrick(int brickIndex, Vector2 hitPosition)
     {
-        Rect2 brick = _bricks[brickIndex];
-        RemoveBrickCluster(brickIndex, brick.Grow(4f));
+        BrickbatTarget brick = _bricks[brickIndex];
+        string? label = TryGetTargetLabel(brick);
+        RemoveBrickCluster(brickIndex, brick.Bounds.Grow(4f));
 
         int points = BrickGranularity == TextObjectGranularity.Word ? 50 : 10;
         _score += points;
         _hits++;
-        _effects.TextHit(hitPosition, points, BrickGranularity == TextObjectGranularity.Word);
+        _effects.TextHit(hitPosition, points, BrickGranularity == TextObjectGranularity.Word, label);
+        RememberDestroyedWord(label);
 
         if (_hits % _bonusEvery == 0)
             TriggerBonus(hitPosition);
@@ -324,13 +329,16 @@ public partial class BrickbatOverlay : Control
     private void DrawHud()
     {
         Rect2 bounds = Playfield?.PlayBounds ?? new Rect2(Vector2.Zero, Size);
-        Rect2 hud = Playfield?.FindWhitespaceRect(new Vector2(150, 92)) ?? GetHudRect(bounds);
+        Rect2 hud = Playfield?.FindWhitespaceRect(new Vector2(190, 128)) ?? GetHudRect(bounds);
         DrawRect(hud, new Color("#202A34", 0.88f), true);
         DrawRect(hud, new Color("#D9E3EA", 0.65f), false, 1f);
         DrawString(ThemeDB.FallbackFont, hud.Position + new Vector2(12, 22), $"SCORE  {_score}", HorizontalAlignment.Left, hud.Size.X - 24, 15, new Color("#F7F5EF"));
         DrawString(ThemeDB.FallbackFont, hud.Position + new Vector2(12, 42), $"HITS   {_hits}", HorizontalAlignment.Left, hud.Size.X - 24, 13, new Color("#D9E3EA"));
         DrawString(ThemeDB.FallbackFont, hud.Position + new Vector2(12, 60), $"LEFT   {_bricks.Count}", HorizontalAlignment.Left, hud.Size.X - 24, 13, new Color("#D9E3EA"));
         DrawString(ThemeDB.FallbackFont, hud.Position + new Vector2(12, 78), $"BALLS  {_ballPositions.Count}", HorizontalAlignment.Left, hud.Size.X - 24, 13, new Color("#D9E3EA"));
+        DrawString(ThemeDB.FallbackFont, hud.Position + new Vector2(12, 96), Playfield?.Ocr.StatusText ?? "OCR OFF", HorizontalAlignment.Left, hud.Size.X - 24, 12, new Color("#8A97A5"));
+        if (_recentDestroyedWords.Count > 0)
+            DrawString(ThemeDB.FallbackFont, hud.Position + new Vector2(12, 114), string.Join(" / ", _recentDestroyedWords), HorizontalAlignment.Left, hud.Size.X - 24, 12, new Color("#FFF0A8"));
     }
 
     private void DrawDeadZoneCover()
@@ -352,16 +360,16 @@ public partial class BrickbatOverlay : Control
     {
         if (brickIndex >= 0 && brickIndex < _bricks.Count)
         {
-            Playfield?.EraseDocumentText(_bricks[brickIndex]);
+            Playfield?.EraseDocumentText(_bricks[brickIndex].Bounds);
             _bricks.RemoveAt(brickIndex);
         }
 
         for (int i = _bricks.Count - 1; i >= 0; i--)
         {
-            if (!_bricks[i].Intersects(blastRegion, true))
+            if (!_bricks[i].Bounds.Intersects(blastRegion, true))
                 continue;
 
-            Playfield?.EraseDocumentText(_bricks[i]);
+            Playfield?.EraseDocumentText(_bricks[i].Bounds);
             _bricks.RemoveAt(i);
         }
     }
@@ -384,6 +392,80 @@ public partial class BrickbatOverlay : Control
         }
     }
 
+    private void QueueNearbyOcrTargets()
+    {
+        if (Playfield is null || _bricks.Count == 0)
+            return;
+
+        for (int queued = 0; queued < 2; queued++)
+        {
+            Rect2? bestWord = null;
+            float bestScore = float.PositiveInfinity;
+            foreach (Rect2 word in Playfield.GetTextObjectRegions(TextObjectGranularity.Word))
+            {
+                if (Playfield.Ocr.TryGetLabel(word, out _))
+                    continue;
+
+                float score = DistanceToPlayHotspots(word);
+                if (score < bestScore)
+                {
+                    bestScore = score;
+                    bestWord = word;
+                }
+            }
+
+            if (bestWord is not Rect2 targetToQueue)
+                return;
+
+            if (Playfield.TryCreateOcrSample(targetToQueue, out Image? sample) && sample is not null)
+                Playfield.Ocr.QueueRegion(targetToQueue, sample);
+        }
+    }
+
+    private float DistanceToPlayHotspots(Rect2 region)
+    {
+        Vector2 center = region.GetCenter();
+        float best = center.DistanceSquaredTo(_paddle.GetCenter()) * 0.55f;
+        foreach (Vector2 ball in _ballPositions)
+            best = Mathf.Min(best, center.DistanceSquaredTo(ball));
+
+        return best;
+    }
+
+    private string? TryGetTargetLabel(BrickbatTarget target)
+    {
+        if (target.CanOcr && Playfield.Ocr.TryGetLabel(target.Bounds, out string label))
+            return label;
+
+        if (Playfield is null)
+            return null;
+
+        Rect2 probe = target.Bounds.Grow(4f);
+        foreach (Rect2 word in Playfield.GetTextObjectRegions(TextObjectGranularity.Word))
+        {
+            if (!word.Intersects(probe, true))
+                continue;
+
+            if (Playfield.Ocr.TryGetLabel(word, out label))
+                return label;
+
+            if (Playfield.TryCreateOcrSample(word, out Image? sample) && sample is not null)
+                Playfield.Ocr.QueueRegion(word, sample);
+        }
+
+        return null;
+    }
+
+    private void RememberDestroyedWord(string? label)
+    {
+        if (string.IsNullOrWhiteSpace(label))
+            return;
+
+        _recentDestroyedWords.Insert(0, label);
+        while (_recentDestroyedWords.Count > 5)
+            _recentDestroyedWords.RemoveAt(_recentDestroyedWords.Count - 1);
+    }
+
     private void FireLaser()
     {
         if (Playfield is null)
@@ -401,10 +483,12 @@ public partial class BrickbatOverlay : Control
         int destroyed = 0;
         for (int i = _bricks.Count - 1; i >= 0; i--)
         {
-            if (!_bricks[i].Intersects(beam, true))
+            if (!_bricks[i].Bounds.Intersects(beam, true))
                 continue;
 
-            Playfield.EraseDocumentText(_bricks[i]);
+            BrickbatTarget target = _bricks[i];
+            RememberDestroyedWord(TryGetTargetLabel(target));
+            Playfield.EraseDocumentText(target.Bounds);
             _bricks.RemoveAt(i);
             destroyed++;
         }
@@ -442,4 +526,5 @@ public partial class BrickbatOverlay : Control
         return new Rect2(bounds.End.X - 164f, bounds.Position.Y + 18f, 150f, 86f);
     }
 
+    private readonly record struct BrickbatTarget(Rect2 Bounds, bool CanOcr);
 }

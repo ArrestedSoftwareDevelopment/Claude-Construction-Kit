@@ -5,6 +5,10 @@ verified redistribution license stay in `quarantine/`, which Git ignores. A
 quarantined asset may be used to test the local construction workflow, but it
 must never be included in a build, export, hub package, or repository commit.
 
+For the current raw-vault audit, candidate-pack summary, and sprite
+editor/animator implications, see
+`../../docs/DACK-Asset-Audit-and-Sprite-Animator.md`.
+
 ## Approved for redistribution
 
 ### 8-Bit Dungeon Tile Set Free

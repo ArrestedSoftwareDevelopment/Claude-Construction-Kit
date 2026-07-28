@@ -52,14 +52,17 @@ public sealed class PsychedelicEffects
 
     public bool HasActiveEffects => _effects.Count > 0;
 
-    public void TextHit(Vector2 position, int points, bool wordTarget)
+    public void TextHit(Vector2 position, int points, bool wordTarget, string? targetText = null)
     {
         Color color = RandomArcadeColor();
         NeonText($"+{points}", position, color, (wordTarget ? 1.45f : 1.1f) * _random.RandfRange(0.85f, 1.85f), 1.35f);
+        if (!string.IsNullOrWhiteSpace(targetText))
+            NeonText(targetText, position + new Vector2(0, -20f), color, wordTarget ? 1.35f : 0.95f, 1.05f);
+
         ImpactBurst(position, color, wordTarget ? 1.6f : 1.15f);
 
         if (wordTarget)
-            ExplodeWord("WORD", position, color, 1.45f);
+            ExplodeWord(string.IsNullOrWhiteSpace(targetText) ? "TEXT" : targetText, position, color, 1.45f);
     }
 
     public void PaddleSpark(Vector2 position)

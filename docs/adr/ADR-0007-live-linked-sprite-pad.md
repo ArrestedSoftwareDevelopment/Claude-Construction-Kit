@@ -5,6 +5,8 @@
 - **Decision owners:** DACK project
 - **Related:** Desktop Arena Design Document §§10.4, 11.1–11.3, 15, 18
 
+- **Follow-up:** `docs/DACK-Asset-Audit-and-Sprite-Animator.md`
+
 ## Context
 
 DACK needs an art-editing path that supports its construction-kit principle: creation should be as immediate and playful as gameplay. A reduced copy of a general pixel-art editor would create substantial scope while remaining inferior to dedicated tools.
