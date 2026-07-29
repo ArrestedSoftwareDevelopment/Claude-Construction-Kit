@@ -15,6 +15,7 @@ public sealed class SpriteAnimationSet
     private const string TgcPlatformerRuntimePath = "res://assets/project/game-creators-pack/platformer-spritesheet.png";
     private const string TgcShooterBossRuntimePath = "res://assets/project/game-creators-pack/shooter-boss-sprite.png";
     private const string TgcShooterRuntimePath = "res://assets/project/game-creators-pack/shooter-spritesheet.png";
+    private const string BattleFleetShip01RelativePath = "raw base assets/Legacy Collection/Legacy Collection/Assets/Warped/Characters/top-down-shooter-ship/spritesheets/red/ship-01.png";
     private static readonly AnimationFrameRange DefaultGameCreatorIdle = new(0, 2);
     private static readonly AnimationFrameRange DefaultGameCreatorRun = new(3, 14);
     private static readonly AnimationFrameRange DefaultGameCreatorJumpUp = new(15, 15);
@@ -203,13 +204,13 @@ public sealed class SpriteAnimationSet
         return TryLoadTgcFixedPlatformerEnemy(
             TryLoadTgcBlueGuardFrames,
             new AnimationFrameRange(0, 5),
-            new AnimationFrameRange(6, 11),
-            new AnimationFrameRange(6, 11),
-            new AnimationFrameRange(6, 11),
-            new AnimationFrameRange(6, 11),
-            new AnimationFrameRange(6, 11),
-            new AnimationFrameRange(6, 11),
-            new AnimationFrameRange(0, 5),
+            new AnimationFrameRange(0, 4),
+            new AnimationFrameRange(0, 4),
+            new AnimationFrameRange(0, 4),
+            new AnimationFrameRange(0, 4),
+            new AnimationFrameRange(0, 4),
+            new AnimationFrameRange(0, 4),
+            new AnimationFrameRange(0, 4),
             false,
             false,
             false,
@@ -452,19 +453,18 @@ public sealed class SpriteAnimationSet
     {
         Rect2[] rects =
         [
-            new Rect2(0, 0, 16, 16),
-            new Rect2(16, 0, 16, 16),
-            new Rect2(32, 0, 16, 16),
-            new Rect2(48, 0, 16, 16),
-            new Rect2(64, 0, 16, 16),
-            new Rect2(80, 0, 16, 16),
-            new Rect2(0, 16, 16, 16),
-            new Rect2(16, 16, 16, 16),
-            new Rect2(32, 16, 16, 16),
+            new Rect2(0, 0, 14, 16),
+            new Rect2(15, 0, 14, 16),
+            new Rect2(30, 0, 14, 16),
+            new Rect2(45, 0, 15, 16),
+            new Rect2(61, 0, 13, 16),
+            new Rect2(75, 0, 13, 16),
+            new Rect2(0, 16, 14, 16),
+            new Rect2(15, 16, 16, 16),
+            new Rect2(32, 16, 15, 16),
             new Rect2(48, 16, 16, 16),
-            new Rect2(64, 16, 16, 16),
-            new Rect2(80, 16, 16, 16),
-            new Rect2(96, 16, 16, 16)
+            new Rect2(65, 16, 13, 16),
+            new Rect2(79, 16, 14, 16)
         ];
 
         return TryLoadFixedSourceFrames(TgcPlatformerRuntimePath, rects, out frames);
@@ -474,19 +474,19 @@ public sealed class SpriteAnimationSet
     {
         Rect2[] rects =
         [
-            new Rect2(112, 0, 16, 16),
-            new Rect2(128, 0, 16, 16),
-            new Rect2(144, 0, 16, 16),
-            new Rect2(160, 0, 16, 16),
-            new Rect2(176, 0, 16, 16),
-            new Rect2(192, 0, 16, 16),
-            new Rect2(208, 0, 16, 16),
-            new Rect2(112, 16, 16, 16),
-            new Rect2(128, 16, 16, 16),
-            new Rect2(144, 16, 16, 16),
-            new Rect2(160, 16, 16, 16),
+            new Rect2(113, 0, 14, 16),
+            new Rect2(128, 0, 14, 16),
+            new Rect2(143, 0, 14, 16),
+            new Rect2(158, 0, 14, 16),
+            new Rect2(173, 0, 14, 16),
+            new Rect2(188, 0, 14, 16),
+            new Rect2(203, 0, 14, 16),
+            new Rect2(113, 16, 14, 16),
+            new Rect2(128, 16, 13, 16),
+            new Rect2(142, 16, 16, 16),
+            new Rect2(159, 16, 16, 16),
             new Rect2(176, 16, 16, 16),
-            new Rect2(192, 16, 16, 16)
+            new Rect2(193, 16, 15, 16)
         ];
 
         return TryLoadFixedSourceFrames(TgcPlatformerRuntimePath, rects, out frames);
@@ -494,23 +494,16 @@ public sealed class SpriteAnimationSet
 
     public static bool TryLoadTgcBlueGuardFrames(out SpriteFrame[] frames)
     {
-        Rect2[] rects =
+        Vector2I[] seeds =
         [
-            new Rect2(112, 32, 16, 16),
-            new Rect2(128, 32, 16, 16),
-            new Rect2(144, 32, 16, 16),
-            new Rect2(160, 32, 16, 16),
-            new Rect2(176, 32, 16, 16),
-            new Rect2(192, 32, 16, 16),
-            new Rect2(112, 48, 16, 16),
-            new Rect2(128, 48, 16, 16),
-            new Rect2(144, 48, 16, 16),
-            new Rect2(160, 48, 16, 16),
-            new Rect2(176, 48, 16, 16),
-            new Rect2(192, 48, 16, 16)
+            new Vector2I(118, 38),
+            new Vector2I(132, 38),
+            new Vector2I(147, 38),
+            new Vector2I(162, 38),
+            new Vector2I(173, 38)
         ];
 
-        return TryLoadFixedSourceFrames(TgcPlatformerRuntimePath, rects, out frames);
+        return TryLoadComponentSourceFrames(TgcPlatformerRuntimePath, seeds, out frames);
     }
 
     public static bool TryLoadTgcGreenCrawlerFrames(out SpriteFrame[] frames)
@@ -892,6 +885,23 @@ public sealed class SpriteAnimationSet
         return TryLoadBlobFrames(TgcShooterRuntimePath, out frames);
     }
 
+    public static SpriteAnimationSet? TryLoadBattleFleetRedShip01()
+    {
+        if (!TryLoadHorizontalRawStripFrames(BattleFleetShip01RelativePath, 5, out SpriteFrame[] frames))
+            return null;
+
+        Dictionary<ActorMotionState, SpriteFrame[]> states = [];
+        foreach (ActorMotionState state in Enum.GetValues<ActorMotionState>())
+            states[state] = frames;
+
+        return new SpriteAnimationSet(states);
+    }
+
+    public static bool TryLoadBattleFleetRedShip01Frames(out SpriteFrame[] frames)
+    {
+        return TryLoadHorizontalRawStripFrames(BattleFleetShip01RelativePath, 5, out frames);
+    }
+
     public static bool TryLoadStickmanFrames(out SpriteFrame[] frames)
     {
         List<SpriteFrame> loaded = [];
@@ -942,6 +952,13 @@ public sealed class SpriteAnimationSet
         return frames[index];
     }
 
+    public SpriteFrame GetFrame(int index)
+    {
+        SpriteFrame[] frames = _frames[ActorMotionState.Idle];
+        int safeIndex = Mathf.PosMod(index, frames.Length);
+        return frames[safeIndex];
+    }
+
     private SpriteAnimationSet WithCrawl(SpriteFrame[] all, AnimationFrameRange crawl)
     {
         _frames[ActorMotionState.Crawl] = SliceFrames(all, crawl);
@@ -975,6 +992,34 @@ public sealed class SpriteAnimationSet
         ImageTexture texture = ImageTexture.CreateFromImage(image);
         SpriteFrame frame = new(texture, new Rect2(0, 0, image.GetWidth(), image.GetHeight()), new Vector2(image.GetWidth(), image.GetHeight()));
         frames = [frame];
+        return true;
+    }
+
+    private static bool TryLoadHorizontalRawStripFrames(string relativePath, int frameCount, out SpriteFrame[] frames)
+    {
+        frames = [];
+        string projectRoot = ProjectSettings.GlobalizePath("res://");
+        string filePath = Path.GetFullPath(Path.Combine(projectRoot, "..", relativePath));
+        if (!File.Exists(filePath))
+            return false;
+
+        Image image = Image.LoadFromFile(filePath);
+        if (image.IsEmpty())
+            return false;
+
+        image.Convert(Image.Format.Rgba8);
+        frameCount = Mathf.Max(1, frameCount);
+        int frameWidth = image.GetWidth() / frameCount;
+        int frameHeight = image.GetHeight();
+        if (frameWidth <= 0 || frameHeight <= 0)
+            return false;
+
+        ImageTexture texture = ImageTexture.CreateFromImage(image);
+        Vector2 displaySize = new(frameWidth, frameHeight);
+        frames = new SpriteFrame[frameCount];
+        for (int i = 0; i < frameCount; i++)
+            frames[i] = new SpriteFrame(texture, new Rect2(i * frameWidth, 0, frameWidth, frameHeight), displaySize);
+
         return true;
     }
 
@@ -1015,13 +1060,164 @@ public sealed class SpriteAnimationSet
             return false;
 
         image.Convert(Image.Format.Rgba8);
-        ImageTexture texture = ImageTexture.CreateFromImage(image);
         Vector2 displaySize = GetCommonDisplaySize(rects);
+        const int EdgePadding = 2;
+        Vector2 paddedDisplaySize = displaySize + new Vector2(EdgePadding * 2, EdgePadding * 2);
         frames = new SpriteFrame[rects.Length];
         for (int i = 0; i < rects.Length; i++)
-            frames[i] = new SpriteFrame(texture, rects[i], displaySize);
+        {
+            Rect2 rect = rects[i];
+            Rect2I source = new(
+                Mathf.RoundToInt(rect.Position.X),
+                Mathf.RoundToInt(rect.Position.Y),
+                Mathf.RoundToInt(rect.Size.X),
+                Mathf.RoundToInt(rect.Size.Y)
+            );
+            int paddedWidth = source.Size.X + EdgePadding * 2;
+            int paddedHeight = source.Size.Y + EdgePadding * 2;
+            Image frameImage = Image.CreateEmpty(paddedWidth, paddedHeight, false, Image.Format.Rgba8);
+            frameImage.Fill(Colors.Transparent);
+            Vector2I destination = new(EdgePadding, EdgePadding);
+            frameImage.BlitRect(image, source, destination);
+            ImageTexture texture = ImageTexture.CreateFromImage(frameImage);
+            frames[i] = new SpriteFrame(texture, new Rect2(0, 0, paddedWidth, paddedHeight), paddedDisplaySize);
+        }
 
         return true;
+    }
+
+    private static bool TryLoadComponentSourceFrames(string resourcePath, Vector2I[] seeds, out SpriteFrame[] frames)
+    {
+        frames = [];
+        string filePath = ProjectSettings.GlobalizePath(resourcePath);
+        if (!File.Exists(filePath))
+            return false;
+
+        Image image = Image.LoadFromFile(filePath);
+        if (image.IsEmpty())
+            return false;
+
+        image.Convert(Image.Format.Rgba8);
+        List<ComponentFrame> components = [];
+        foreach (Vector2I seed in seeds)
+        {
+            if (TryExtractComponent(image, seed, out ComponentFrame component))
+                components.Add(component);
+        }
+
+        if (components.Count == 0)
+            return false;
+
+        int maxWidth = 1;
+        int maxHeight = 1;
+        foreach (ComponentFrame component in components)
+        {
+            maxWidth = Mathf.Max(maxWidth, component.Bounds.Size.X);
+            maxHeight = Mathf.Max(maxHeight, component.Bounds.Size.Y);
+        }
+
+        const int EdgePadding = 2;
+        Vector2 displaySize = new(maxWidth + EdgePadding * 2, maxHeight + EdgePadding * 2);
+        frames = new SpriteFrame[components.Count];
+        for (int i = 0; i < components.Count; i++)
+        {
+            ComponentFrame component = components[i];
+            int paddedWidth = component.Bounds.Size.X + EdgePadding * 2;
+            int paddedHeight = component.Bounds.Size.Y + EdgePadding * 2;
+            Image frameImage = Image.CreateEmpty(paddedWidth, paddedHeight, false, Image.Format.Rgba8);
+            frameImage.Fill(Colors.Transparent);
+            foreach (Vector2I point in component.Points)
+            {
+                Vector2I destination = point - component.Bounds.Position + new Vector2I(EdgePadding, EdgePadding);
+                frameImage.SetPixelv(destination, image.GetPixelv(point));
+            }
+
+            ImageTexture texture = ImageTexture.CreateFromImage(frameImage);
+            frames[i] = new SpriteFrame(texture, new Rect2(0, 0, paddedWidth, paddedHeight), displaySize);
+        }
+
+        return true;
+    }
+
+    private static bool TryExtractComponent(Image image, Vector2I seed, out ComponentFrame component)
+    {
+        component = new ComponentFrame(new Rect2I(), []);
+        int width = image.GetWidth();
+        int height = image.GetHeight();
+        if (!TryFindOpaqueSeed(image, seed, out Vector2I start))
+            return false;
+
+        bool[,] visited = new bool[width, height];
+        Stack<Vector2I> stack = new();
+        List<Vector2I> points = [];
+        stack.Push(start);
+        visited[start.X, start.Y] = true;
+        int minX = start.X;
+        int maxX = start.X;
+        int minY = start.Y;
+        int maxY = start.Y;
+
+        while (stack.Count > 0)
+        {
+            Vector2I point = stack.Pop();
+            points.Add(point);
+            minX = Math.Min(minX, point.X);
+            maxX = Math.Max(maxX, point.X);
+            minY = Math.Min(minY, point.Y);
+            maxY = Math.Max(maxY, point.Y);
+
+            for (int oy = -1; oy <= 1; oy++)
+            {
+                for (int ox = -1; ox <= 1; ox++)
+                {
+                    if (ox == 0 && oy == 0)
+                        continue;
+
+                    int x = point.X + ox;
+                    int y = point.Y + oy;
+                    if (x < 0 || y < 0 || x >= width || y >= height || visited[x, y])
+                        continue;
+
+                    if (image.GetPixel(x, y).A <= 0.03f)
+                        continue;
+
+                    visited[x, y] = true;
+                    stack.Push(new Vector2I(x, y));
+                }
+            }
+        }
+
+        component = new ComponentFrame(new Rect2I(minX, minY, maxX - minX + 1, maxY - minY + 1), points);
+        return true;
+    }
+
+    private static bool TryFindOpaqueSeed(Image image, Vector2I seed, out Vector2I result)
+    {
+        result = seed;
+        int width = image.GetWidth();
+        int height = image.GetHeight();
+        if (seed.X >= 0 && seed.Y >= 0 && seed.X < width && seed.Y < height && image.GetPixelv(seed).A > 0.03f)
+            return true;
+
+        for (int radius = 1; radius <= 8; radius++)
+        {
+            for (int y = seed.Y - radius; y <= seed.Y + radius; y++)
+            {
+                for (int x = seed.X - radius; x <= seed.X + radius; x++)
+                {
+                    if (x < 0 || y < 0 || x >= width || y >= height)
+                        continue;
+
+                    if (image.GetPixel(x, y).A <= 0.03f)
+                        continue;
+
+                    result = new Vector2I(x, y);
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private static void AddFrames(
@@ -1275,6 +1471,8 @@ public sealed class SpriteAnimationSet
             }
         }
     }
+
+    private readonly record struct ComponentFrame(Rect2I Bounds, List<Vector2I> Points);
 
     private readonly record struct DetectedFrame(int X, int Y, int Width, int Height, int OpaquePixels)
     {

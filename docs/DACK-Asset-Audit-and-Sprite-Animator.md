@@ -184,6 +184,7 @@ Scope:
 - Import sprite sheet.
 - Slice by grid, manual rectangles, or metadata.
 - Define animation clips: idle, run, jump, crawl, shoot, punch, climb, slide, hurt, death, custom.
+- Treat `Idle` and `Climb` as first-class baseline labels. They are not optional extras: almost every actor needs an idle/rest pose, and side-view/vertical games need climb labels as soon as ladders, vines, ropes, walls, or text-crawl surfaces exist.
 - Set frames-per-second and loop mode.
 - Set per-frame duration overrides.
 - Set origin/pivot.
@@ -195,6 +196,22 @@ Scope:
 - Record source/provenance.
 
 This module should not turn the live pad into Aseprite. It sits beside the pad as the organizer/importer/previewer.
+
+### Bigger character editor page
+
+The current sidebar strip editor is useful for RAD work, but it is already brushing against the limits of a sidebar. The next UI step should be a full Character page, opened from the Cockpit/Inspector, with the sprite-frame editor as one panel inside it rather than the whole experience.
+
+Recommended page structure:
+
+- **Character summary:** name, role, scale, facing defaults, locomotion type, health/toughness.
+- **Sprite/frame source:** source sheet, importer mode, frame strip, frame renumbering, reload defaults, provenance.
+- **Animation labels:** Idle, Run, Walk, Turn, Jump Up, Jump Down, Fall, Land, Climb, Crawl, Shoot, Run Shoot, Jump Shoot, Hurt, Death, Special, plus custom labels.
+- **Playback settings:** FPS, loop/play-once/hold-last, ping-pong/reverse, strobe/effects, baseline/origin overrides.
+- **Gameplay binding:** map animation labels to movement states, AI states, attacks, hit reactions, death, power-ups, and editor previews.
+- **Attachment points:** muzzle, hands, head, feet/baseline, hitbox, hurtbox, pickup/interaction point.
+- **Rule cards:** movement, AI, projectile, sounds, effects, text interaction, stats.
+
+This keeps the sidebar as the quick live toy while giving serious character setup a room of its own. It also lets future importer modes—grid, tight rectangles, seeded components, metadata, Aseprite JSON—expose their assumptions without crowding the playfield.
 
 ### Character builder: paper-doll plus rule cards
 
@@ -468,5 +485,35 @@ DACK's art workflow should feel like:
 - imported sheets become understandable clips;
 - every asset carries its license/provenance;
 - creators can always see whether they are editing a shared sprite, an instance fork, or a runtime-only clone.
+
+## Overhead / Battle Fleet sprite processing
+
+Top-down, fleet, and space sprites need a different interpretation from side-view actors. A horizontal strip of ships is usually not a walk cycle. It is often a set of heading bins: the ship should display the frame that best matches its movement vector.
+
+The Legacy `top-down-shooter-ship` pack is the first clean test case:
+
+- `spritesheets/red/ship-01.png`: 240x48, five 48x48 heading frames.
+- `spritesheets/red/ship-02.png`: 320x64, five 64x64 heading frames.
+- `spritesheets/red/ship-03.png`: 240x48, five 48x48 heading frames.
+- `spritesheets/red/ship-04.png`: 240x48, five 48x48 heading frames.
+- Matching yellow variants exist.
+- Thrust strips are separate small overlays and should become an optional engine/exhaust layer later.
+
+Processing rule:
+
+- Treat multi-panel ships as **directional frame sets**, not animation loops.
+- Store frame count, source path, color/faction, ship class, and intended heading order.
+- Movement systems choose the visible frame based on velocity/heading.
+- Thruster frames are composited only while thrust/acceleration is active.
+- Floating crystals should import as pickups, bumpers, hazards, resources, or mission anchors rather than actors.
+
+The first runtime proof uses `Battle Ship 01` as an Overhead player: WASD/arrow movement steers the ship through five heading frames. Later Battle Fleet packs with many individual images can follow the same taxonomy:
+
+- three-panel ships: left/center/right or bank-left/neutral/bank-right;
+- five-panel ships: coarse heading bins;
+- eight/sixteen-panel ships: direct compass headings;
+- crystals/asteroids: static or slowly rotating pickups/obstacles;
+- engine/thrust/fire: optional attachment effects;
+- wreckage/debris: destruction effects and pickups.
 
 The sprite pad is the toy. The animator is the librarian and stage manager. Both are needed.

@@ -2,6 +2,6 @@ namespace Dack;
 
 public enum PlatformerMode
 {
-    Horizontal,
-    Vertical
+	Horizontal,
+	Vertical
 }

@@ -181,6 +181,16 @@ Only the selected toolkit/family page should be expanded by default. Other toolk
 
 This prevents feature growth from turning into a pile of unrelated windows.
 
+## Character Page vs. Sprite Sidebar
+
+The live sprite sidebar remains the quick in-context pad: select an actor, tweak pixels or frame labels, see the playfield update. It should stay small, hidable, and toy-like.
+
+As actor setup grows, DACK needs a larger Character page. That page should collect the heavier work: imported frame source, animation labels, timing, origins/baselines, attachment points, AI/rule cards, projectile slots, sounds, effects, and text-interaction options. `Idle` and `Climb` should be treated as core labels alongside run, jump, shoot, hurt, and death.
+
+This prevents the sidebar from becoming a cramped Aseprite clone and gives creators a natural place to tune enemies, players, guards, climbers, flyers, projectiles, and future RPG/overhead actors.
+
+Placed toolkit objects should follow the same principle: the playfield gives direct manipulation with A/B handles, while the Inspector gives precise nudges. Ramps, slides, conveyors, elevators, pinball parts, gates, and future line objects should be rotatable; line tools rotate by their endpoints and by Inspector rotate nudges. Ladders are the exception: they should remain vertical climb volumes, with width tuned against the player character rather than treated as angled ropes.
+
 ## Source Binding and Manual Authorship
 
 Auto-detection and Word Sense are assistants, not authorities.
@@ -309,6 +319,22 @@ The parabola editor should be near-term because it is simple, legible, and direc
 - Layer Manager: playfield, actors, effects, HUD, overlay, cockpit, safety.
 - HUD Manager: whitespace placement and fade-on-approach.
 
+### Shared shadow rendering
+
+Every visible gameplay object should be able to cast a cheap composited shadow onto the cloned document/page. The goal is not physical realism; it is grounding. Objects should feel like they sit on the paper, desktop, or app surface rather than floating as ordinary UI.
+
+First rule:
+
+- Sprites draw a projected duplicate of their current frame before the real frame.
+- The duplicate is squashed vertically, slightly rotated/offset, tinted grayscale/black, and made semi-transparent.
+- This creates a single-function "paper shadow" for players, enemies, animated targets, imported characters, and later pickups/projectiles.
+
+Second rule:
+
+- Vector/toolkit objects use the same concept with shape-specific helpers: line shadows for ramps/conveyors/flippers, ellipse shadows for bumpers/balls, soft rect shadows for panels and icons.
+- A later Renderer/Theme service should expose shadow parameters: `shadowEnabled`, `shadowOpacity`, `shadowOffset`, `shadowSquash`, `shadowBlurStyle`, and `shadowFollowsTheme`.
+- Dark mode and Boss Key can reduce or disable shadows if they harm legibility or office-safe presentation.
+
 ### Phase B: Add Shelf and Inspector
 
 - Global shelf categories.
@@ -342,6 +368,29 @@ The parabola editor should be near-term because it is simple, legible, and direc
 - Performance toggles.
 - Word Sense install/status helper.
 - Clone-only warnings and metadata-scrub status.
+
+## System theme and dark mode
+
+DACK should respect the user's system theme without letting the game layer damage document legibility.
+
+Policy:
+
+- Default UI chrome should follow system light/dark mode when the platform exposes it.
+- The captured document clone remains visually faithful by default. DACK should not globally invert, recolor, or "dark-mode" the source clone unless the creator chooses a stylized table/theme mode.
+- Game overlays adapt instead:
+  - light system theme: quieter glow, darker outlines, lower underlay opacity;
+  - dark system theme: slightly stronger glow, brighter HUD text, but still capped to avoid arcade glare;
+  - high-contrast/accessibility mode: prefer crisp outlines and reduced strobe over neon haze.
+- ANSI/BBS underlays should have independent `underlayOpacity`, `glowStrength`, `scanlineStrength`, and `textProtection` controls.
+- Text protection wins over theme. If an underlay, effect, or HUD region makes document text hard to read, DACK should dim/mask/relocate the overlay rather than alter the document.
+- Boss Key should always force the quietest office-safe presentation regardless of system theme.
+
+Implementation notes:
+
+- Keep a small Theme Service rather than scattering color constants everywhere.
+- Store user preference as `System`, `Light`, `Dark`, `Quiet Office`, `Arcade Neon`, `Terminal/BBS`, or `Debug`.
+- At startup, read the OS/system theme if Godot exposes it cleanly on the platform; otherwise default to `System` with light-safe values.
+- Make effects request theme colors/intensity from the service, so Brickbat explosions, Pinball underlays, HUDs, and editor handles can adapt together.
 
 ## Design North Star
 

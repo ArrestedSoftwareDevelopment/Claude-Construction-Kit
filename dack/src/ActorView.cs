@@ -10,15 +10,18 @@ public partial class ActorView : Control
     private bool _isPlayable;
     private bool _facingRight = true;
     private bool _dragging;
+    private static readonly Color SpriteShadowModulate = new(0.08f, 0.09f, 0.10f, 0.24f);
 
     public string ActorName { get; set; } = "Actor";
     public string AnimationSourceId { get; set; } = "";
     public SpriteAnimationSet? AnimationSet { get; set; }
     public ActorMotionState MotionState { get; set; } = ActorMotionState.Idle;
+    public int? DirectionFrameIndex { get; set; }
     public double AnimationClock { get; set; }
     public bool StrobeEnabled { get; set; }
     public int StrobeCount { get; set; }
     public bool ManualPlacement { get; set; }
+    public bool CanDragPlayableInEditor { get; set; }
     public Vector2 HomePosition { get; set; }
     public bool EditorMode { get; set; } = true;
     public bool CanFireProjectiles { get; set; }
@@ -101,7 +104,7 @@ public partial class ActorView : Control
             && mouseButton.Pressed)
         {
             SelectionRequested?.Invoke(this);
-            if (!IsPlayable && EditorMode)
+            if (CanDragInEditor)
             {
                 _dragging = true;
                 ManualPlacement = true;
@@ -114,16 +117,18 @@ public partial class ActorView : Control
                  && !release.Pressed)
         {
             _dragging = false;
-            if (!IsPlayable && EditorMode)
+            if (CanDragInEditor)
                 HomePosition = Position;
             AcceptEvent();
         }
-        else if (inputEvent is InputEventMouseMotion motion && _dragging && !IsPlayable && EditorMode)
+        else if (inputEvent is InputEventMouseMotion motion && _dragging && CanDragInEditor)
         {
             Position += motion.Relative;
             AcceptEvent();
         }
     }
+
+    private bool CanDragInEditor => EditorMode && (!IsPlayable || CanDragPlayableInEditor);
 
     public override void _Draw()
     {
@@ -167,7 +172,9 @@ public partial class ActorView : Control
 
         if (AnimationSet is not null)
         {
-            SpriteFrame frame = AnimationSet.GetFrame(MotionState, AnimationClock);
+            SpriteFrame frame = DirectionFrameIndex is int directionFrame
+                ? AnimationSet.GetFrame(directionFrame)
+                : AnimationSet.GetFrame(MotionState, AnimationClock);
             DrawSpriteFrame(frame.Texture, frame.SourceRegion, frame.DisplaySize);
         }
         else
@@ -202,9 +209,6 @@ public partial class ActorView : Control
 
     private void DrawSpriteFrame(Texture2D texture, Rect2 sourceRegion, Vector2 displaySize)
     {
-        if (!FacingRight)
-            DrawSetTransform(new Vector2(Size.X, 0), 0, new Vector2(-1, 1));
-
         Vector2 stableDisplay = new(Mathf.Max(1f, displaySize.X), Mathf.Max(1f, displaySize.Y));
         float scale = Mathf.Min(Size.X / stableDisplay.X, Size.Y / stableDisplay.Y);
         Vector2 drawSize = sourceRegion.Size * scale;
@@ -213,7 +217,27 @@ public partial class ActorView : Control
             Size.Y - drawSize.Y
         );
 
+        DrawSpriteShadow(texture, sourceRegion, drawPosition, drawSize);
+
+        if (!FacingRight)
+            DrawSetTransform(new Vector2(Size.X, 0), 0, new Vector2(-1, 1));
+
         DrawTextureRectRegion(texture, new Rect2(drawPosition, drawSize), sourceRegion);
+        DrawSetTransform(Vector2.Zero, 0, Vector2.One);
+    }
+
+    private void DrawSpriteShadow(Texture2D texture, Rect2 sourceRegion, Vector2 drawPosition, Vector2 drawSize)
+    {
+        if (drawSize.X <= 0 || drawSize.Y <= 0)
+            return;
+
+        Vector2 baseCenter = drawPosition + new Vector2(drawSize.X * 0.5f, drawSize.Y * 0.94f);
+        Vector2 shadowSize = new(drawSize.X * 0.82f, Mathf.Max(3f, drawSize.Y * 0.22f));
+        Vector2 shadowOffset = new(drawSize.X * 0.10f, Mathf.Max(4f, drawSize.Y * 0.08f));
+        Rect2 shadowRect = new(new Vector2(-shadowSize.X * 0.5f, -shadowSize.Y * 0.5f), shadowSize);
+
+        DrawSetTransform(baseCenter + shadowOffset, Mathf.DegToRad(-7f), new Vector2(1.08f, 0.72f));
+        DrawTextureRectRegion(texture, shadowRect, sourceRegion, SpriteShadowModulate);
         DrawSetTransform(Vector2.Zero, 0, Vector2.One);
     }
 

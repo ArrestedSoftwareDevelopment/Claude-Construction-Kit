@@ -31,6 +31,7 @@ public partial class BrickbatOverlay : Control
     private readonly RandomNumberGenerator _random = new();
 
     public PlayfieldSurface Playfield { get; set; } = null!;
+    public IReadOnlyList<ActorView> Actors { get; set; } = Array.Empty<ActorView>();
     public bool SidePaddle { get; set; }
     public TextObjectGranularity BrickGranularity { get; set; } = TextObjectGranularity.Letter;
     public TextCollisionMode TextCollisionMode { get; set; } = TextCollisionMode.Bounce;
@@ -161,13 +162,25 @@ public partial class BrickbatOverlay : Control
             foreach (Rect2 platform in Playfield.GetTextObjectRegions(BrickGranularity))
             {
                 if (platform.Size.X >= 3f && platform.Position.Y > playBounds.Position.Y + 40f && platform.Position.Y < playBounds.End.Y - 80f)
-                    _bricks.Add(new BrickbatTarget(platform, BrickGranularity == TextObjectGranularity.Word));
+                    _bricks.Add(new BrickbatTarget(platform, BrickGranularity == TextObjectGranularity.Word, null, null));
             }
 
             foreach (Rect2 anchor in Playfield.GetTextObjectRegions(TextObjectGranularity.BonusAnchor))
             {
                 if (anchor.Position.Y > playBounds.Position.Y + 30f && anchor.Position.Y < playBounds.End.Y - 70f)
-                    _bricks.Add(new BrickbatTarget(anchor, false));
+                    _bricks.Add(new BrickbatTarget(anchor, false, null, null));
+            }
+
+            foreach (ActorView actor in Actors)
+            {
+                if (actor.IsPlayable || !actor.Visible || actor.AnimationSet is null)
+                    continue;
+
+                Rect2 actorBounds = new(actor.Position, actor.Size);
+                if (actorBounds.Size.X < 4f || actorBounds.Size.Y < 4f || !actorBounds.Intersects(playBounds, true))
+                    continue;
+
+                _bricks.Add(new BrickbatTarget(actorBounds.Grow(-Mathf.Min(actorBounds.Size.X, actorBounds.Size.Y) * 0.12f), false, actor, actor.ActorName));
             }
         }
 
@@ -329,15 +342,25 @@ public partial class BrickbatOverlay : Control
         string? label = TryGetTargetLabel(brick);
         RemoveBrickCluster(brickIndex, brick.Bounds.Grow(4f));
 
-        int points = BrickGranularity == TextObjectGranularity.Word ? 50 : 10;
+        bool actorTarget = brick.Actor is not null;
+        int points = actorTarget ? 100 : BrickGranularity == TextObjectGranularity.Word ? 50 : 10;
         _score += points;
         _hits++;
-        _effects.TextHit(hitPosition, points, BrickGranularity == TextObjectGranularity.Word, label);
+        _effects.TextHit(hitPosition, points, actorTarget || BrickGranularity == TextObjectGranularity.Word, label);
+        if (actorTarget)
+            _effects.ComicImpact(hitPosition, RandomBrickbatImpactWord(), 1.55f);
+
         RememberDestroyedWord(label);
-        RequestSound(BrickGranularity == TextObjectGranularity.Word ? "brickbat-word-break" : "brickbat-text-hit");
+        RequestSound(actorTarget || BrickGranularity == TextObjectGranularity.Word ? "brickbat-word-break" : "brickbat-text-hit");
 
         if (_hits % _bonusEvery == 0)
             TriggerBonus(hitPosition);
+    }
+
+    private string RandomBrickbatImpactWord()
+    {
+        string[] words = ["BANG", "POW", "BOOM", "KAPOW", "WHAM", "ZAP"];
+        return words[_random.RandiRange(0, words.Length - 1)];
     }
 
     private void TriggerBonus(Vector2 position)
@@ -463,7 +486,7 @@ public partial class BrickbatOverlay : Control
     {
         if (brickIndex >= 0 && brickIndex < _bricks.Count)
         {
-            Playfield?.EraseDocumentText(_bricks[brickIndex].Bounds);
+            RemoveTargetFromPlayfield(_bricks[brickIndex]);
             _bricks.RemoveAt(brickIndex);
         }
 
@@ -472,9 +495,20 @@ public partial class BrickbatOverlay : Control
             if (!_bricks[i].Bounds.Intersects(blastRegion, true))
                 continue;
 
-            Playfield?.EraseDocumentText(_bricks[i].Bounds);
+            RemoveTargetFromPlayfield(_bricks[i]);
             _bricks.RemoveAt(i);
         }
+    }
+
+    private void RemoveTargetFromPlayfield(BrickbatTarget target)
+    {
+        if (target.Actor is not null)
+        {
+            target.Actor.Visible = false;
+            return;
+        }
+
+        Playfield?.EraseDocumentText(target.Bounds);
     }
 
     private void LaunchReserveBall(Rect2 bounds)
@@ -558,6 +592,9 @@ public partial class BrickbatOverlay : Control
 
     private string? TryGetTargetLabel(BrickbatTarget target)
     {
+        if (!string.IsNullOrWhiteSpace(target.Label))
+            return target.Label;
+
         if (target.CanOcr && Playfield.Ocr.TryGetLabel(target.Bounds, out string label))
             return label;
 
@@ -611,7 +648,7 @@ public partial class BrickbatOverlay : Control
 
             BrickbatTarget target = _bricks[i];
             RememberDestroyedWord(TryGetTargetLabel(target));
-            Playfield.EraseDocumentText(target.Bounds);
+            RemoveTargetFromPlayfield(target);
             _bricks.RemoveAt(i);
             destroyed++;
         }
@@ -730,5 +767,5 @@ public partial class BrickbatOverlay : Control
 
     private static Vector2 HudSize => new(190, 164);
 
-    private readonly record struct BrickbatTarget(Rect2 Bounds, bool CanOcr);
+    private readonly record struct BrickbatTarget(Rect2 Bounds, bool CanOcr, ActorView? Actor, string? Label);
 }

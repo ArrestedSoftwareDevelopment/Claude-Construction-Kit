@@ -46,6 +46,9 @@ Mode-specific tools should move into the relevant page/shelf instead of accumula
 
 - **Session:** Save Level, Load Level, Enter Play Mode / Return to Editor.
 - **Build Tools:** Ladder, Ramp, Slide, Conveyor, Elevator.
+  - Ramps are static angled support surfaces.
+  - Slides are downhill accelerators: they should always pull/push the actor toward the lower endpoint.
+  - Conveyors are powered motion surfaces and should start with intentionally strong values; angled conveyors can cover much of the “powered ramp” use case.
 - **Route / Logic:** Start, Checkpoint, Goal, Hidden Switch.
 - **Player Rules:** Safety Floor, Gun.
 - **Enemy Rules:** Enemy AI, Enemy Track, Enemy Shots.
@@ -135,12 +138,15 @@ The current family model covers the major 2D game-construction spaces DACK is li
 Likely future specialty presets can fit without new top-level menus:
 
 - **Fixed-screen shooter / gallery shooter:** Paddle/Clearing or Overhead depending on movement.
+- **Document Invasion:** Space Invaders / Galaxian / Galaga-style defense where the document, paragraphs, words, or letter fleets advance downward toward the player.
 - **Missile defense / interception:** Overhead or Route/Flow, with protected-object markers.
 - **Territory / Surround / light-cycle:** Grid/Text or Route/Flow depending on grid vs spline trails.
 - **Puzzle / casual sorting:** Grid/Text, Route/Flow, or Ambient depending on source grammar.
 - **Rhythm/timing:** usually Route/Flow, because the core authoring object is a timed lane/event stream.
 
 So the top-level taxonomy is not "complete forever," but it is broad enough that new ideas should usually enter as presets, not as new top-level categories.
+
+Related design sketch: [DACK Space, Air, Tank, and Artillery Concepts](DACK-Space-Air-Tank-Artillery-Concepts.md).
 
 ### 1. Side View
 
@@ -152,6 +158,7 @@ Presets:
 - **Vertical Climber:** Crazy Climber / Mario vertical traversal, ladders, single-spaced text crawl.
 - **Side Shooter:** run/jump/shoot; document text and UI objects as terrain/cover.
 - **Digging / Lode Runner:** dig holes, tunnel through text, create/repair terrain.
+- **Artillery / Scorched-Earth-like:** angle, power, wind, gravity, destructible cloned text terrain, craters, and visible shot arcs.
 - **Crawl / Fence Text:** text rows become climb/crawl surfaces if enabled.
 - **Office Obstacle Course:** simple casual traversal using document/window geometry.
 
@@ -191,6 +198,7 @@ Presets:
 - **Planes / Atmospheric Flying:** steer/bank, throttle, climb/dive, drag, stall-ish slowdown, altitude bands, clouds/terrain as lanes.
 - **Spaceships / Thrust:** rotate, thrust, coast/inertia, wrap/bounce, shoot, local gravity wells, orbit hazards, Spacewar-style arenas.
 - **Lunar Lander:** rotate, thrust, conserve fuel, manage descent rate, touch down on safe pads, crash into document terrain.
+- **Document Starfield / Mining:** fade the cloned document into space, let individual letters twinkle through, and harvest target words/letters non-destructively or destructively depending on rules.
 - **RPG / Adventure:** 8-way or click-to-move, interact, pick up, open, talk/fight.
 - **Animals / Insects:** crawl, wander, forage, flee, swarm, follow trails, climb over/around text.
 - **Horde / Robotron-like:** player-centered arena pressure, flock/chase groups, rescue/escort variants, projectile floods, and panic-room survival.
@@ -608,6 +616,12 @@ Inside the Cockpit, the family page chooses the exact preset and exposes shelf p
 
 Two-monitor design should become a first-class layout mode, not a hack around fullscreen.
 
+Current prototype rule:
+
+- **Cockpit/menu open = Edit/Build authority.** Opening the Cockpit from Play temporarily pauses play authority and enables editor affordances. Closing it resumes Play if Play was active before the Cockpit opened.
+- **Cockpit/menu closed during Play = Play authority.** Editor-only objects, sprite/animation panels, and intrusive shelves stay hidden so the playfield owns the screen.
+- **Opening the Cockpit while already editing does not auto-play on close.** This preserves deliberate builder sessions.
+
 Primary arrangement:
 
 - **Monitor A: live work surface.** The real desktop/app/document stays native and usable.
@@ -631,6 +645,8 @@ Menu implication:
 
 ```text
 Layout
+  Probe Monitors
+  Move DACK To Next Monitor
   Single Monitor
   Two Monitor: Work + Clone
   Two Monitor: Editor + Preview
@@ -638,3 +654,9 @@ Layout
 ```
 
 This reinforces the product distinction: the real work stays untouched on one side; the living game clone plays on the other.
+
+Implementation starter:
+
+- Use Godot `DisplayServer.GetScreenCount()`, `GetPrimaryScreen()`, `WindowGetCurrentScreen()`, `ScreenGetPosition()`, `ScreenGetSize()`, and `ScreenGetUsableRect()` to inspect the local monitor layout.
+- Use `WindowSetCurrentScreen()`, `WindowSetPosition()`, and `WindowSetSize()` for the first safe single-window relocation pass.
+- After that primitive is reliable, introduce a second DACK window: one window can host Cockpit/Edit/Understand, while the other remains a near-pure Playfield/Preview.

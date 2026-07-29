@@ -50,6 +50,7 @@ public partial class Main : Control
     private Control _brickbatPanel = null!;
     private Control _pinballPanel = null!;
     private Control _overheadPanel = null!;
+    private readonly List<Button> _editorPlayButtons = [];
     private Label _cockpitStatus = null!;
     private Label _inspectorText = null!;
     private Label _attributeText = null!;
@@ -73,6 +74,7 @@ public partial class Main : Control
     private bool _syncingCharacterName;
     private readonly string[] _tgcPresetLabels =
     [
+        "Idle",
         "Run Shoot",
         "Jump Shoot",
         "Fall",
@@ -95,6 +97,7 @@ public partial class Main : Control
     private ColorPickerButton _tintPicker = null!;
     private CheckBox _customTintCheck = null!;
     private BrickbatOverlay _brickbatOverlay = null!;
+    private PinballOverlay _pinballOverlay = null!;
     private ActorView _selectedActor = null!;
     private ActorView _player = null!;
     private EditableSpriteModel _initialModel = null!;
@@ -115,6 +118,8 @@ public partial class Main : Control
     private bool _partialDamageEnabled = true;
     private bool _soundEnabled = true;
     private bool _updatingAttributeControls;
+    private bool _goalReached;
+    private bool _resumePlayWhenCockpitCloses;
     private double _deathTestSeconds;
     private double _shootAnimSeconds;
     private double _contactInvulnerabilitySeconds;
@@ -160,6 +165,8 @@ public partial class Main : Control
         }
 
         UpdatePlayer(delta);
+        UpdateOverheadPlayer(delta);
+        UpdateActorPresentation((float)delta);
 
         if (!_editorMode)
         {
@@ -404,6 +411,16 @@ public partial class Main : Control
         );
         characterPicker.AddChild(tgcFleet);
 
+        Button battleShip = Button("BATTLE SHIP");
+        battleShip.TooltipText = "Use the Legacy top-down shooter ship as the Overhead/space player.";
+        battleShip.Pressed += () => SetPlayerCharacter(
+            "Battle Ship 01",
+            SpriteAnimationSet.TryLoadBattleFleetRedShip01(),
+            "Battle Ship 01 loaded as the Overhead player. Its five frames are heading bins, not walk frames: movement chooses the visible ship direction.",
+            "battle-fleet-red-ship-01"
+        );
+        characterPicker.AddChild(battleShip);
+
         side.AddChild(Heading("ANIMATION FRAME EDITOR"));
         side.AddChild(CockpitNote("Name actions, edit start/end frame numbers, and add labels. The preview highlights every labeled range."));
         _tgcStripPreview = new AnimationStripPreview
@@ -460,6 +477,10 @@ public partial class Main : Control
         Button applyTgcClips = Button("APPLY ANIM LABELS");
         applyTgcClips.Pressed += ApplyTgcClipRanges;
         side.AddChild(applyTgcClips);
+
+        Button reloadDefaultAnim = Button("RELOAD DEFAULT ANIM");
+        reloadDefaultAnim.Pressed += ReloadSelectedAnimationDefaults;
+        side.AddChild(reloadDefaultAnim);
 
         Button testDeath = Button("TEST DEATH");
         testDeath.Pressed += TriggerDeathAnimation;
@@ -803,29 +824,15 @@ public partial class Main : Control
         PanelContainer panel = CockpitPanel(260);
         VBoxContainer shelf = PanelVBox(panel);
         shelf.AddChild(CockpitHeading("PLATFORMER"));
-        Button saveLevel = Button("Save Level");
-        saveLevel.Pressed += SaveLevel;
-
-        Button loadLevel = Button("Load Level");
-        loadLevel.Pressed += LoadLevel;
-
-        Button editorPlay = Button("Enter Play Mode");
-        editorPlay.Pressed += () =>
-        {
-            SetEditorMode(!_editorMode);
-            editorPlay.Text = _editorMode ? "Enter Play Mode" : "Return to Editor";
-        };
-        shelf.AddChild(CockpitHeading("SESSION"));
-        shelf.AddChild(ButtonRow(saveLevel, loadLevel));
-        shelf.AddChild(editorPlay);
+        AddGameTypeSessionBlock(shelf, PlaysetMode.Platformer, "ENTER PLATFORMER");
 
         shelf.AddChild(CockpitHeading("BUILD TOOLS"));
         shelf.AddChild(ButtonRow(
-            ShelfButton("Ladder", WorldObjectKind.Ladder, "Climbable vertical tool; later: draggable endpoints."),
-            ShelfButton("Ramp", WorldObjectKind.Ramp, "Diagonal standable line for paragraph slants / Donkey Kong feel.")));
+            ShelfButton("Ladder", WorldObjectKind.Ladder, "Vertical climb volume. Drag A/B to set height; thickness roughly matches player width."),
+            ShelfButton("Ramp", WorldObjectKind.Ramp, "Static angled standable line for paragraph slants / Donkey Kong feel.")));
         shelf.AddChild(ButtonRow(
-            ShelfButton("Slide", WorldObjectKind.Slide, "Sloped acceleration surface; currently uses ramp physics with slide push."),
-            ShelfButton("Conveyor", WorldObjectKind.Conveyor, "Moving belt surface; useful for office machinery and factory text.")));
+            ShelfButton("Slide", WorldObjectKind.Slide, "Downhill acceleration surface. Slides always push toward the lower endpoint."),
+            ShelfButton("Conveyor", WorldObjectKind.Conveyor, "Powered belt/line surface with intentionally strong force; rotate it for angled belts.")));
         shelf.AddChild(ShelfButton("Elevator", WorldObjectKind.Elevator, "Moving platform proof; later gets visible endpoints and timing."));
 
         shelf.AddChild(CockpitHeading("ROUTE / LOGIC"));
@@ -955,11 +962,11 @@ public partial class Main : Control
         clear.Pressed += () =>
         {
             _playfield.ClearPlacedObjects();
+            SyncEditorModeToScene();
             _inspectorText.Text = "Placed toolkit parts cleared. Captured document pixels and Brickbat mutations remain separate.";
         };
         shelf.AddChild(clear);
 
-        shelf.AddChild(CockpitNote("These are DACK overlay objects. They do not edit the source document or screenshot clone."));
         return panel;
     }
 
@@ -968,11 +975,7 @@ public partial class Main : Control
         PanelContainer panel = CockpitPanel(250);
         VBoxContainer brickbat = PanelVBox(panel);
         brickbat.AddChild(CockpitHeading("BRICKBAT PAGE"));
-        brickbat.AddChild(CockpitNote("Brickbat-specific controls live here now instead of crowding the always-on strip."));
-
-        Button enter = Button("ENTER BRICKBAT");
-        enter.Pressed += () => SetPlaysetMode(PlaysetMode.Brickbat);
-        brickbat.AddChild(enter);
+        AddGameTypeSessionBlock(brickbat, PlaysetMode.Brickbat, "ENTER BRICKBAT");
 
         Button paddle = Button(_brickbatOverlay.SidePaddle ? "Paddle: Side" : "Paddle: Bottom");
         paddle.Pressed += () =>
@@ -1012,7 +1015,7 @@ public partial class Main : Control
             SetPlaysetMode(PlaysetMode.Brickbat);
             _inspectorText.Text = _brickbatOverlay.TextCollisionMode == TextCollisionMode.Bounce
                 ? "Brickbat text collision set to Bounce. Letters/words act like solid targets and deflect the ball."
-                : "Brickbat text collision set to Pierce. The ball erases and scores text but keeps traveling through it. This is the seed of ghost-ball/piercing powerups and conditional zones.";
+                : "Brickbat text collision set to Pierce. The ball erases and scores text but keeps traveling through it.";
         };
         brickbat.AddChild(textCollision);
 
@@ -1033,8 +1036,6 @@ public partial class Main : Control
         };
         brickbat.AddChild(resetHud);
 
-        brickbat.AddChild(CockpitHeading("LATER"));
-        brickbat.AddChild(CockpitNote("Target recipes, bonus deck, laser settings, persistence policy, HUD style, and word-goal filters belong on this page."));
         return panel;
     }
 
@@ -1043,17 +1044,7 @@ public partial class Main : Control
         PanelContainer panel = CockpitPanel(250);
         VBoxContainer pinball = PanelVBox(panel);
         pinball.AddChild(CockpitHeading("PINBALL PAGE"));
-        pinball.AddChild(CockpitNote("Starter goal: prove one ball, two flippers, bumpers, drains, and score inserts on the same cloned playfield."));
-
-        Button enter = Button("ENTER PINBALL");
-        enter.Pressed += () =>
-        {
-            SetPlaysetMode(PlaysetMode.Pinball);
-            _inspectorText.Text =
-                "Pinball module placeholder.\n\n"
-                + "Next coding pass should add PinballOverlay: ball physics, flipper arcs, bumpers, drains, plunger lane, tilt/nudge, and score events.";
-        };
-        pinball.AddChild(enter);
+        AddGameTypeSessionBlock(pinball, PlaysetMode.Pinball, "ENTER PINBALL");
 
         pinball.AddChild(CockpitHeading("FIRST PARTS"));
         pinball.AddChild(PinballShelfButton("Add Flipper", WorldObjectKind.PinballFlipper, "Pivot-to-tip flipper placeholder. A/B handles define pivot, length, and resting angle."));
@@ -1062,15 +1053,6 @@ public partial class Main : Control
         pinball.AddChild(PinballShelfButton("Add Drain", WorldObjectKind.PinballDrain, "Drain/outlane placeholder. A/B handles set drain width."));
         pinball.AddChild(PinballShelfButton("Add Rollover", WorldObjectKind.PinballRollover, "Small scoring/lit insert strip. A/B handles set position and width."));
         pinball.AddChild(PinballShelfButton("Add Gate", WorldObjectKind.PinballGate, "One-way gate placeholder. A/B direction points toward allowed travel."));
-        pinball.AddChild(CockpitNote(
-            "Flippers, plunger lane, ball spawn, bumper, rollover, drain, gate, ramp rail, lit insert, jackpot target. "
-            + "All should use direct handles: flipper sweep arc, bumper radius, drain width, gate direction, and plunger force."
-        ));
-        pinball.AddChild(CockpitHeading("SOURCE FIT"));
-        pinball.AddChild(CockpitNote(
-            "Best early sources: Photoshop/GIMP/Krita/Paint canvases, PowerPoint/Draw/diagram slides, desktop/icon layouts, and BBS/textmode table art. "
-            + "Word works as a themed table, but canvas apps are the natural home."
-        ));
         return panel;
     }
 
@@ -1079,27 +1061,56 @@ public partial class Main : Control
         PanelContainer panel = CockpitPanel(250);
         VBoxContainer overhead = PanelVBox(panel);
         overhead.AddChild(CockpitHeading("OVERHEAD PAGE"));
-        overhead.AddChild(CockpitNote("Overhead is a family: Combat tanks, driving, planes/spaceships, RPG actors, animals, insects, and office creatures. Combat is the first preset."));
+        AddGameTypeSessionBlock(overhead, PlaysetMode.Overhead, "ENTER OVERHEAD");
+        return panel;
+    }
 
-        Button enter = Button("ENTER OVERHEAD");
+    private void AddGameTypeSessionBlock(VBoxContainer page, PlaysetMode mode, string enterText)
+    {
+        page.AddChild(CockpitHeading("SESSION"));
+
+        Button enter = Button(enterText);
         enter.Pressed += () =>
         {
-            SetPlaysetMode(PlaysetMode.Overhead);
-            _inspectorText.Text =
-                "Overhead toolkit placeholder.\n\n"
-                + "Next coding pass should add OverheadActorController with movement presets: tank/combat, driving, plane/space, RPG walk, and creature/insect crawl/swarm.";
+            SetPlaysetMode(mode);
+            _inspectorText.Text = $"{PlaysetModeLabel(mode)} toolkit selected.";
         };
-        overhead.AddChild(enter);
 
-        overhead.AddChild(CockpitHeading("FIRST PARTS"));
-        overhead.AddChild(CockpitNote(
-            "Player spawn, enemy spawn, patrol/guard route, cover region, ricochet wall, destructible text/object rule, pickup, door/gate, objective, and safe zone."
-        ));
-        overhead.AddChild(CockpitHeading("MOVEMENT SEEDS"));
-        overhead.AddChild(CockpitNote(
-            "Tank rotate/drive, car steer/drift, plane thrust/coast, RPG walk/interact, insect wander/forage/swarm. Same top-down world, different movement grammar."
-        ));
-        return panel;
+        Button play = Button(_editorMode ? "Enter Play Mode" : "Return to Editor");
+        play.Pressed += () => SetEditorMode(!_editorMode);
+        _editorPlayButtons.Add(play);
+
+        page.AddChild(ButtonRow(enter, play));
+
+        Button reset = Button("RESET THIS GAME");
+        reset.Pressed += () => ResetCurrentPlayset(mode);
+        page.AddChild(reset);
+
+        Button saveLevel = Button("Save Level");
+        saveLevel.Pressed += SaveLevel;
+        Button loadLevel = Button("Load Level");
+        loadLevel.Pressed += LoadLevel;
+        page.AddChild(ButtonRow(saveLevel, loadLevel));
+    }
+
+    private void ResetCurrentPlayset(PlaysetMode requestedMode)
+    {
+        SetPlaysetMode(requestedMode);
+        if (requestedMode == PlaysetMode.Brickbat)
+        {
+            _brickbatOverlay.ResetGame();
+            _inspectorText.Text = "Brickbat reset. Clone damage returns to the captured/source image for this run.";
+        }
+        else if (requestedMode == PlaysetMode.Pinball)
+        {
+            _pinballOverlay.ResetGame();
+            _inspectorText.Text = "Pinball reset. Fresh ball served for the current table.";
+        }
+        else
+        {
+            SnapPlayerToStart();
+            _inspectorText.Text = $"{PlaysetModeLabel(requestedMode)} reset. Start marker/manual spawn is honored.";
+        }
     }
 
     private Control BuildInspectorPanel()
@@ -1147,7 +1158,7 @@ public partial class Main : Control
         };
         inspector.AddChild(shotPower);
 
-        _speedSlider = AttributeSlider(-24, 24, 0, 0.5);
+        _speedSlider = AttributeSlider(-180, 180, 0, 1);
         _speedSlider.ValueChanged += value =>
         {
             if (_updatingAttributeControls)
@@ -1248,6 +1259,20 @@ public partial class Main : Control
         };
         inspector.AddChild(reverse);
 
+        Button rotateLeft = Button("ROTATE -15°");
+        rotateLeft.Pressed += () =>
+        {
+            _playfield.RotateSelected(-15f);
+            UpdateAttributeControls(_playfield.GetSelectedWorldObject());
+        };
+        Button rotateRight = Button("ROTATE +15°");
+        rotateRight.Pressed += () =>
+        {
+            _playfield.RotateSelected(15f);
+            UpdateAttributeControls(_playfield.GetSelectedWorldObject());
+        };
+        inspector.AddChild(ButtonRow(rotateLeft, rotateRight));
+
         Button normalize = Button("RAMP UP / SLIDE DOWN");
         normalize.Pressed += () =>
         {
@@ -1294,15 +1319,14 @@ public partial class Main : Control
         PanelContainer panel = CockpitPanel(280);
         VBoxContainer understand = PanelVBox(panel);
         understand.AddChild(CockpitHeading("UNDERSTAND"));
-        understand.AddChild(CockpitNote(
-            "Layer toggles will live here: source clone, text boxes, word labels, collision, placed objects, invisible logic, mutations, routes, and HUD avoidance."
-        ));
         understand.AddChild(CockpitHeading("WORD SENSE"));
         understand.AddChild(CockpitNote(_playfield.Ocr.StatusText));
-        understand.AddChild(CockpitHeading("NEXT HANDLES"));
-        understand.AddChild(CockpitNote(
-            "Ladder endpoints, elevator rails, ramp splines, checkpoint spawn binding, and pinball flipper arcs are the first handle family to build."
-        ));
+        understand.AddChild(CockpitHeading("DISPLAY LAYOUT"));
+        Button probeDisplays = Button("Probe Monitors");
+        probeDisplays.Pressed += ProbeDisplayLayout;
+        Button moveDisplay = Button("Move DACK To Next Monitor");
+        moveDisplay.Pressed += MoveDackToNextMonitor;
+        understand.AddChild(ButtonRow(probeDisplays, moveDisplay));
         return panel;
     }
 
@@ -1316,6 +1340,15 @@ public partial class Main : Control
         _brickbatOverlay.SoundRequested += PlaySound;
         _brickbatOverlay.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
         _playfield.AddChild(_brickbatOverlay);
+
+        _pinballOverlay = new PinballOverlay
+        {
+            Playfield = _playfield,
+            Visible = false
+        };
+        _pinballOverlay.SoundRequested += PlaySound;
+        _pinballOverlay.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+        _playfield.AddChild(_pinballOverlay);
 
         _playsetToolbar = new PanelContainer
         {
@@ -1357,6 +1390,8 @@ public partial class Main : Control
         {
             if (_playsetMode == PlaysetMode.Brickbat)
                 _brickbatOverlay.ResetGame();
+            else if (_playsetMode == PlaysetMode.Pinball)
+                _pinballOverlay.ResetGame();
             else
                 SnapPlayerToStart();
         };
@@ -1422,6 +1457,8 @@ public partial class Main : Control
             if (i > 0)
                 actor.Visible = false;
         }
+
+        _brickbatOverlay.Actors = _actors;
 
         _combatFxOverlay = new CombatFxOverlay
         {
@@ -1526,6 +1563,8 @@ public partial class Main : Control
             return "tgc-shooter-boss";
         if (name.Contains("fleet") || name.Contains("ship"))
             return "tgc-shooter-fleet";
+        if (name.Contains("battle"))
+            return "battle-fleet-red-ship-01";
         if (name.Contains("tgc"))
             return "tgc-player";
         return playable ? "stickman-v0.1" : "";
@@ -1765,9 +1804,9 @@ public partial class Main : Control
         SetAnimationEditorFrames(frames);
         int maxFrame = Mathf.Max(0, _animationEditorFrameCount - 1);
         ClearTgcClipRows();
-        AddTgcClipRow("Idle", 0, Mathf.Min(5, maxFrame), maxFrame);
-        AddTgcClipRow("Run", Mathf.Min(6, maxFrame), Mathf.Min(11, maxFrame), maxFrame);
-        AddTgcClipRow("Crawl", Mathf.Min(6, maxFrame), Mathf.Min(11, maxFrame), maxFrame);
+        AddTgcClipRow("Idle", 0, maxFrame, maxFrame);
+        AddTgcClipRow("Run", 0, maxFrame, maxFrame);
+        AddTgcClipRow("Crawl", 0, maxFrame, maxFrame);
         AddTgcClipRow("Jump Up", "-", "-", maxFrame);
         AddTgcClipRow("Jump Down", "-", "-", maxFrame);
         AddTgcClipRow("Fall", "-", "-", maxFrame);
@@ -1970,6 +2009,50 @@ public partial class Main : Control
         _selectedActor.QueueRedraw();
         RefreshBindingText();
         _inspectorText.Text = note + "\n\nApplied to the selected enemy. Save labels to make this source's frame mapping reusable.";
+    }
+
+    private void ReloadSelectedAnimationDefaults()
+    {
+        if (_selectedActor is null)
+            return;
+
+        string sourceId = string.IsNullOrWhiteSpace(_selectedActor.AnimationSourceId)
+            ? GuessAnimationSourceId(_selectedActor.ActorName, _selectedActor.IsPlayable)
+            : _selectedActor.AnimationSourceId;
+
+        SpriteAnimationSet? animationSet = LoadDefaultAnimationSet(sourceId);
+        if (animationSet is null)
+        {
+            _inspectorText.Text = $"Could not reload defaults for {_selectedActor.ActorName}. The animation source may be missing.";
+            return;
+        }
+
+        string actorName = _selectedActor.ActorName;
+        LoadAnimationEditorForActor(_selectedActor);
+        string note = $"{actorName} default animation reloaded.\n\nThis replaces the selected actor's in-memory animation with the current importer defaults. Use this after importer fixes, or when a placed actor is still holding an old frame cut.";
+
+        if (_selectedActor.IsPlayable)
+            SetPlayerCharacter(actorName, animationSet, note, sourceId);
+        else
+            SetSelectedEnemyAnimation(actorName, animationSet, note, sourceId);
+    }
+
+    private static SpriteAnimationSet? LoadDefaultAnimationSet(string sourceId)
+    {
+        return sourceId switch
+        {
+            "stickman-v0.1" => SpriteAnimationSet.TryLoadStickman(),
+            "sunny-dragon-fly" => SpriteAnimationSet.TryLoadSunnyDragon(),
+            "tgc-player" => SpriteAnimationSet.TryLoadGameCreatorPlayer(),
+            "tgc-orange-worker" => SpriteAnimationSet.TryLoadTgcOrangeWorker(),
+            "tgc-red-runner" => SpriteAnimationSet.TryLoadTgcRedRunner(),
+            "tgc-blue-guard" => SpriteAnimationSet.TryLoadTgcBlueGuard(),
+            "tgc-green-crawler" => SpriteAnimationSet.TryLoadTgcGreenCrawler(),
+            "tgc-shooter-boss" => SpriteAnimationSet.TryLoadTgcShooterBoss(),
+            "tgc-shooter-fleet" => SpriteAnimationSet.TryLoadTgcShooterFleet(),
+            "battle-fleet-red-ship-01" => SpriteAnimationSet.TryLoadBattleFleetRedShip01(),
+            _ => null
+        };
     }
 
     private void TriggerDeathAnimation()
@@ -2243,7 +2326,12 @@ public partial class Main : Control
         _playfield.SetPlacedWorldObjects(manifest.worldObjects.Select(worldObject => worldObject.ToWorldObject()));
         RestoreLevelActors(manifest.actors);
         ApplyActorScale();
-        SnapPlayerToStart();
+        if (_playfield.HasStartMarker())
+            SnapPlayerToStart();
+        else if (_player is not null)
+            _playerPosition = _player.Position;
+
+        SyncEditorModeToScene();
         RefreshMotionText();
         RefreshCockpitStatus();
         _inspectorText.Text = $"Level loaded.\n\n{inputPath}\n\nRestored {manifest.worldObjects.Count} placed objects and {manifest.actors.Count} actors.";
@@ -2285,6 +2373,7 @@ public partial class Main : Control
                 "tgc-green-crawler" => SpriteAnimationSet.TryLoadTgcGreenCrawler(),
                 "tgc-shooter-boss" => SpriteAnimationSet.TryLoadTgcShooterBoss(),
                 "tgc-shooter-fleet" => SpriteAnimationSet.TryLoadTgcShooterFleet(),
+                "battle-fleet-red-ship-01" => SpriteAnimationSet.TryLoadBattleFleetRedShip01(),
                 _ => actor.AnimationSet
             };
         }
@@ -2604,11 +2693,37 @@ public partial class Main : Control
         UpdateCursorMode();
     }
 
+    private void CloseSpritePanel()
+    {
+        if (_sidebar is null)
+            return;
+
+        _sidebar.Visible = false;
+        if (_spritePanelButton is not null)
+            _spritePanelButton.Text = "SHOW SPRITE PAD";
+        UpdateCursorMode();
+    }
+
     private void ToggleCockpit()
     {
-        _cockpit.Visible = !_cockpit.Visible;
         if (_cockpit.Visible)
+        {
+            bool resumePlay = _resumePlayWhenCockpitCloses;
+            _resumePlayWhenCockpitCloses = false;
+            _cockpit.Visible = false;
+            if (resumePlay)
+                SetEditorMode(false);
+        }
+        else
+        {
+            _resumePlayWhenCockpitCloses = !_editorMode;
+            if (!_editorMode)
+                SetEditorMode(true);
+
+            _cockpit.Visible = true;
             FitCockpitToViewport();
+        }
+
         _brickbatOverlay.HudEditable = _cockpit.Visible;
         SyncEditorModeToScene();
         _playfield.QueueRedraw();
@@ -2656,9 +2771,13 @@ public partial class Main : Control
         }
         else
         {
+            _resumePlayWhenCockpitCloses = false;
             SetPlaysetMode(PlaysetMode.Platformer);
+            _cockpit.Visible = false;
+            CloseSpritePanel();
             _platformerLives = Mathf.Max(1, _platformerLives);
             _playerHealth = _playerMaxHealth;
+            _goalReached = false;
             _platformerStatus = "PLAY";
             _contactInvulnerabilitySeconds = 1.25;
             _hazardArmDelaySeconds = 1.0;
@@ -2672,6 +2791,8 @@ public partial class Main : Control
             _inspectorText.Text = "Play mode enabled.\n\nStart Point is honored, editor-only markers are hidden, enemy AI/projectiles can run, and collisions count.";
         }
 
+        SyncEditorModeToScene();
+        RefreshSessionModeUi();
         RefreshPlatformerHud();
         UpdateCursorMode();
     }
@@ -2679,9 +2800,15 @@ public partial class Main : Control
     private void SyncEditorModeToScene()
     {
         _playfield.EditorMode = _editorMode;
-        _playfield.ShowEditorOnlyObjects = _editorMode || _cockpit.Visible;
+        _playfield.ShowEditorOnlyObjects = _editorMode;
+        if (_pinballOverlay is not null)
+            _pinballOverlay.Paused = _editorMode || _playsetMode != PlaysetMode.Pinball;
+
         foreach (ActorView actor in _actors)
             actor.EditorMode = _editorMode;
+
+        if (_player is not null)
+            _player.CanDragPlayableInEditor = _editorMode && !_playfield.HasStartMarker();
     }
 
     private void TogglePlaysetToolbar()
@@ -2701,7 +2828,17 @@ public partial class Main : Control
             return;
 
         string mode = PlaysetModeLabel(_playsetMode);
-        _cockpitStatus.Text = $"{mode}  •  {_playfield.Ocr.StatusText}  •  contextual shelves  •  Esc hides cockpit";
+        string authority = _editorMode ? "EDIT" : "PLAY";
+        _cockpitStatus.Text = $"{authority}  •  {mode}  •  {_playfield.Ocr.StatusText}  •  contextual shelves  •  Esc toggles cockpit";
+    }
+
+    private void RefreshSessionModeUi()
+    {
+        string label = _editorMode ? "Enter Play Mode" : "Return to Editor";
+        foreach (Button button in _editorPlayButtons)
+            button.Text = label;
+
+        RefreshCockpitStatus();
     }
 
     private void UpdateCockpitToolkitPanels()
@@ -2715,23 +2852,73 @@ public partial class Main : Control
         _overheadPanel.Visible = _playsetMode == PlaysetMode.Overhead;
     }
 
+    private void ProbeDisplayLayout()
+    {
+        int screenCount = DisplayServer.GetScreenCount();
+        int primary = DisplayServer.GetPrimaryScreen();
+        int current = DisplayServer.WindowGetCurrentScreen();
+        List<string> lines = [$"Detected {screenCount} monitor(s). Primary: {primary}. DACK: {current}."];
+
+        for (int i = 0; i < screenCount; i++)
+        {
+            Vector2I position = DisplayServer.ScreenGetPosition(i);
+            Vector2I size = DisplayServer.ScreenGetSize(i);
+            Rect2I usable = DisplayServer.ScreenGetUsableRect(i);
+            lines.Add($"#{i}: pos {position.X},{position.Y}  size {size.X}×{size.Y}  usable {usable.Size.X}×{usable.Size.Y}");
+        }
+
+        _inspectorText.Text = string.Join("\n", lines)
+            + "\n\nStarter path: first move this single DACK window between screens; later split Cockpit/Edit and Playfield/Preview into separate windows.";
+    }
+
+    private void MoveDackToNextMonitor()
+    {
+        int screenCount = DisplayServer.GetScreenCount();
+        if (screenCount <= 1)
+        {
+            _inspectorText.Text = "Only one monitor detected. Dual-monitor layout will stay dormant on this machine.";
+            return;
+        }
+
+        int current = DisplayServer.WindowGetCurrentScreen();
+        int next = (Mathf.Max(0, current) + 1) % screenCount;
+        Rect2I usable = DisplayServer.ScreenGetUsableRect(next);
+        DisplayServer.WindowSetCurrentScreen(next);
+        DisplayServer.WindowSetPosition(usable.Position + new Vector2I(24, 24));
+        DisplayServer.WindowSetSize(new Vector2I(Mathf.Max(960, usable.Size.X - 96), Mathf.Max(640, usable.Size.Y - 96)));
+        _inspectorText.Text = $"Moved DACK to monitor #{next}.\n\nThis proves the first dual-monitor primitive: screen enumeration + window relocation. Next step is separate editor/playfield windows.";
+    }
+
     private void SetPlaysetMode(PlaysetMode mode)
     {
         _playsetMode = mode;
         bool brickbat = mode == PlaysetMode.Brickbat;
+        bool pinball = mode == PlaysetMode.Pinball;
         bool showScout = mode is PlaysetMode.Platformer or PlaysetMode.Overhead;
         _player.Visible = showScout;
         _brickbatOverlay.Visible = brickbat;
+        _pinballOverlay.Visible = pinball;
+        if (mode != PlaysetMode.Overhead)
+            _player.DirectionFrameIndex = null;
         ClearPlayerShots();
         ClearEnemyShots();
 
-        if (showScout)
+        if (showScout && ShouldSnapPlayerForModeChange())
             SnapPlayerToStart();
 
         RefreshCockpitStatus();
         UpdateCockpitToolkitPanels();
         RefreshPlatformerHud();
         UpdateCursorMode();
+        SyncEditorModeToScene();
+    }
+
+    private bool ShouldSnapPlayerForModeChange()
+    {
+        if (!_editorMode)
+            return true;
+
+        return _playfield.HasStartMarker() || !_player.ManualPlacement;
     }
 
     private static string PlaysetModeLabel(PlaysetMode mode)
@@ -2743,6 +2930,77 @@ public partial class Main : Control
             PlaysetMode.Overhead => "Overhead",
             _ => "Platformer"
         };
+    }
+
+    private void UpdateActorPresentation(float dt)
+    {
+        if (_player is not null && _editorMode && _player.CanDragPlayableInEditor)
+        {
+            _playerPosition = _player.Position;
+            _player.HomePosition = _player.Position;
+        }
+
+        if (_playsetMode is not (PlaysetMode.Brickbat or PlaysetMode.Pinball))
+            return;
+
+        for (int i = 1; i < _actors.Count; i++)
+        {
+            ActorView actor = _actors[i];
+            if (!actor.Visible || actor.AnimationSet is null)
+                continue;
+
+            actor.MotionState = IsFlyingEnemy(actor) ? ActorMotionState.Idle : ActorMotionState.Run;
+            actor.QueueRedraw();
+        }
+    }
+
+    private void UpdateOverheadPlayer(double delta)
+    {
+        if (_player is null || _bossMode || _editorMode || _playsetMode != PlaysetMode.Overhead)
+            return;
+
+        float dt = (float)delta;
+        float motionUnit = Mathf.Max(_textUnitPixels, 10f);
+        Vector2 input = new(
+            Input.GetAxis("dack_left", "dack_right"),
+            Input.GetAxis("dack_up", "dack_down")
+        );
+
+        if (input.LengthSquared() > 1f)
+            input = input.Normalized();
+
+        float maxSpeed = motionUnit * 23f;
+        float acceleration = motionUnit * 88f;
+        float drag = motionUnit * 62f;
+
+        if (input.LengthSquared() > 0.001f)
+            _playerVelocity = _playerVelocity.MoveToward(input * maxSpeed, acceleration * dt);
+        else
+            _playerVelocity = _playerVelocity.MoveToward(Vector2.Zero, drag * dt);
+
+        _playerPosition += _playerVelocity * dt;
+        Rect2 bounds = _playfield.PlayBounds;
+        _playerPosition = new Vector2(
+            Mathf.Clamp(_playerPosition.X, bounds.Position.X, Mathf.Max(bounds.Position.X, bounds.End.X - _player.Size.X)),
+            Mathf.Clamp(_playerPosition.Y, bounds.Position.Y, Mathf.Max(bounds.Position.Y, bounds.End.Y - _player.Size.Y))
+        );
+
+        _player.Position = _playerPosition;
+        _player.MotionState = _playerVelocity.LengthSquared() > motionUnit * motionUnit ? ActorMotionState.Run : ActorMotionState.Idle;
+        _player.DirectionFrameIndex = HeadingFrameForVector(_playerVelocity);
+        _player.FacingRight = _playerVelocity.X >= -0.01f;
+        _player.QueueRedraw();
+        RefreshMotionText();
+    }
+
+    private static int? HeadingFrameForVector(Vector2 velocity)
+    {
+        if (velocity.LengthSquared() < 4f)
+            return null;
+
+        float angle = velocity.Angle();
+        float normalized = Mathf.PosMod(angle + Mathf.Pi, Mathf.Tau) / Mathf.Tau;
+        return Mathf.Clamp(Mathf.RoundToInt(normalized * 4f), 0, 4);
     }
 
     private void SetPlatformerMode(PlatformerMode mode)
@@ -2831,13 +3089,17 @@ public partial class Main : Control
 
         if (slideVelocity != Vector2.Zero)
         {
-            _playerVelocity.X = Mathf.MoveToward(_playerVelocity.X, slideVelocity.X, Mathf.Abs(slideVelocity.X) * 4f * dt + motionUnit * 12f * dt);
+            _playerVelocity.X = Mathf.MoveToward(_playerVelocity.X, slideVelocity.X, Mathf.Abs(slideVelocity.X) * 5f * dt + motionUnit * 16f * dt);
             if (slideVelocity.Y > 0)
-                _playerVelocity.Y += slideVelocity.Y * 0.18f * dt;
+                _playerVelocity.Y = Mathf.MoveToward(_playerVelocity.Y, slideVelocity.Y, Mathf.Abs(slideVelocity.Y) * 3f * dt + motionUnit * 18f * dt);
         }
 
         if (conveyorVelocity != Vector2.Zero)
-            _playerVelocity.X += conveyorVelocity.X * dt;
+        {
+            _playerVelocity += conveyorVelocity * dt;
+            if (conveyorVelocity.Y < 0)
+                _playerVelocity.Y = Mathf.Min(_playerVelocity.Y, conveyorVelocity.Y * 0.18f);
+        }
 
         Vector2 next = _playerPosition;
         next.X += _playerVelocity.X * dt;
@@ -2866,6 +3128,9 @@ public partial class Main : Control
         _playerPosition = next;
         _player.Position = _playerPosition;
         _contactInvulnerabilitySeconds = Mathf.Max(0, (float)_contactInvulnerabilitySeconds - dt);
+        if (TryReachGoal())
+            return;
+
         if (TryPlayerEnemyContact())
         {
             KillPlayer(PlayerContactDeathReason());
@@ -2879,6 +3144,30 @@ public partial class Main : Control
         UpdatePlayerAnimation(inputX, crawlingText);
         _player.QueueRedraw();
         RefreshMotionText();
+    }
+
+    private bool TryReachGoal()
+    {
+        if (_goalReached || _player is null)
+            return false;
+
+        Rect2? goalBounds = _playfield.GetGoalBounds();
+        if (goalBounds is null)
+            return false;
+
+        Rect2 playerBounds = PlayerHitBounds();
+        if (!playerBounds.Intersects(goalBounds.Value, true))
+            return false;
+
+        _goalReached = true;
+        _platformerScore += 1000;
+        _platformerStatus = "GOAL!";
+        _contactInvulnerabilitySeconds = 1.0;
+        ClearEnemyShots();
+        _playfield.ThrowComicImpact(goalBounds.Value.GetCenter(), "GOAL", 1.9f);
+        PlaySound("power-up");
+        RefreshPlatformerHud("GOAL! +1000");
+        return true;
     }
 
     private void FirePlayerShot()
@@ -3060,12 +3349,6 @@ public partial class Main : Control
             : actorBounds.Position.X - lookAhead;
         Rect2 footProbe = new(new Vector2(probeX, actorBounds.End.Y - 2f), new Vector2(probeWidth, probeDepth));
 
-        foreach (Rect2 surface in GetSolidSurfaces())
-        {
-            if (SurfaceSupportsFootProbe(footProbe, actorBounds.End.Y, surface))
-                return true;
-        }
-
         foreach (WorldObject surface in GetLineSurfaces())
         {
             float centerX = footProbe.GetCenter().X;
@@ -3074,6 +3357,12 @@ public partial class Main : Control
 
             float surfaceY = surface.SurfaceYAt(centerX, _textUnitPixels, _playfield.ElapsedSeconds);
             if (surfaceY >= actorBounds.End.Y - 3f && surfaceY <= footProbe.End.Y)
+                return true;
+        }
+
+        foreach (Rect2 surface in GetSolidSurfaces())
+        {
+            if (SurfaceSupportsFootProbe(footProbe, actorBounds.End.Y, surface))
                 return true;
         }
 
@@ -3325,6 +3614,7 @@ public partial class Main : Control
         int currentHealth = _enemyHealth.TryGetValue(enemy, out int existing) ? existing : Mathf.Clamp(enemy.ShotToughness, 1, 9);
         int shotPower = Mathf.Max(1, amount);
         currentHealth -= shotPower;
+        Vector2 impact = enemy.Position + enemy.Size * 0.5f;
 
         if (currentHealth <= 0)
         {
@@ -3336,7 +3626,7 @@ public partial class Main : Control
             _enemyShotTimers.Remove(enemy);
             _platformerScore += 250;
             _platformerStatus = $"DEFEATED {enemy.ActorName.ToUpperInvariant()}";
-            _playfield.ThrowDeathPhrase(enemy.Position + enemy.Size * 0.5f, "KAPOW");
+            _playfield.ThrowComicImpact(impact, RandomComicWord("defeat"), 1.75f);
             PlaySound("enemy-defeat");
         }
         else
@@ -3344,6 +3634,7 @@ public partial class Main : Control
             _enemyHealth[enemy] = currentHealth;
             _platformerScore += 50;
             _platformerStatus = $"{enemy.ActorName.ToUpperInvariant()} {currentHealth}/{enemy.ShotToughness}";
+            _playfield.ThrowComicImpact(impact, RandomComicWord("hit"), 1.15f);
             PlaySound("enemy-hit");
         }
 
@@ -3375,7 +3666,7 @@ public partial class Main : Control
             _playerHealth = Mathf.Max(0, _playerHealth - Mathf.Max(1, amount));
             _platformerStatus = $"{reason} -{amount}";
             _contactInvulnerabilitySeconds = 0.55;
-            _playfield.ThrowDeathPhrase(_player.Position + _player.Size * 0.5f, _platformerStatus);
+            _playfield.ThrowComicImpact(_player.Position + _player.Size * 0.5f, RandomComicWord("hurt"), 1.25f);
             if (_playerHealth > 0)
             {
                 PlaySound("player-hurt");
@@ -3407,10 +3698,37 @@ public partial class Main : Control
         _contactInvulnerabilitySeconds = 1.0;
         ClearPlayerShots();
         ClearEnemyShots();
-        _playfield.ThrowDeathPhrase(_player.Position + _player.Size * 0.5f, reason);
+        _playfield.ThrowComicImpact(_player.Position + _player.Size * 0.5f, ComicWordForPlayerLoss(reason), 1.65f);
         PlaySound("player-hurt");
         TriggerDeathAnimation();
         RefreshPlatformerHud(reason);
+    }
+
+    private string RandomComicWord(string kind)
+    {
+        string[] words = kind switch
+        {
+            "defeat" => ["BOOM", "KABOOM", "KAPOW", "WHAM", "BLAMMO"],
+            "hit" => ["BANG", "POW", "THWACK", "ZAP", "SMACK"],
+            "hurt" => ["OUCH", "OOF", "OW", "YIPE", "BONK"],
+            _ => ["POW"]
+        };
+
+        int seed = Mathf.Abs(Mathf.RoundToInt((float)(_elapsed * 97.0))) + _platformerScore * 7 + _platformerDeaths * 19;
+        return words[seed % words.Length];
+    }
+
+    private static string ComicWordForPlayerLoss(string reason)
+    {
+        string upper = reason.ToUpperInvariant();
+        if (upper.Contains("FALL") || upper.Contains("GUTTER") || upper.Contains("PIT") || upper.Contains("OUT"))
+            return "OUCH";
+        if (upper.Contains("SHOT") || upper.Contains("LASER"))
+            return "ZAP";
+        if (upper.Contains("CONTACT") || upper.Contains("GUARD") || upper.Contains("DRAGON"))
+            return "BONK";
+
+        return "OUCH";
     }
 
     private Rect2 PlayerHitBounds()
@@ -3566,22 +3884,6 @@ public partial class Main : Control
         Rect2 nextBounds = new(next, _player.Size);
         float previousBottom = _playerPosition.Y + _player.Size.Y;
 
-        foreach (Rect2 surface in GetSolidSurfaces())
-        {
-            if (_playerVelocity.Y >= 0
-                && previousBottom <= surface.Position.Y + 2f
-                && nextBounds.End.Y >= surface.Position.Y
-                && nextBounds.Position.X < surface.End.X
-                && nextBounds.End.X > surface.Position.X
-                && HasEnoughLandingSupport(nextBounds, surface))
-            {
-                next.Y = surface.Position.Y - _player.Size.Y;
-                _playerVelocity.Y = 0;
-                _playerOnGround = true;
-                nextBounds = new Rect2(next, _player.Size);
-            }
-        }
-
         foreach (WorldObject surface in GetLineSurfaces())
         {
             float centerX = next.X + _player.Size.X * 0.5f;
@@ -3599,6 +3901,25 @@ public partial class Main : Control
             }
         }
 
+        if (!_playerOnGround)
+        {
+            foreach (Rect2 surface in GetSolidSurfaces())
+            {
+                if (_playerVelocity.Y >= 0
+                    && previousBottom <= surface.Position.Y + 2f
+                    && nextBounds.End.Y >= surface.Position.Y
+                    && nextBounds.Position.X < surface.End.X
+                    && nextBounds.End.X > surface.Position.X
+                    && HasEnoughLandingSupport(nextBounds, surface))
+                {
+                    next.Y = surface.Position.Y - _player.Size.Y;
+                    _playerVelocity.Y = 0;
+                    _playerOnGround = true;
+                    nextBounds = new Rect2(next, _player.Size);
+                }
+            }
+        }
+
         if (next.Y < 30)
         {
             next.Y = 30;
@@ -3611,22 +3932,6 @@ public partial class Main : Control
         bool grounded = false;
         Rect2 nextBounds = new(next, enemy.Size);
         float previousBottom = enemy.Position.Y + enemy.Size.Y;
-
-        foreach (Rect2 surface in GetSolidSurfaces())
-        {
-            if (velocity.Y >= 0
-                && previousBottom <= surface.Position.Y + 2f
-                && nextBounds.End.Y >= surface.Position.Y
-                && nextBounds.Position.X < surface.End.X
-                && nextBounds.End.X > surface.Position.X
-                && HasEnoughLandingSupport(nextBounds, surface))
-            {
-                next.Y = surface.Position.Y - enemy.Size.Y;
-                velocity.Y = 0;
-                grounded = true;
-                nextBounds = new Rect2(next, enemy.Size);
-            }
-        }
 
         foreach (WorldObject surface in GetLineSurfaces())
         {
@@ -3642,6 +3947,25 @@ public partial class Main : Control
                 velocity.Y = 0;
                 grounded = true;
                 nextBounds = new Rect2(next, enemy.Size);
+            }
+        }
+
+        if (!grounded)
+        {
+            foreach (Rect2 surface in GetSolidSurfaces())
+            {
+                if (velocity.Y >= 0
+                    && previousBottom <= surface.Position.Y + 2f
+                    && nextBounds.End.Y >= surface.Position.Y
+                    && nextBounds.Position.X < surface.End.X
+                    && nextBounds.End.X > surface.Position.X
+                    && HasEnoughLandingSupport(nextBounds, surface))
+                {
+                    next.Y = surface.Position.Y - enemy.Size.Y;
+                    velocity.Y = 0;
+                    grounded = true;
+                    nextBounds = new Rect2(next, enemy.Size);
+                }
             }
         }
 
@@ -3682,10 +4006,10 @@ public partial class Main : Control
 
         if (_textTerrainEnabled)
         {
-            foreach (Rect2 word in _playfield.GetTextObjectRegions(TextObjectGranularity.Letter))
+            foreach (Rect2 word in _playfield.GetTextObjectRegions(TextObjectGranularity.Word))
                 yield return new Rect2(
-                    word.Position + new Vector2(0, 2f),
-                    new Vector2(word.Size.X, Mathf.Max(2f, Mathf.Min(word.Size.Y, _textUnitPixels * 0.45f)))
+                    word.Position + new Vector2(-_textUnitPixels * 0.18f, 2f),
+                    new Vector2(word.Size.X + _textUnitPixels * 0.36f, Mathf.Max(2f, Mathf.Min(word.Size.Y, _textUnitPixels * 0.45f)))
                 );
         }
 
@@ -3787,7 +4111,9 @@ public partial class Main : Control
 
     private void OnPlayfieldResized()
     {
-        SnapPlayerToStart();
+        if (!_editorMode || _playfield.HasStartMarker() || !_player.ManualPlacement)
+            SnapPlayerToStart();
+
         _playfield.QueueRedraw();
     }
 
@@ -3817,7 +4143,10 @@ public partial class Main : Control
             _tintPicker.Disabled = true;
             _customTintCheck.Disabled = true;
             _customTintCheck.ButtonPressed = false;
+            _speedSlider.MinValue = -180;
+            _speedSlider.MaxValue = 180;
             _speedSlider.Value = 0;
+            _thicknessSlider.MaxValue = 3.0;
             _thicknessSlider.Value = 0.8;
             _rangeSlider.Value = 5;
             _opacitySlider.Value = 1;
@@ -3833,14 +4162,17 @@ public partial class Main : Control
         }
 
         _speedSlider.Editable = true;
+        _speedSlider.MinValue = -180;
+        _speedSlider.MaxValue = 180;
         _thicknessSlider.Editable = true;
+        _thicknessSlider.MaxValue = selected.Kind == WorldObjectKind.Ladder ? 2.5 : 3.0;
         _rangeSlider.Editable = selected.Kind == WorldObjectKind.Elevator;
         _opacitySlider.Editable = true;
         _tintPicker.Disabled = false;
         _customTintCheck.Disabled = false;
         _customTintCheck.ButtonPressed = selected.UseCustomTint;
         _speedSlider.Value = selected.SpeedUnits;
-        _thicknessSlider.Value = selected.ThicknessUnits;
+        _thicknessSlider.Value = Mathf.Clamp(selected.ThicknessUnits, 0.3f, (float)_thicknessSlider.MaxValue);
         _rangeSlider.Value = selected.RangeUnits;
         _opacitySlider.Value = selected.Opacity;
         _tintPicker.Color = selected.UseCustomTint ? selected.Tint : DefaultWorldObjectColor(selected.Kind);
@@ -3853,7 +4185,7 @@ public partial class Main : Control
             + $"Color: {(selected.UseCustomTint ? "custom" : "default")}\n"
             + $"Gravity: {_gravityScale:0.00}x\n"
             + (selected.IsEditorOnly ? "Editor-only: visible while building, hidden during play.\n" : "")
-            + "Reverse flips conveyors by speed; other line tools swap A/B endpoints.";
+            + "A/B endpoints rotate and scale line tools. Rotate nudges most selected objects around their center. Ladders stay vertical and use thickness as climb width.";
         _updatingAttributeControls = false;
     }
 
@@ -3978,6 +4310,7 @@ public partial class Main : Control
         {
             SetPlaysetMode(PlaysetMode.Platformer);
             _playfield.AddPlacedObject(kind);
+            SyncEditorModeToScene();
             _inspectorText.Text = $"{text} placed.\n\n{description}\n\nDrag either A/B endpoint handle on the playfield to move, scale, or angle it.";
             RefreshCockpitStatus();
         };

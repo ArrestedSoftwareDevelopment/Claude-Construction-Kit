@@ -98,6 +98,31 @@ These must not collapse into one checkbox.
 - elevator timing
 - platform carry behavior
 
+Ball / Table Physics additions:
+
+- ball radius
+- table tilt vector
+- elasticity / restitution
+- rolling damping
+- max ball speed
+- flipper rest angle
+- flipper active angle
+- flipper sweep speed
+- flipper return speed
+- flipper strength
+- bumper impulse
+- bumper cooldown
+- plunger charge
+- plunger launch direction
+- drain policy
+- ball-save timer
+- one-way gate direction
+- rollover lit state
+- mission group / word bank
+- ramp layer: flat / raised / wireform
+- table nudge strength
+- tilt warning count
+
 ### 6. Gameplay role
 
 - role: start, midpoint, end, checkpoint, switch, trigger, objective, spawn, target, hazard, pickup, door, key

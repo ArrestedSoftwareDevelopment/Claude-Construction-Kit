@@ -52,6 +52,20 @@ public sealed class PsychedelicEffects
 
     public bool HasActiveEffects => _effects.Count > 0;
 
+    public void ComicImpact(Vector2 position, string word, float intensity = 1.4f)
+    {
+        string cleanWord = string.IsNullOrWhiteSpace(word) ? "POW" : word.Trim().ToUpperInvariant();
+        if (cleanWord.Length > 16)
+            cleanWord = cleanWord[..16];
+
+        Color color = RandomArcadeColor();
+        float scale = _random.RandfRange(1.35f, 2.75f) * Mathf.Clamp(intensity, 0.65f, 2.4f);
+        NeonText(cleanWord, position + new Vector2(_random.RandfRange(-8f, 8f), _random.RandfRange(-18f, 6f)), color, scale, _random.RandfRange(0.95f, 1.65f));
+        ImpactBurst(position, color, Mathf.Clamp(intensity, 0.75f, 2.35f));
+        if (_random.Randf() < 0.75f)
+            ExplodeWord(cleanWord, position, color, Mathf.Clamp(intensity * 0.82f, 0.75f, 1.95f));
+    }
+
     public void TextHit(Vector2 position, int points, bool wordTarget, string? targetText = null)
     {
         Color color = RandomArcadeColor();
@@ -62,7 +76,7 @@ public sealed class PsychedelicEffects
         ImpactBurst(position, color, wordTarget ? 1.6f : 1.15f);
 
         if (wordTarget)
-            ExplodeWord(string.IsNullOrWhiteSpace(targetText) ? "TEXT" : targetText, position, color, 1.45f);
+            BreakWord(string.IsNullOrWhiteSpace(targetText) ? "TEXT" : targetText, position, color, 1.45f);
     }
 
     public void PaddleSpark(Vector2 position)
@@ -167,6 +181,114 @@ public sealed class PsychedelicEffects
         }
     }
 
+    public void BreakWord(string word, Vector2 position, Color color, float intensity)
+    {
+        int pattern = _random.RandiRange(0, 4);
+        if (pattern == 0)
+        {
+            ExplodeWord(word, position, color, intensity);
+            return;
+        }
+
+        if (pattern == 1)
+        {
+            SpinAwayWord(word, position, color, intensity);
+            return;
+        }
+
+        if (pattern == 2)
+        {
+            SpiralLetters(word, position, color, intensity);
+            return;
+        }
+
+        if (pattern == 3)
+        {
+            StarburstLetters(word, position, color, intensity);
+            return;
+        }
+
+        PinwheelLetters(word, position, color, intensity);
+    }
+
+    public void SpinAwayWord(string word, Vector2 position, Color color, float intensity)
+    {
+        string cleanWord = string.IsNullOrWhiteSpace(word) ? "TEXT" : word.Trim().ToUpperInvariant();
+        if (cleanWord.Length > 18)
+            cleanWord = cleanWord[..18];
+
+        ImpactBurst(position, color, Mathf.Clamp(intensity * 0.45f, 0.45f, 1.1f));
+        NeonText(cleanWord, position + new Vector2(_random.RandfRange(-12f, 12f), _random.RandfRange(-14f, 6f)), color, _random.RandfRange(1.45f, 2.7f) * intensity, _random.RandfRange(1.25f, 2.15f));
+    }
+
+    public void SpiralLetters(string word, Vector2 position, Color color, float intensity)
+    {
+        string cleanWord = CleanEffectWord(word, 14);
+        AddRing(position, 6f, _random.RandfRange(120f, 210f) * intensity, color, 1.05f, 3.5f);
+
+        float phase = _random.RandfRange(0f, Mathf.Tau);
+        float handedness = _random.Randf() < 0.5f ? -1f : 1f;
+        for (int i = 0; i < cleanWord.Length; i++)
+        {
+            if (char.IsWhiteSpace(cleanWord[i]))
+                continue;
+
+            float t = cleanWord.Length <= 1 ? 0.5f : i / (float)(cleanWord.Length - 1);
+            float startAngle = phase + handedness * t * Mathf.Tau * _random.RandfRange(0.45f, 0.85f);
+            float endAngle = startAngle + handedness * Mathf.Tau * _random.RandfRange(0.85f, 1.65f);
+            float startRadius = _random.RandfRange(4f, 22f) * intensity;
+            float endRadius = Mathf.Lerp(92f, 330f, t) * _random.RandfRange(0.85f, 1.25f) * intensity;
+            Vector2 start = position + Vector2.FromAngle(startAngle) * startRadius;
+            Vector2 end = position + Vector2.FromAngle(endAngle) * endRadius;
+            Vector2 mid = position + Vector2.FromAngle((startAngle + endAngle) * 0.5f + handedness * 0.75f) * Mathf.Lerp(startRadius, endRadius, 0.55f);
+            AddLetterShard(cleanWord[i], start, mid, end, color, intensity, spinBias: handedness);
+        }
+    }
+
+    public void StarburstLetters(string word, Vector2 position, Color color, float intensity)
+    {
+        string cleanWord = CleanEffectWord(word, 16);
+        AddStarburst(position, color, Mathf.Max(12, cleanWord.Length * 4), 0.9f, _random.RandfRange(100f, 180f) * intensity);
+
+        float phase = _random.RandfRange(0f, Mathf.Tau);
+        for (int i = 0; i < cleanWord.Length; i++)
+        {
+            if (char.IsWhiteSpace(cleanWord[i]))
+                continue;
+
+            float angle = phase + Mathf.Tau * i / Mathf.Max(1, cleanWord.Length) + _random.RandfRange(-0.18f, 0.18f);
+            Vector2 direction = Vector2.FromAngle(angle);
+            Vector2 start = position + direction * _random.RandfRange(2f, 18f) * intensity;
+            Vector2 end = position + direction * _random.RandfRange(150f, 390f) * intensity;
+            Vector2 tangent = new(-direction.Y, direction.X);
+            Vector2 control = position + direction * _random.RandfRange(65f, 150f) * intensity + tangent * _random.RandfRange(-85f, 85f) * intensity;
+            AddLetterShard(cleanWord[i], start, control, end, color, intensity, spinBias: _random.RandfRange(-1f, 1f));
+        }
+    }
+
+    public void PinwheelLetters(string word, Vector2 position, Color color, float intensity)
+    {
+        string cleanWord = CleanEffectWord(word, 14);
+        float phase = _random.RandfRange(0f, Mathf.Tau);
+        float handedness = _random.Randf() < 0.5f ? -1f : 1f;
+        AddRing(position, 14f, _random.RandfRange(150f, 260f) * intensity, color.Lightened(0.25f), 1.25f, 2.5f);
+        AddStarburst(position, color, Mathf.Max(8, cleanWord.Length * 2), 0.72f, _random.RandfRange(80f, 130f) * intensity);
+
+        for (int i = 0; i < cleanWord.Length; i++)
+        {
+            if (char.IsWhiteSpace(cleanWord[i]))
+                continue;
+
+            float spoke = phase + Mathf.Tau * i / Mathf.Max(1, cleanWord.Length);
+            Vector2 direction = Vector2.FromAngle(spoke);
+            Vector2 tangent = new Vector2(-direction.Y, direction.X) * handedness;
+            Vector2 start = position + tangent * _random.RandfRange(10f, 34f) * intensity;
+            Vector2 control = position + direction * _random.RandfRange(60f, 120f) * intensity + tangent * _random.RandfRange(90f, 180f) * intensity;
+            Vector2 end = position + direction * _random.RandfRange(130f, 330f) * intensity + tangent * _random.RandfRange(50f, 150f) * intensity;
+            AddLetterShard(cleanWord[i], start, control, end, color, intensity, spinBias: handedness * 1.4f);
+        }
+    }
+
     public void ImpactBurst(Vector2 position, Color color, float intensity)
     {
         AddRing(position, 5f, _random.RandfRange(46f, 90f) * intensity, color, 0.5f, 3.5f);
@@ -192,6 +314,27 @@ public sealed class PsychedelicEffects
     {
         Color color = ArcadePalette[_random.RandiRange(0, ArcadePalette.Length - 1)];
         return color.Lerp(new Color("#FFFFFF"), _random.RandfRange(0f, 0.18f));
+    }
+
+    private static string CleanEffectWord(string word, int maxLength)
+    {
+        string cleanWord = string.IsNullOrWhiteSpace(word) ? "TEXT" : word.Trim().ToUpperInvariant();
+        return cleanWord.Length > maxLength ? cleanWord[..maxLength] : cleanWord;
+    }
+
+    private void AddLetterShard(char character, Vector2 start, Vector2 control, Vector2 end, Color color, float intensity, float spinBias)
+    {
+        _effects.Add(new LetterShardEffect(
+            character.ToString(),
+            start,
+            control,
+            end,
+            color,
+            _random.RandfRange(1.0f, 2.2f),
+            _random.RandfRange(1.2f, 3.35f) * intensity,
+            _random.RandfRange(-Mathf.Pi, Mathf.Pi),
+            _random.RandfRange(5.5f, 12.5f) * (Mathf.Abs(spinBias) < 0.05f ? 1f : Mathf.Sign(spinBias))
+        ));
     }
 
     private void AddRing(Vector2 position, float startRadius, float endRadius, Color color, float life, float width)

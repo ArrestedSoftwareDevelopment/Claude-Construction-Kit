@@ -336,10 +336,10 @@ public partial class PlayfieldSurface : Control
 
         WorldObject placed = kind switch
         {
-            WorldObjectKind.Ladder => new WorldObject(kind, center + new Vector2(-unit * 2f, unit * 8f), center + new Vector2(-unit * 2f, -unit * 8f), 1.2f),
+            WorldObjectKind.Ladder => new WorldObject(kind, center + new Vector2(-unit * 2f, unit * 8f), center + new Vector2(-unit * 2f, -unit * 8f), 2.0f),
             WorldObjectKind.Ramp => new WorldObject(kind, center + new Vector2(-unit * 12f, unit * 5f), center + new Vector2(unit * 12f, -unit * 4f), 0.9f),
-            WorldObjectKind.Slide => new WorldObject(kind, center + new Vector2(-unit * 12f, -unit * 4f), center + new Vector2(unit * 12f, unit * 5f), 0.9f, 7f),
-            WorldObjectKind.Conveyor => new WorldObject(kind, center + new Vector2(-unit * 13f, unit * 10f), center + new Vector2(unit * 13f, unit * 10f), 0.9f, 14f),
+            WorldObjectKind.Slide => new WorldObject(kind, center + new Vector2(-unit * 12f, -unit * 4f), center + new Vector2(unit * 12f, unit * 5f), 0.9f, 22f),
+            WorldObjectKind.Conveyor => new WorldObject(kind, center + new Vector2(-unit * 13f, unit * 10f), center + new Vector2(unit * 13f, unit * 10f), 0.9f, 90f),
             WorldObjectKind.Elevator => new WorldObject(kind, center + new Vector2(-unit * 8f, unit * 2f), center + new Vector2(unit * 8f, unit * 2f), 0.9f, 1.6f, _placedWorldObjects.Count * 0.45f),
             WorldObjectKind.Checkpoint => CreateMarker(center, unit, MarkerRole.Midpoint, true),
             WorldObjectKind.StartPoint => CreateMarker(center, unit, MarkerRole.Start, false),
@@ -410,8 +410,8 @@ public partial class PlayfieldSurface : Control
 
         if (_capturedPage is null && Mode == PlatformerMode.Vertical)
         {
-            ladders.Add(new WorldObject(WorldObjectKind.Ladder, new Vector2(Size.X * 0.29f, Size.Y * 0.72f), new Vector2(Size.X * 0.29f, Size.Y * 0.36f), 1.2f));
-            ladders.Add(new WorldObject(WorldObjectKind.Ladder, new Vector2(Size.X * 0.62f, Size.Y * 0.88f), new Vector2(Size.X * 0.62f, Size.Y * 0.54f), 1.2f));
+            ladders.Add(new WorldObject(WorldObjectKind.Ladder, new Vector2(Size.X * 0.29f, Size.Y * 0.72f), new Vector2(Size.X * 0.29f, Size.Y * 0.36f), 2.0f));
+            ladders.Add(new WorldObject(WorldObjectKind.Ladder, new Vector2(Size.X * 0.62f, Size.Y * 0.88f), new Vector2(Size.X * 0.62f, Size.Y * 0.54f), 2.0f));
         }
 
         return ladders.ToArray();
@@ -440,7 +440,7 @@ public partial class PlayfieldSurface : Control
         List<WorldObject> conveyors = ObjectsOfKind(WorldObjectKind.Conveyor);
 
         if (_capturedPage is null)
-            conveyors.Add(new WorldObject(WorldObjectKind.Conveyor, new Vector2(Size.X * 0.66f, Size.Y * 0.78f), new Vector2(Size.X * 0.85f, Size.Y * 0.78f), 0.9f, Mode == PlatformerMode.Horizontal ? -14f : 14f));
+            conveyors.Add(new WorldObject(WorldObjectKind.Conveyor, new Vector2(Size.X * 0.66f, Size.Y * 0.78f), new Vector2(Size.X * 0.85f, Size.Y * 0.78f), 0.9f, Mode == PlatformerMode.Horizontal ? -90f : 90f));
 
         return conveyors.ToArray();
     }
@@ -462,7 +462,7 @@ public partial class PlayfieldSurface : Control
 
         foreach (WorldObject ladder in GetLadders())
         {
-            if (ladder.Bounds(TextUnitPixels, ElapsedSeconds).Intersects(actorBounds, true))
+            if (ActorTouchesLadder(actorBounds, ladder))
                 return true;
         }
 
@@ -470,6 +470,11 @@ public partial class PlayfieldSurface : Control
             return IsTouchingTextCrawlSurface(actorBounds);
 
         return false;
+    }
+
+    private bool ActorTouchesLadder(Rect2 actorBounds, WorldObject ladder)
+    {
+        return LadderRect(ladder).Intersects(actorBounds, true);
     }
 
     private bool IsTouchingTextCrawlSurface(Rect2 actorBounds)
@@ -542,12 +547,35 @@ public partial class PlayfieldSurface : Control
         return new Vector2(center.X - actorSize.X * 0.5f, center.Y - actorSize.Y);
     }
 
+    public bool HasStartMarker()
+    {
+        foreach (WorldObject worldObject in _placedWorldObjects)
+        {
+            if (worldObject.MarkerRole == MarkerRole.Start || worldObject.Kind == WorldObjectKind.StartPoint)
+                return true;
+        }
+
+        return false;
+    }
+
     public WorldObject? GetSelectedWorldObject()
     {
         if (_selectedWorldObjectIndex < 0 || _selectedWorldObjectIndex >= _placedWorldObjects.Count)
             return null;
 
         return _placedWorldObjects[_selectedWorldObjectIndex];
+    }
+
+    public Rect2? GetGoalBounds()
+    {
+        WorldObject? goal = null;
+        foreach (WorldObject worldObject in _placedWorldObjects)
+        {
+            if (worldObject.MarkerRole == MarkerRole.End || worldObject.Kind == WorldObjectKind.GoalPoint)
+                goal = worldObject;
+        }
+
+        return goal?.Bounds(TextUnitPixels, ElapsedSeconds).Grow(TextUnitPixels * 0.45f);
     }
 
     public WorldObject[] GetPlacedWorldObjects()
@@ -573,7 +601,11 @@ public partial class PlayfieldSurface : Control
 
     public void SetSelectedThickness(float thicknessUnits)
     {
-        UpdateSelected(selected => selected with { ThicknessUnits = Mathf.Clamp(thicknessUnits, 0.3f, 3.0f) });
+        UpdateSelected(selected =>
+        {
+            float maxThickness = selected.Kind == WorldObjectKind.Ladder ? 2.5f : 3.0f;
+            return selected with { ThicknessUnits = Mathf.Clamp(thicknessUnits, 0.3f, maxThickness) };
+        });
     }
 
     public void SetSelectedRange(float rangeUnits)
@@ -603,9 +635,28 @@ public partial class PlayfieldSurface : Control
         UpdateSelected(selected =>
         {
             if (selected.Kind == WorldObjectKind.Conveyor)
-                return selected with { SpeedUnits = Mathf.Abs(selected.SpeedUnits) < 0.001f ? -14f : -selected.SpeedUnits };
+                return selected with { SpeedUnits = Mathf.Abs(selected.SpeedUnits) < 0.001f ? -90f : -selected.SpeedUnits };
 
             return selected with { Start = selected.End, End = selected.Start };
+        });
+    }
+
+    public void RotateSelected(float degrees)
+    {
+        UpdateSelected(selected =>
+        {
+            if (selected.IsMarker || selected.Kind == WorldObjectKind.Ladder)
+                return selected;
+
+            float radians = Mathf.DegToRad(degrees);
+            Vector2 center = selected.Center;
+            Vector2 start = center + (selected.Start - center).Rotated(radians);
+            Vector2 end = center + (selected.End - center).Rotated(radians);
+            return selected with
+            {
+                Start = SnapToPlayBounds(start),
+                End = SnapToPlayBounds(end)
+            };
         });
     }
 
@@ -735,6 +786,11 @@ public partial class PlayfieldSurface : Control
         _letterEffects.ExplodeWord(phrase, position, new Color("#FF2BD6"), 1.45f);
     }
 
+    public void ThrowComicImpact(Vector2 position, string word, float intensity = 1.35f)
+    {
+        _letterEffects.ComicImpact(position, word, intensity);
+    }
+
     private void DrawProjectileFrame(Vector2 position, int frame, float scale)
     {
         if (_fireballExplosion is null)
@@ -842,7 +898,7 @@ public partial class PlayfieldSurface : Control
                 return true;
             }
 
-            if (worldObject.Bounds(TextUnitPixels, ElapsedSeconds).Grow(5f).HasPoint(position))
+            if (WorldObjectBodyHitTest(worldObject, position))
             {
                 _selectedWorldObjectIndex = i;
                 _draggedHandle = 2;
@@ -861,6 +917,52 @@ public partial class PlayfieldSurface : Control
         return false;
     }
 
+    private bool WorldObjectBodyHitTest(WorldObject worldObject, Vector2 position)
+    {
+        if (worldObject.IsMarker || worldObject.Kind == WorldObjectKind.PinballBumper)
+            return worldObject.Bounds(TextUnitPixels, ElapsedSeconds).Grow(5f).HasPoint(position);
+
+        if (IsLineLikeWorldObject(worldObject.Kind))
+            return DistanceToWorldObjectSegment(worldObject, position) <= WorldObjectPickRadius(worldObject);
+
+        return worldObject.Bounds(TextUnitPixels, ElapsedSeconds).Grow(5f).HasPoint(position);
+    }
+
+    private static bool IsLineLikeWorldObject(WorldObjectKind kind)
+    {
+        return kind is WorldObjectKind.Ladder
+            or WorldObjectKind.Ramp
+            or WorldObjectKind.Slide
+            or WorldObjectKind.Conveyor
+            or WorldObjectKind.Elevator
+            or WorldObjectKind.PinballFlipper
+            or WorldObjectKind.PinballPlunger
+            or WorldObjectKind.PinballDrain
+            or WorldObjectKind.PinballRollover
+            or WorldObjectKind.PinballGate;
+    }
+
+    private float DistanceToWorldObjectSegment(WorldObject worldObject, Vector2 position)
+    {
+        Vector2 start = worldObject.ResolvePoint(worldObject.Start, TextUnitPixels, ElapsedSeconds);
+        Vector2 end = worldObject.ResolvePoint(worldObject.End, TextUnitPixels, ElapsedSeconds);
+        Vector2 segment = end - start;
+        if (segment.LengthSquared() <= 0.001f)
+            return position.DistanceTo(start);
+
+        float t = Mathf.Clamp((position - start).Dot(segment) / segment.LengthSquared(), 0f, 1f);
+        return position.DistanceTo(start + segment * t);
+    }
+
+    private float WorldObjectPickRadius(WorldObject worldObject)
+    {
+        float thickness = worldObject.Kind == WorldObjectKind.Ladder
+            ? Mathf.Clamp(worldObject.ThicknessUnits, 0.6f, 2.5f)
+            : worldObject.ThicknessUnits;
+
+        return Mathf.Clamp(TextUnitPixels * thickness * 0.55f, 6f, TextUnitPixels * 1.35f);
+    }
+
     private void DragSelectedHandle(Vector2 position)
     {
         if (_selectedWorldObjectIndex < 0 || _selectedWorldObjectIndex >= _placedWorldObjects.Count)
@@ -868,9 +970,20 @@ public partial class PlayfieldSurface : Control
 
         WorldObject selected = _placedWorldObjects[_selectedWorldObjectIndex];
         Vector2 snapped = SnapToPlayBounds(position);
-        selected = _draggedHandle == 0
-            ? selected with { Start = snapped }
-            : selected with { End = snapped };
+        if (selected.Kind == WorldObjectKind.Ladder)
+        {
+            float x = selected.Center.X;
+            selected = _draggedHandle == 0
+                ? selected with { Start = new Vector2(x, snapped.Y) }
+                : selected with { End = new Vector2(x, snapped.Y) };
+        }
+        else
+        {
+            selected = _draggedHandle == 0
+                ? selected with { Start = snapped }
+                : selected with { End = snapped };
+        }
+
         _placedWorldObjects[_selectedWorldObjectIndex] = selected;
         PublishWorldObjectSelection();
         QueueRedraw();
@@ -1346,13 +1459,40 @@ public partial class PlayfieldSurface : Control
 
     private void DrawLadder(WorldObject ladder)
     {
-        Rect2 rect = ladder.Bounds(TextUnitPixels, ElapsedSeconds);
-        Color rail = ladder.Styled(new Color("#8A5A37"));
-        DrawRect(new Rect2(rect.Position, new Vector2(3, rect.Size.Y)), rail, true);
-        DrawRect(new Rect2(rect.Position + new Vector2(rect.Size.X - 3, 0), new Vector2(3, rect.Size.Y)), rail, true);
+        Rect2 rect = LadderRect(ladder);
+        if (rect.Size.Y <= 0.001f)
+            return;
 
-        for (float y = rect.Position.Y + TextUnitPixels; y < rect.End.Y; y += TextUnitPixels)
-            DrawRect(new Rect2(rect.Position.X, y, rect.Size.X, 3), rail, true);
+        Color rail = ladder.Styled(new Color("#8A5A37"));
+        float railWidth = Mathf.Clamp(TextUnitPixels * 0.18f, 2f, 4f);
+        float leftX = rect.Position.X;
+        float rightX = rect.End.X;
+
+        DrawLine(new Vector2(leftX, rect.Position.Y), new Vector2(leftX, rect.End.Y), rail, railWidth);
+        DrawLine(new Vector2(rightX, rect.Position.Y), new Vector2(rightX, rect.End.Y), rail, railWidth);
+
+        float rungSpacing = Mathf.Max(TextUnitPixels, 8f);
+        for (float y = rect.Position.Y + rungSpacing; y < rect.End.Y; y += rungSpacing)
+        {
+            DrawLine(new Vector2(leftX, y), new Vector2(rightX, y), rail, railWidth);
+        }
+    }
+
+    private Rect2 LadderRect(WorldObject ladder)
+    {
+        Vector2 start = ladder.ResolvePoint(ladder.Start, TextUnitPixels, ElapsedSeconds);
+        Vector2 end = ladder.ResolvePoint(ladder.End, TextUnitPixels, ElapsedSeconds);
+        float centerX = ladder.Center.X;
+        float halfWidth = LadderHalfWidthPixels(ladder);
+        float top = Mathf.Min(start.Y, end.Y);
+        float bottom = Mathf.Max(start.Y, end.Y);
+        return new Rect2(centerX - halfWidth, top, halfWidth * 2f, bottom - top);
+    }
+
+    private float LadderHalfWidthPixels(WorldObject ladder)
+    {
+        float cappedThickness = Mathf.Clamp(ladder.ThicknessUnits, 0.6f, 2.5f);
+        return Mathf.Clamp(TextUnitPixels * cappedThickness * 0.5f, TextUnitPixels * 0.55f, TextUnitPixels * 1.35f);
     }
 
     private void DrawRamp(WorldObject ramp)
@@ -1517,6 +1657,9 @@ public partial class PlayfieldSurface : Control
 
     private void DrawSelectedWorldObjectHandles()
     {
+        if (!EditorMode)
+            return;
+
         if (_selectedWorldObjectIndex < 0 || _selectedWorldObjectIndex >= _placedWorldObjects.Count)
             return;
 
