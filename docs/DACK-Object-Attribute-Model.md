@@ -88,6 +88,11 @@ These must not collapse into one checkbox.
 - path/rail binding
 - table tilt
 - thrust / drag / inertia
+- turn rate / angular velocity
+- throttle / acceleration model
+- damping
+- local gravity source / gravity sensitivity
+- wrap / bounce / kill boundary policy
 - max speed
 - conveyor force
 - elevator timing
@@ -141,11 +146,12 @@ This lets a spider climb text, a ghost ignore it, a drill destroy it, a tank ric
 
 Common:
 
-- movement model: platformer, overhead tank, overhead car, thrust/space, grid step, click-to-move
+- movement model: platformer, overhead tank, overhead car, atmospheric flyer, thrust/space, lunar lander, grid step, click-to-move
 - speed / acceleration / friction
 - gravity / jump / climb / crawl / swim / fly
 - health/lives
 - weapon/tool loadout
+- weapon power: how many enemy toughness points one hit removes
 - current checkpoint/start marker
 - collision profile
 - text capability flags
@@ -173,6 +179,14 @@ Overhead:
 - traction/drift
 - line of sight
 - interaction radius
+
+Flying/space movement should be a separate set of reusable physics cards:
+
+- **Atmospheric Flyer:** throttle, turn rate, drag, climb/dive, altitude band, stall-ish slowdown, terrain/cloud/lane collision.
+- **Thrust-Space:** rotate, thrust, coast/inertia, damping, max velocity, screen wrap/bounce, independent turret aim, asteroid/debris collision.
+- **Lunar Lander:** rotate, main/side thrusters, fuel, gravity, descent-rate safety, landing-leg/contact tolerance, landing pad zones, crash/explosion rules.
+- **Localized Gravity:** gravity well point/region, pull strength, falloff, safe radius, orbit/slingshot behavior, per-actor gravity sensitivity, kill zone.
+- **Spacewar Arena:** local sun/star gravity, wraparound edges, player/enemy thrust ships, projectile inheritance of ship velocity, ricochet or wrap shots.
 
 Grid/Text:
 
@@ -214,19 +228,56 @@ Behavior families:
 - flanker/pincer
 - erratic/patrol-biased
 - turret/guard
+- defend point/area/object
 - hovering flyer / sine-wave flyer
 - wanderer/forager
 - flee-from-player
 - swarm/follow-leader
+- flock/horde
 - worker/carry/build/repair
 - RPG talk/shop/quest
+
+Flock/Horde is the group-enemy behavior card for Robotron-inspired arenas, bullet-hell mobs, insect swarms, office gremlins, and rescue/escort panic rooms.
+
+Suggested attributes:
+
+- `spawnBudget`: maximum simultaneous actors in this group.
+- `groupRadius`: how widely the group spreads from its home, leader, or target.
+- `cohesionWeight`: how strongly members stay near the group center.
+- `separationWeight`: how strongly members avoid overlapping each other.
+- `targetWeight`: how strongly members chase, orbit, flee, or guard a target.
+- `leaderMode`: none, follow-leader, protect-leader, split-on-leader-death.
+- `panicRadius`: distance at which the group scatters, charges, or changes state.
+- `damageMode`: contact, projectile, area pulse, harmless escort, rescue target.
+- `bulletPattern`: none, aimed, radial, spiral, burst, lane, random spray.
+- `rangeUnits`: threat radius in text units.
+- `cooldownSeconds`: group or per-member firing/spawn cadence.
+
+This should be edited like a rule card, not a node graph: drag Flock/Horde onto an enemy type, then tune the handful of values that matter for the current preset.
+
+Defend is the area-loyal behavior card. It differs from patrol/chase because the enemy's primary commitment is to a protected point, region, object, route node, word, or marker.
+
+Suggested attributes:
+
+- `defendTarget`: marker/object/word/region being defended, such as Goal, Checkpoint, Hidden Switch, tower-defense objective, door, treasure, or NPC.
+- `defendRadius`: area the defender tries to hold.
+- `pursuitRadius`: how far the defender may chase before returning.
+- `returnSpeed`: urgency when retreating back to the defend target.
+- `alertRadius`: distance at which the player or enemy wave wakes the defender.
+- `lineOfSightRequired`: whether the defender must see the intruder before engaging.
+- `failurePolicy`: what happens if the target is touched/destroyed/stolen/reached.
+- `teamFilter`: who the defender attacks, ignores, escorts, or protects.
+- `stance`: hold position, orbit target, patrol perimeter, block lane, intercept intruders, bodyguard.
+
+Defend should bind naturally to DACK's marker vocabulary. A Start Point, Checkpoint, Goal, Hidden Switch, word-object, route node, door, NPC, pinball insert, or tower-defense base can all become defendable anchors.
 
 First enemy slice:
 
 - Sunny Dragon is the first imported animated enemy.
 - Its source animation is flying/hovering, so it should default to `locomotion = flying`, `behavior = patrol/guard`, and `attack = none` until projectiles are explicitly enabled.
 - Enemy actors can now be dragged directly on the playfield and scaled with the same 1/2x, 1x, 2x vocabulary used for actor sizing.
-- The first implemented combat rule is intentionally simple: enemy contact kills the player, enemy shots can kill the player, and player shots award score on enemy hit.
+- The first implemented combat rule is intentionally simple: enemy contact kills the player, enemy shots can use partial health damage or instant death, and player shots reduce enemy shot toughness before awarding a defeat score.
+- Enemy shot toughness is creator-facing: a value from 1-9 means "how many regular 1x shots this enemy can take." Player gun power is the matching multiplier/subtractor: a 2x gun removes two toughness points per hit.
 - Sunny Dragon's first AI is a hover/patrol guard around its authored home position. Dragging the enemy redefines that home position; this lets creators block a route without opening a full AI graph.
 - Enemy tracking is a basic toggle before a full AI editor: tracking on means patrol/facing/projectile aim bias toward the player; tracking off means patrol/guard motion with shots fired along current facing.
 - Projectile/explosion assets should be assignable profiles, not hardcoded dots. The first imported profile is `explosion-b`: frame 0 is the projectile, frame 1 is the impact flash, and frames 2+ are the explosion bloom. A profile should eventually define projectile frame/range, impact frame/range, explosion frame/range, speed, radius, damage rules, text-destruction rules, sound, and credit/provenance.

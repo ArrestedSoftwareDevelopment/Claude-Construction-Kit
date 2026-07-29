@@ -12,6 +12,7 @@ public partial class ActorView : Control
     private bool _dragging;
 
     public string ActorName { get; set; } = "Actor";
+    public string AnimationSourceId { get; set; } = "";
     public SpriteAnimationSet? AnimationSet { get; set; }
     public ActorMotionState MotionState { get; set; } = ActorMotionState.Idle;
     public double AnimationClock { get; set; }
@@ -21,6 +22,7 @@ public partial class ActorView : Control
     public Vector2 HomePosition { get; set; }
     public bool EditorMode { get; set; } = true;
     public bool CanFireProjectiles { get; set; }
+    public int ShotToughness { get; set; } = 1;
 
     public bool IsPlayable
     {

@@ -196,6 +196,37 @@ Scope:
 
 This module should not turn the live pad into Aseprite. It sits beside the pad as the organizer/importer/previewer.
 
+### Character builder: paper-doll plus rule cards
+
+Player and enemy creation should become a drag/drop builder rather than a node graph.
+
+The creator-facing model:
+
+- Pick or import a character body/sprite sheet.
+- Click the animation strip to edit labels, frame ranges, reverse/ping-pong/strobe settings, and timing.
+- Drag behavior cards onto the character: patrol, chase, guard, hover, crawl, flee, swarm, escort, turret, boss.
+- Drag capability cards onto the character: gun, jump, climb, dig, fly, text collision, text destruction, contact damage.
+- Drag a projectile card into the projectile slot.
+- Drag an explosion/effect card into the impact/death/power-up slot.
+- Drag sound cards into firing, impact, hurt, defeat, pickup, and movement/action slots.
+- Tune exposed values in the inspector: range, speed, damage, health, gravity sensitivity, opacity, scale, direction, cooldown, invulnerability.
+
+This is intentionally "not quite nodes." It should feel like arranging toys or assigning equipment, not programming a graph. Advanced logic can still be represented internally as components/rulesets, but the visible editor should be a readable set of slots and cards:
+
+```text
+Character
+  Art / Animation
+  Movement Rules
+  AI Rules
+  Attack / Projectile
+  Impact / Explosion
+  Sound / Voice
+  Text Interaction
+  Stats
+```
+
+The same builder should support both player characters and enemies. The difference is mostly which rule cards are allowed by default: a player gets input/control cards, while enemies get AI/behavior cards.
+
 ## Recommended DACK Animation Data Model
 
 ```text
@@ -320,9 +351,11 @@ Current RAD test:
 - The selected actor can be renamed in the sidebar. Names should be saved as creator metadata, not inferred permanently from filenames; this is how imported assets become reusable characters.
 - The current mapping starts rough, but the prototype exposes a visual 8-column frame strip plus editable label names, numeric endpoints, ping-pong toggles, strobe toggles, and strobe counts. Recognized labels like idle/run/jump-up/jump-down drive the current player animation; extra labels such as run-shoot, jump-shoot, climb-up/down, dig-up/down, shoot-up/down, bounce, and death can be added and highlighted ahead of full engine binding.
 - `SAVE ANIM LABELS` writes a source-aware local-only manifest: TGC currently saves to `dack/assets/quarantine/game-creators-pack-graphics-prep/tgc-player.dackanim.json`; Stickman currently saves to `dack/assets/quarantine/stickman-pack-v0.1/stickman-thin.dackanim.json`. `LOAD ANIM LABELS` reads the current source's manifest back into the editor. This is the debugging lens for numbering/range mistakes and the seed of the eventual character picker format.
+- Saved working labels should graduate into curated per-character defaults once the mappings are good. The intended flow is: tune frames locally, save `.dackanim.json`, test in play, then promote the approved manifest into a runtime/defaults area keyed by stable `animationSourceId` such as `tgc-orange-worker` or `sunny-dragon-fly`. Future creators should inherit those defaults automatically and only adjust them when they want a variant.
 - The schema is intentionally variable-length. `Run` can be 12 frames, `Fall` can be one frame, `Death` can be dashed unavailable, and future effects such as `Power Up` can use arbitrarily long ranges. Engine bindings should consume labels by meaning and range, never by assuming a fixed frame count.
 - The first saved manifest exposed an important detector bug: horizontal strips must sort detected frames left-to-right before row/top ordering. Sorting by Y first can pull far-right death frames into indices 0/1 and make idle/run labels appear to include the wrong action.
 - Cropped frames must retain a stable display box. If every detected crop is stretched to fill the actor rectangle, narrow or short frames appear to change character size during playback. DACK should draw each crop inside a common per-animation frame box, centered and baseline/bottom aligned, while keeping collision size separate.
+- The TGC Player strip exposed a second detector boundary: permissive blob detection needed for small enemy/FX sheets can accidentally admit tiny far-right fragments as extra player frames. The player strip therefore uses source-specific constraints: character frames must be tall/substantial enough to exclude the small accessory/projectile fragments that appeared as bogus frames 18-26.
 - Thin stick-figure art needs special care at document scale. The v0.1 Stickman sheets are tiny 64 px frames with one-pixel limbs; downscaling can turn those strokes into dotted fragments. The current runtime applies a small one-pixel opaque-pixel expansion to Stickman imports after white-background transparency cleanup. This is an art-preservation pass, not collision geometry, and it should eventually become an importer option such as `preserveHairlineStrokes`.
 
 Swinging vines/ropes should wait for the visible spline/Bezier tool family. A straight-line placeholder would teach the wrong feel. The desired version is an authored curve with draggable handles, visible swing arc, optional attach/detach points, and animation labels for grab, swing, release, and land.
@@ -330,6 +363,26 @@ Swinging vines/ropes should wait for the visible spline/Bezier tool family. A st
 Power-up animations can often be effect composites rather than separate sprite sheets. The cheap useful version is: play the actor's idle or current-state animation, then layer reusable DACK effects over it—rings, glows, color cycling, sparks, outline pulses, rotating text sigils, or Jeff-Minter-style neon bursts. This lets a creator define `Power Up`, `Shielded`, `Hasted`, `Poisoned`, `Charged`, or `Invincible` without requiring new hand-drawn frames for every character.
 
 Projectile/explosion profiles are their own import category. The first RAD profile uses `raw base assets/explosion pack 1/explosion pack 1/Bonus/From explosions pack 2/explosion-b/explosion-b.png`, copied for runtime as `dack/assets/project/effects/fireball-impact-explosion.png`. The sheet is 1040x48, interpreted as 13 frames of 80x48: frame 0 projectile, frame 1 impact, frames 2-12 explosion. Seven additional cleared profiles from `raw base assets/explosion pack 1/explosion pack 1/Explosions pack` are copied into `dack/assets/project/effects/` as `explosion-1-a.png` through `explosion-1-g.png`. The catalog file `projectile-effect-profiles.json` records frame sizes, frame counts, source paths, and default blast radii. Designers should eventually assign these profiles per enemy/player weapon, with credit/provenance stored alongside the profile.
+
+Sound assignment should follow the same card/slot model rather than being hardcoded by game mode. A weapon/projectile profile should be able to carry:
+
+- firing sound;
+- flight/loop sound, optional;
+- impact sound;
+- explosion sound;
+- dry-fire/empty sound, optional;
+- damage amount, range, speed, cooldown, and text-destruction rules;
+- provenance/credit for every admitted sound.
+
+Characters should separately expose actor sounds: hurt, defeat/death, jump/land, climb, pickup, power-up, alert, attack voice, and ambient/idle barks. The first RAD wiring hardcodes a tiny CC0-labeled starter deck, but the intended editor model is assignable sound slots beside animation, projectile, and effect slots.
+
+Projectile assignment should scale in complexity:
+
+- **Simple mode:** drag a projectile/weapon card onto a player or enemy. The actor can now fire it using that card's default art, sounds, damage, and range.
+- **Intermediate mode:** expose the common fields: firing sound, impact/explosion sound, projectile sprite/effect, speed, range, cooldown, damage/toughness multiplier, blast radius, and whether it damages text.
+- **Advanced mode:** open the full weapon profile: spread/burst count, aim style, homing, gravity/inertia, ricochet/pierce/wrap, owner/team rules, friendly fire, conditional zones, semantic word targeting, projectile lifetime, muzzle/attachment point, impact animation, explosion profile, screen shake, and sound randomization.
+
+This keeps the character editor friendly while still letting the same system grow into Contra-style guns, dragon fireballs, Brickbat laser columns, pinball bumpers, tower-defense shots, Lunar Lander thrusters, and Robotron/bullet-hell emitters.
 
 The Game Creator's Pack graphic sheets are also now staged as runtime project assets under `dack/assets/project/game-creators-pack/`. `tgc-graphic-pack-catalog.json` names the first useful profiles: Orange Worker, Red Runner, Blue Guard, Green Crawler, Shooter Boss, Shooter Fleet, Red Girder, Gray Blocks, Orange Bricks, and Retro Puzzle Blocks. The platformer characters are currently indexed as blob-range profiles from `Platformer_SpriteSheet.png`; the girders/blocks are atlas-region hints for future level-object shelf import.
 

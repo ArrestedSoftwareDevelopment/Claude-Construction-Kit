@@ -14,6 +14,11 @@ public partial class Main : Control
     private readonly List<EnemyShot> _enemyShots = [];
     private readonly List<ImpactEffect> _impactEffects = [];
     private readonly Dictionary<ActorView, float> _enemyShotTimers = [];
+    private readonly Dictionary<ActorView, Vector2> _enemyVelocities = [];
+    private readonly Dictionary<ActorView, float> _enemyPatrolDirections = [];
+    private readonly Dictionary<ActorView, int> _enemyHealth = [];
+    private readonly HashSet<ActorView> _defeatedEnemies = [];
+    private readonly Dictionary<string, AudioStreamPlayer> _soundPlayers = [];
     private readonly Vector2[] _actorAnchors =
     [
         new(0.16f, 0.66f),
@@ -24,6 +29,7 @@ public partial class Main : Control
     private Control _workspace = null!;
     private Control _bossOverlay = null!;
     private PlayfieldSurface _playfield = null!;
+    private CombatFxOverlay _combatFxOverlay = null!;
     private SpritePad _spritePad = null!;
     private Label _selectionLabel = null!;
     private LineEdit _characterNameEdit = null!;
@@ -59,6 +65,7 @@ public partial class Main : Control
     private string _animationEditorName = "TGC Player";
     private string _animationEditorSource = "raw base assets/The Game Creator's Pack/The Game Creator's Pack/Graphic Pack/Player_DarkOutline.png";
     private string _animationEditorSourceKind = "raw-local-evaluation";
+    private string _animationEditorSourceId = "tgc-player";
     private string _animationEditorFolder = "game-creators-pack-graphics-prep";
     private string _animationEditorFileName = "tgc-player.dackanim.json";
     private int _animationEditorFrameCount;
@@ -105,6 +112,8 @@ public partial class Main : Control
     private bool _enemyTracksPlayer = true;
     private bool _enemyProjectilesEnabled = true;
     private bool _explosionsDamageText = true;
+    private bool _partialDamageEnabled = true;
+    private bool _soundEnabled = true;
     private bool _updatingAttributeControls;
     private double _deathTestSeconds;
     private double _shootAnimSeconds;
@@ -112,11 +121,16 @@ public partial class Main : Control
     private double _hazardArmDelaySeconds;
     private int _platformerScore;
     private int _platformerLives = 3;
+    private int _playerHealth = 3;
+    private int _playerMaxHealth = 3;
+    private int _enemyShotDamage = 1;
+    private int _playerShotPower = 1;
     private int _platformerDeaths;
     private string _platformerStatus = "READY";
     private float _actorSizeMultiplier = 2f;
     private float _minLandingSupportRatio = 0.45f;
     private float _fallDeathHeightUnits = 18f;
+    private float _enemyShotRangeUnits = 34f;
     private float _lastGroundY;
     private PlatformerMode _platformerMode = PlatformerMode.Horizontal;
     private PlaysetMode _playsetMode = PlaysetMode.Platformer;
@@ -140,25 +154,12 @@ public partial class Main : Control
         _elapsed += delta;
         _playfield.ElapsedSeconds = (float)_elapsed;
         if (_cockpit is not null && _cockpit.Visible)
+        {
+            FitCockpitToViewport();
             RefreshCockpitStatus();
+        }
 
         UpdatePlayer(delta);
-
-        for (int i = 1; i < _actors.Count; i++)
-        {
-            if (!_actors[i].Visible)
-                continue;
-            if (_actors[i].ManualPlacement)
-                continue;
-
-            Vector2 anchor = _actorAnchors[i];
-            Vector2 basePosition = new(
-                _playfield.Size.X * anchor.X - 52,
-                _playfield.Size.Y * anchor.Y - 56
-            );
-            float bob = Mathf.Sin((float)_elapsed * 1.4f + i * 1.7f) * 5f;
-            _actors[i].Position = basePosition + new Vector2(0, bob);
-        }
 
         if (!_editorMode)
         {
@@ -274,6 +275,7 @@ public partial class Main : Control
                 _inspectorText.Text = text;
         };
         _playfield.WorldObjectSelectionObjectChanged += UpdateAttributeControls;
+        BuildAudioDeck();
         BuildPlaysetToolbar();
         BuildCockpit();
         BuildPlatformerHud();
@@ -352,7 +354,7 @@ public partial class Main : Control
         tgcOrange.TooltipText = "Add the TGC Orange Worker as an enemy.";
         tgcOrange.Pressed += () => AddTgcEnemy(
             "Orange Worker",
-            SpriteAnimationSet.TryLoadTgcPlatformerEnemy(new AnimationFrameRange(0, 5), new AnimationFrameRange(13, 18), new AnimationFrameRange(13, 18)),
+            SpriteAnimationSet.TryLoadTgcOrangeWorker(),
             "TGC Orange Worker added as an enemy. Good for simple ground patrol/blocker roles."
         );
         characterPicker.AddChild(tgcOrange);
@@ -361,7 +363,7 @@ public partial class Main : Control
         tgcRed.TooltipText = "Add the TGC Red Runner as an enemy.";
         tgcRed.Pressed += () => AddTgcEnemy(
             "Red Runner",
-            SpriteAnimationSet.TryLoadTgcPlatformerEnemy(new AnimationFrameRange(6, 12), new AnimationFrameRange(19, 23), new AnimationFrameRange(19, 23)),
+            SpriteAnimationSet.TryLoadTgcRedRunner(),
             "TGC Red Runner added as an enemy. Good for faster patrol/chase roles."
         );
         characterPicker.AddChild(tgcRed);
@@ -370,7 +372,7 @@ public partial class Main : Control
         tgcBlue.TooltipText = "Add the TGC Blue Guard as an enemy.";
         tgcBlue.Pressed += () => AddTgcEnemy(
             "Blue Guard",
-            SpriteAnimationSet.TryLoadTgcPlatformerEnemy(new AnimationFrameRange(28, 34), new AnimationFrameRange(40, 44), new AnimationFrameRange(40, 44)),
+            SpriteAnimationSet.TryLoadTgcBlueGuard(),
             "TGC Blue Guard added as an enemy. Good for patrol/guard roles."
         );
         characterPicker.AddChild(tgcBlue);
@@ -379,7 +381,7 @@ public partial class Main : Control
         tgcGreen.TooltipText = "Add the TGC Green Crawler as an enemy.";
         tgcGreen.Pressed += () => AddTgcEnemy(
             "Green Crawler",
-            SpriteAnimationSet.TryLoadTgcPlatformerEnemy(new AnimationFrameRange(35, 39), new AnimationFrameRange(45, 50), new AnimationFrameRange(53, 65)),
+            SpriteAnimationSet.TryLoadTgcGreenCrawler(),
             "TGC Green Crawler added as an enemy. Good for crawling/slime/insect-style hazards."
         );
         characterPicker.AddChild(tgcGreen);
@@ -626,12 +628,52 @@ public partial class Main : Control
         BuildBossOverlay();
     }
 
+    private void BuildAudioDeck()
+    {
+        AddSound("player-shot", "res://assets/project/sounds/player-shot.ogg", -11f);
+        AddSound("enemy-hit", "res://assets/project/sounds/enemy-hit.ogg", -8f);
+        AddSound("enemy-defeat", "res://assets/project/sounds/enemy-defeat.ogg", -7f);
+        AddSound("player-hurt", "res://assets/project/sounds/player-hurt.ogg", -7f);
+        AddSound("power-up", "res://assets/project/sounds/power-up.ogg", -8f);
+        AddSound("brickbat-paddle", "res://assets/project/sounds/brickbat-paddle.ogg", -13f);
+        AddSound("brickbat-text-hit", "res://assets/project/sounds/brickbat-text-hit.ogg", -11f);
+        AddSound("brickbat-word-break", "res://assets/project/sounds/brickbat-word-break.ogg", -10f);
+        AddSound("brickbat-laser", "res://assets/project/sounds/brickbat-laser.ogg", -9f);
+        AddSound("brickbat-ball-lost", "res://assets/project/sounds/brickbat-ball-lost.ogg", -9f);
+    }
+
+    private void AddSound(string key, string resourcePath, float volumeDb)
+    {
+        AudioStream? stream = GD.Load<AudioStream>(resourcePath);
+        if (stream is null)
+            return;
+
+        AudioStreamPlayer player = new()
+        {
+            Stream = stream,
+            VolumeDb = volumeDb,
+            Bus = "Master"
+        };
+        _soundPlayers[key] = player;
+        AddChild(player);
+    }
+
+    private void PlaySound(string key)
+    {
+        if (!_soundEnabled || !_soundPlayers.TryGetValue(key, out AudioStreamPlayer? player))
+            return;
+
+        if (player.Playing)
+            player.Stop();
+        player.Play();
+    }
+
     private void BuildCockpit()
     {
         _cockpit = new PanelContainer
         {
             Position = new Vector2(24, 24),
-            CustomMinimumSize = new Vector2(1160, 520),
+            Size = new Vector2(1160, 520),
             MouseFilter = MouseFilterEnum.Stop
         };
         _cockpit.AddThemeStyleboxOverride("panel", FlatStyle("#202A34", 10));
@@ -670,12 +712,22 @@ public partial class Main : Control
         close.Pressed += ToggleCockpit;
         top.AddChild(close);
 
+        ScrollContainer columnScroll = new()
+        {
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            SizeFlagsVertical = SizeFlags.ExpandFill,
+            HorizontalScrollMode = ScrollContainer.ScrollMode.Auto,
+            VerticalScrollMode = ScrollContainer.ScrollMode.Disabled
+        };
+        root.AddChild(columnScroll);
+
         HBoxContainer columns = new()
         {
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
             SizeFlagsVertical = SizeFlags.ExpandFill
         };
         columns.AddThemeConstantOverride("separation", 12);
-        root.AddChild(columns);
+        columnScroll.AddChild(columns);
 
         _platformerPanel = BuildShelfPanel();
         _brickbatPanel = BuildBrickbatPanel();
@@ -688,6 +740,7 @@ public partial class Main : Control
         columns.AddChild(_overheadPanel);
         columns.AddChild(BuildInspectorPanel());
         columns.AddChild(BuildUnderstandingPanel());
+        FitCockpitToViewport();
         UpdateCockpitToolkitPanels();
     }
 
@@ -749,23 +802,12 @@ public partial class Main : Control
     {
         PanelContainer panel = CockpitPanel(260);
         VBoxContainer shelf = PanelVBox(panel);
-        shelf.AddChild(CockpitHeading("PLATFORMER SHELF"));
-        shelf.AddChild(ShelfButton("Add Ladder", WorldObjectKind.Ladder, "Climbable vertical tool; later: draggable endpoints."));
-        shelf.AddChild(ShelfButton("Add Ramp", WorldObjectKind.Ramp, "Diagonal standable line for paragraph slants / Donkey Kong feel."));
-        shelf.AddChild(ShelfButton("Add Slide", WorldObjectKind.Slide, "Sloped acceleration surface; currently uses ramp physics with slide push."));
-        shelf.AddChild(ShelfButton("Add Conveyor", WorldObjectKind.Conveyor, "Moving belt surface; useful for office machinery and factory text."));
-        shelf.AddChild(ShelfButton("Add Elevator", WorldObjectKind.Elevator, "Moving platform proof; later gets visible endpoints and timing."));
-        shelf.AddChild(ShelfButton("Add Checkpoint", WorldObjectKind.Checkpoint, "Visible marker now; spawn binding comes next."));
-        shelf.AddChild(ShelfButton("Add Start Point", WorldObjectKind.StartPoint, "Editor-only spawn marker. Visible while building, hidden during play."));
-        shelf.AddChild(ShelfButton("Add Goal", WorldObjectKind.GoalPoint, "Visible level objective marker: the first complete test level spine is Start -> Midpoint -> Goal."));
-        shelf.AddChild(ShelfButton("Add Hidden Switch", WorldObjectKind.HiddenSwitch, "Invisible gameplay logic: visible in editor, hidden from the player."));
+        shelf.AddChild(CockpitHeading("PLATFORMER"));
         Button saveLevel = Button("Save Level");
         saveLevel.Pressed += SaveLevel;
-        shelf.AddChild(saveLevel);
 
         Button loadLevel = Button("Load Level");
         loadLevel.Pressed += LoadLevel;
-        shelf.AddChild(loadLevel);
 
         Button editorPlay = Button("Enter Play Mode");
         editorPlay.Pressed += () =>
@@ -773,8 +815,28 @@ public partial class Main : Control
             SetEditorMode(!_editorMode);
             editorPlay.Text = _editorMode ? "Enter Play Mode" : "Return to Editor";
         };
+        shelf.AddChild(CockpitHeading("SESSION"));
+        shelf.AddChild(ButtonRow(saveLevel, loadLevel));
         shelf.AddChild(editorPlay);
 
+        shelf.AddChild(CockpitHeading("BUILD TOOLS"));
+        shelf.AddChild(ButtonRow(
+            ShelfButton("Ladder", WorldObjectKind.Ladder, "Climbable vertical tool; later: draggable endpoints."),
+            ShelfButton("Ramp", WorldObjectKind.Ramp, "Diagonal standable line for paragraph slants / Donkey Kong feel.")));
+        shelf.AddChild(ButtonRow(
+            ShelfButton("Slide", WorldObjectKind.Slide, "Sloped acceleration surface; currently uses ramp physics with slide push."),
+            ShelfButton("Conveyor", WorldObjectKind.Conveyor, "Moving belt surface; useful for office machinery and factory text.")));
+        shelf.AddChild(ShelfButton("Elevator", WorldObjectKind.Elevator, "Moving platform proof; later gets visible endpoints and timing."));
+
+        shelf.AddChild(CockpitHeading("ROUTE / LOGIC"));
+        shelf.AddChild(ButtonRow(
+            ShelfButton("Start", WorldObjectKind.StartPoint, "Editor-only spawn marker. Visible while building, hidden during play."),
+            ShelfButton("Checkpoint", WorldObjectKind.Checkpoint, "Visible marker now; spawn binding comes next.")));
+        shelf.AddChild(ButtonRow(
+            ShelfButton("Goal", WorldObjectKind.GoalPoint, "Visible level objective marker: the first complete test level spine is Start -> Midpoint -> Goal."),
+            ShelfButton("Hidden Switch", WorldObjectKind.HiddenSwitch, "Invisible gameplay logic: visible in editor, hidden from the player.")));
+
+        shelf.AddChild(CockpitHeading("PLAYER RULES"));
         Button floor = Button(_platformerSafetyFloor ? "Safety Floor: On" : "Safety Floor: Off");
         floor.Pressed += () =>
         {
@@ -786,7 +848,6 @@ public partial class Main : Control
                 ? "Platformer safety floor enabled. Falling below the document catches the player."
                 : "Platformer safety floor disabled. Gutter/plunge/death-pit levels can now work.";
         };
-        shelf.AddChild(floor);
 
         Button gun = Button(_gunEnabled ? "Gun: On" : "Gun: Off");
         gun.Pressed += () =>
@@ -798,8 +859,9 @@ public partial class Main : Control
                 ? "Gun enabled. Platformer can use Run Shoot / Jump Shoot labels and fire projectiles."
                 : "Gun disabled. Platformer becomes a jump/climb/dig style game; shoot input is ignored.";
         };
-        shelf.AddChild(gun);
+        shelf.AddChild(ButtonRow(floor, gun));
 
+        shelf.AddChild(CockpitHeading("ENEMY RULES"));
         Button enemyAi = Button(_enemyAiEnabled ? "Enemy AI: On" : "Enemy AI: Off");
         enemyAi.Pressed += () =>
         {
@@ -809,7 +871,6 @@ public partial class Main : Control
                 ? "Enemy AI enabled. Enemies patrol/hover, collide, and can block the route."
                 : "Enemy AI disabled. Enemies stay placed for editing.";
         };
-        shelf.AddChild(enemyAi);
 
         Button enemyTrack = Button(_enemyTracksPlayer ? "Enemy Track: On" : "Enemy Track: Off");
         enemyTrack.Pressed += () =>
@@ -820,7 +881,6 @@ public partial class Main : Control
                 ? "Enemy tracking enabled. Enemies bias their patrol/facing toward the player and face the player when firing."
                 : "Enemy tracking disabled. Enemies keep patrol/guard motion and fire from their current facing.";
         };
-        shelf.AddChild(enemyTrack);
 
         Button enemyShots = Button(_enemyProjectilesEnabled ? "Enemy Shots: On" : "Enemy Shots: Off");
         enemyShots.Pressed += () =>
@@ -832,8 +892,32 @@ public partial class Main : Control
                 ? "Enemy projectile ability enabled. Sunny Dragon fires simple aimed shots on a cooldown."
                 : "Enemy projectile ability disabled. Contact danger remains if Enemy AI is on.";
         };
-        shelf.AddChild(enemyShots);
 
+        Button enemyRange = Button(EnemyRangeButtonText());
+        enemyRange.Pressed += () =>
+        {
+            _enemyShotRangeUnits = _enemyShotRangeUnits < 28f ? 34f : _enemyShotRangeUnits < 45f ? 55f : 18f;
+            enemyRange.Text = EnemyRangeButtonText();
+            ClearEnemyShots();
+            _inspectorText.Text = $"Enemy shot range set to {_enemyShotRangeUnits:0} text units. Enemies will not fire until the player is inside that threat radius.";
+        };
+
+        Button damageModel = Button(_partialDamageEnabled ? "Damage: Hearts" : "Damage: Instant");
+        damageModel.Pressed += () =>
+        {
+            _partialDamageEnabled = !_partialDamageEnabled;
+            damageModel.Text = _partialDamageEnabled ? "Damage: Hearts" : "Damage: Instant";
+            _playerHealth = _playerMaxHealth;
+            RefreshPlatformerHud();
+            _inspectorText.Text = _partialDamageEnabled
+                ? "Partial damage enabled. Enemy shots remove health before costing a life."
+                : "Instant damage enabled. Enemy shots kill like old-school hazards.";
+        };
+        shelf.AddChild(ButtonRow(enemyAi, enemyTrack));
+        shelf.AddChild(ButtonRow(enemyShots, enemyRange));
+        shelf.AddChild(damageModel);
+
+        shelf.AddChild(CockpitHeading("TEXT RULES"));
         Button textTerrain = Button(_textTerrainEnabled ? "Text Terrain: On" : "Text Terrain: Off");
         textTerrain.Pressed += () =>
         {
@@ -843,7 +927,6 @@ public partial class Main : Control
                 ? "Player text terrain enabled. Captured letters/words can support the scout."
                 : "Player text terrain disabled. Only explicit platforms/ramps/elevators/conveyors/floor support the scout.";
         };
-        shelf.AddChild(textTerrain);
 
         Button textCrawl = Button(_playfield.TextCrawlEnabled ? "Text Crawl: On" : "Text Crawl: Off");
         textCrawl.Pressed += () =>
@@ -854,7 +937,6 @@ public partial class Main : Control
                 ? "Player text crawl enabled. Dense single-spaced text can act like climb/crawl surface in Climber mode."
                 : "Player text crawl disabled. Use explicit ladders or other tools for climbing.";
         };
-        shelf.AddChild(textCrawl);
 
         Button textDestruction = Button(_textDestructionEnabled ? "Shot Text Damage: On" : "Shot Text Damage: Off");
         textDestruction.Pressed += () =>
@@ -865,8 +947,10 @@ public partial class Main : Control
                 ? "Platformer shots can erase captured text in the working clone."
                 : "Platformer shots no longer damage text; useful for no-destruction traversal tests.";
         };
+        shelf.AddChild(ButtonRow(textTerrain, textCrawl));
         shelf.AddChild(textDestruction);
 
+        shelf.AddChild(CockpitHeading("RESET"));
         Button clear = Button("CLEAR PLACED PARTS");
         clear.Pressed += () =>
         {
@@ -1020,8 +1104,21 @@ public partial class Main : Control
 
     private Control BuildInspectorPanel()
     {
-        PanelContainer panel = CockpitPanel(330);
-        VBoxContainer inspector = PanelVBox(panel);
+        PanelContainer panel = CockpitPanel(292);
+        ScrollContainer scroll = new()
+        {
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            SizeFlagsVertical = SizeFlags.ExpandFill,
+            HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
+            VerticalScrollMode = ScrollContainer.ScrollMode.Auto
+        };
+        panel.AddChild(scroll);
+        MarginContainer margin = Margins(12, 12, 12, 12);
+        scroll.AddChild(margin);
+        VBoxContainer inspector = new();
+        inspector.AddThemeConstantOverride("separation", 8);
+        inspector.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        margin.AddChild(inspector);
         inspector.AddChild(CockpitHeading("INSPECTOR"));
         _inspectorText = CockpitNote(
             "Select or place a toolkit object.\n\n"
@@ -1032,6 +1129,23 @@ public partial class Main : Control
         inspector.AddChild(CockpitHeading("ATTRIBUTES"));
         _attributeText = CockpitNote("Select a placed object to edit speed, direction, thickness, and slope behavior.");
         inspector.AddChild(_attributeText);
+
+        inspector.AddChild(CockpitHeading("ACTOR COMBAT"));
+        inspector.AddChild(CockpitNote("Enemy toughness is regular shots to defeat. Gun power subtracts that many shot-points per hit."));
+        Button tougher = Button("TOUGHNESS +");
+        tougher.Pressed += () => AdjustSelectedEnemyToughness(1);
+        Button weaker = Button("TOUGHNESS -");
+        weaker.Pressed += () => AdjustSelectedEnemyToughness(-1);
+        inspector.AddChild(ButtonRow(weaker, tougher));
+
+        Button shotPower = Button(PlayerShotPowerButtonText());
+        shotPower.Pressed += () =>
+        {
+            _playerShotPower = _playerShotPower >= 4 ? 1 : _playerShotPower + 1;
+            shotPower.Text = PlayerShotPowerButtonText();
+            _inspectorText.Text = $"Player gun power set to {_playerShotPower}x.\n\nA {_playerShotPower}x hit removes {_playerShotPower} point(s) of enemy shot toughness.";
+        };
+        inspector.AddChild(shotPower);
 
         _speedSlider = AttributeSlider(-24, 24, 0, 0.5);
         _speedSlider.ValueChanged += value =>
@@ -1199,6 +1313,7 @@ public partial class Main : Control
             Playfield = _playfield,
             Visible = false
         };
+        _brickbatOverlay.SoundRequested += PlaySound;
         _brickbatOverlay.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
         _playfield.AddChild(_brickbatOverlay);
 
@@ -1308,8 +1423,16 @@ public partial class Main : Control
                 actor.Visible = false;
         }
 
+        _combatFxOverlay = new CombatFxOverlay
+        {
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        _combatFxOverlay.SetAnchorsPreset(LayoutPreset.FullRect);
+        _playfield.AddChild(_combatFxOverlay);
+
         _player = _actors[0];
         _player.ActorName = "Playable Scout";
+        _player.AnimationSourceId = "stickman-v0.1";
         _player.IsPlayable = true;
         _player.AnimationSet = SpriteAnimationSet.TryLoadStickman();
         ApplyActorScale();
@@ -1327,6 +1450,7 @@ public partial class Main : Control
             candidate.Selected = candidate == actor;
 
         _spritePad.Model = actor.Model;
+        LoadAnimationEditorForActor(actor);
         RefreshBindingText();
     }
 
@@ -1347,7 +1471,67 @@ public partial class Main : Control
         _selectedActor.TooltipText = $"Select {trimmed}";
     }
 
-    private void SetPlayerCharacter(string actorName, SpriteAnimationSet? animationSet, string note)
+    private void LoadAnimationEditorForActor(ActorView actor)
+    {
+        string sourceId = string.IsNullOrWhiteSpace(actor.AnimationSourceId)
+            ? GuessAnimationSourceId(actor.ActorName, actor.IsPlayable)
+            : actor.AnimationSourceId;
+
+        switch (sourceId)
+        {
+            case "stickman-v0.1":
+                LoadStickmanEditorDefaults();
+                break;
+            case "tgc-player":
+                LoadTgcEditorDefaults();
+                break;
+            case "sunny-dragon-fly":
+                LoadSunnyDragonEditorDefaults();
+                break;
+            case "tgc-orange-worker":
+                LoadTgcOrangeWorkerEditorDefaults(actor.ActorName, sourceId);
+                break;
+            case "tgc-red-runner":
+                LoadTgcRedRunnerEditorDefaults(actor.ActorName, sourceId);
+                break;
+            case "tgc-blue-guard":
+                LoadTgcBlueGuardEditorDefaults(actor.ActorName, sourceId);
+                break;
+            case "tgc-green-crawler":
+                LoadTgcGreenCrawlerEditorDefaults(actor.ActorName, sourceId);
+                break;
+            case "tgc-shooter-boss":
+                LoadShooterBossEditorDefaults();
+                break;
+            case "tgc-shooter-fleet":
+                LoadShooterFleetEditorDefaults();
+                break;
+        }
+    }
+
+    private static string GuessAnimationSourceId(string actorName, bool playable)
+    {
+        string name = actorName.ToLowerInvariant();
+        if (name.Contains("sunny") || name.Contains("dragon"))
+            return "sunny-dragon-fly";
+        if (name.Contains("orange"))
+            return "tgc-orange-worker";
+        if (name.Contains("red"))
+            return "tgc-red-runner";
+        if (name.Contains("blue"))
+            return "tgc-blue-guard";
+        if (name.Contains("green") || name.Contains("crawler"))
+            return "tgc-green-crawler";
+        if (name.Contains("boss"))
+            return "tgc-shooter-boss";
+        if (name.Contains("fleet") || name.Contains("ship"))
+            return "tgc-shooter-fleet";
+        if (name.Contains("tgc"))
+            return "tgc-player";
+        return playable ? "stickman-v0.1" : "";
+    }
+
+    private void SetPlayerCharacter(string actorName, SpriteAnimationSet? animationSet, string note, string animationSourceId = "")
     {
         if (animationSet is null)
         {
@@ -1357,6 +1541,7 @@ public partial class Main : Control
 
         _player.ActorName = actorName;
         _player.AnimationSet = animationSet;
+        _player.AnimationSourceId = string.IsNullOrWhiteSpace(animationSourceId) ? _animationEditorSourceId : animationSourceId;
         SelectActor(_player);
         _inspectorText.Text = note + "\n\nThis is the seed of the Character Picker: choose a source, preview action labels, then edit/fine-tune clips.";
         RefreshMotionText();
@@ -1364,17 +1549,17 @@ public partial class Main : Control
 
     private void SetEnemyCharacter(string actorName, SpriteAnimationSet? animationSet, string note)
     {
-        AddEnemyCharacter(actorName, animationSet, note, "This is the first enemy/import test: one source strip, many possible game roles.", canFireProjectiles: true);
+        AddEnemyCharacter(actorName, animationSet, note, "This is the first enemy/import test: one source strip, many possible game roles.", canFireProjectiles: true, animationSourceId: GuessAnimationSourceId(actorName, playable: false));
     }
 
     private void AddTgcEnemy(string actorName, SpriteAnimationSet? animationSet, string note)
     {
         bool canFire = actorName.Contains("Boss", StringComparison.OrdinalIgnoreCase)
             || actorName.Contains("Fleet", StringComparison.OrdinalIgnoreCase);
-        AddEnemyCharacter(actorName, animationSet, note, "TGC shelf import: treated as an enemy for now. Drag, scale, save, and later assign behavior/projectiles.", canFire);
+        AddEnemyCharacter(actorName, animationSet, note, "TGC shelf import: treated as an enemy for now. Drag, scale, save, and later assign behavior/projectiles.", canFire, GuessAnimationSourceId(actorName, playable: false));
     }
 
-    private void AddEnemyCharacter(string actorName, SpriteAnimationSet? animationSet, string note, string footer, bool canFireProjectiles)
+    private void AddEnemyCharacter(string actorName, SpriteAnimationSet? animationSet, string note, string footer, bool canFireProjectiles, string animationSourceId = "")
     {
         if (animationSet is null)
         {
@@ -1384,6 +1569,7 @@ public partial class Main : Control
 
         ActorView enemy = NextEnemySlot();
         enemy.ActorName = actorName;
+        enemy.AnimationSourceId = string.IsNullOrWhiteSpace(animationSourceId) ? GuessAnimationSourceId(actorName, playable: false) : animationSourceId;
         enemy.AnimationSet = animationSet;
         enemy.MotionState = ActorMotionState.Idle;
         enemy.AnimationClock = 0;
@@ -1391,6 +1577,7 @@ public partial class Main : Control
         enemy.Visible = true;
         enemy.FacingRight = false;
         enemy.CanFireProjectiles = canFireProjectiles;
+        enemy.ShotToughness = DefaultEnemyShotToughness(actorName);
         enemy.ManualPlacement = true;
         int slotIndex = _actors.IndexOf(enemy);
         enemy.Size = EnemyDefaultSize();
@@ -1399,7 +1586,9 @@ public partial class Main : Control
         enemy.HomePosition = enemy.Position;
         enemy.TooltipText = $"Select {actorName}";
         SelectActor(enemy);
-        _inspectorText.Text = note + "\n\n" + footer + $"\n\nProjectile capable: {(canFireProjectiles ? "yes" : "no")}.";
+        _enemyHealth.Remove(enemy);
+        _defeatedEnemies.Remove(enemy);
+        _inspectorText.Text = note + "\n\n" + footer + $"\n\nProjectile capable: {(canFireProjectiles ? "yes" : "no")}.\nShot toughness: {enemy.ShotToughness}.";
     }
 
     private ActorView NextEnemySlot()
@@ -1440,6 +1629,7 @@ public partial class Main : Control
         _animationEditorName = "TGC Player";
         _animationEditorSource = "raw base assets/The Game Creator's Pack/The Game Creator's Pack/Graphic Pack/Player_DarkOutline.png";
         _animationEditorSourceKind = "raw-local-evaluation";
+        _animationEditorSourceId = "tgc-player";
         _animationEditorFolder = "game-creators-pack-graphics-prep";
         _animationEditorFileName = "tgc-player.dackanim.json";
 
@@ -1455,6 +1645,7 @@ public partial class Main : Control
         AddTgcClipRow("Run Shoot", Mathf.Min(17, maxFrame), Mathf.Min(20, maxFrame), maxFrame);
         AddTgcClipRow("Jump Shoot", Mathf.Min(21, maxFrame), Mathf.Min(24, maxFrame), maxFrame);
         AddTgcClipRow("Death", Mathf.Min(16, maxFrame), Mathf.Min(17, maxFrame), maxFrame);
+        TryLoadAnimationClipLabels(showFeedback: false);
         UpdateTgcStripPreview();
     }
 
@@ -1463,6 +1654,7 @@ public partial class Main : Control
         _animationEditorName = "Playable Scout";
         _animationEditorSource = "assets/third_party/stickman-pack-v0.1/thin-*.png";
         _animationEditorSourceKind = "admitted-third-party";
+        _animationEditorSourceId = "stickman-v0.1";
         _animationEditorFolder = "stickman-pack-v0.1";
         _animationEditorFileName = "stickman-thin.dackanim.json";
 
@@ -1478,6 +1670,7 @@ public partial class Main : Control
         AddTgcClipRow("Run Shoot", Mathf.Min(6, maxFrame), Mathf.Min(14, maxFrame), maxFrame);
         AddTgcClipRow("Jump Shoot", Mathf.Min(15, maxFrame), Mathf.Min(15, maxFrame), maxFrame);
         AddTgcClipRow("Death", 0, Mathf.Min(5, maxFrame), maxFrame);
+        TryLoadAnimationClipLabels(showFeedback: false);
         UpdateTgcStripPreview();
     }
 
@@ -1486,6 +1679,7 @@ public partial class Main : Control
         _animationEditorName = "Sunny Dragon";
         _animationEditorSource = "raw base assets/Legacy Collection/Legacy Collection/Assets/Misc/Characters/sunny-dragon/spritesheets/sunny-dragon-fly.png";
         _animationEditorSourceKind = "raw-local-evaluation";
+        _animationEditorSourceId = "sunny-dragon-fly";
         _animationEditorFolder = "legacy-collection-sunny-dragon-prep";
         _animationEditorFileName = "sunny-dragon-fly.dackanim.json";
 
@@ -1502,6 +1696,178 @@ public partial class Main : Control
         AddTgcClipRow("Run Shoot", 0, maxFrame, maxFrame);
         AddTgcClipRow("Jump Shoot", 0, maxFrame, maxFrame);
         AddTgcClipRow("Death", 0, maxFrame, maxFrame);
+        TryLoadAnimationClipLabels(showFeedback: false);
+        UpdateTgcStripPreview();
+    }
+
+    private void LoadTgcPlatformerEnemyEditorDefaults(string actorName, string sourceId, AnimationFrameRange idle, AnimationFrameRange run, AnimationFrameRange crawl)
+    {
+        _animationEditorName = actorName;
+        _animationEditorSource = "raw base assets/The Game Creator's Pack/The Game Creator's Pack/Graphic Pack/Platformer_SpriteSheet.png";
+        _animationEditorSourceKind = "raw-local-evaluation";
+        _animationEditorSourceId = sourceId;
+        _animationEditorFolder = "game-creators-pack-graphics-prep";
+        _animationEditorFileName = $"{sourceId}.dackanim.json";
+
+        SpriteFrame[] frames = SpriteAnimationSet.TryLoadTgcPlatformerFrames(out SpriteFrame[] loaded) ? loaded : [];
+        SetAnimationEditorFrames(frames);
+        int maxFrame = Mathf.Max(0, _animationEditorFrameCount - 1);
+        ClearTgcClipRows();
+        AddTgcClipRow("Idle", Mathf.Min(idle.Start, maxFrame), Mathf.Min(idle.End, maxFrame), maxFrame);
+        AddTgcClipRow("Run", Mathf.Min(run.Start, maxFrame), Mathf.Min(run.End, maxFrame), maxFrame);
+        AddTgcClipRow("Crawl", Mathf.Min(crawl.Start, maxFrame), Mathf.Min(crawl.End, maxFrame), maxFrame);
+        AddTgcClipRow("Jump Up", "-", "-", maxFrame);
+        AddTgcClipRow("Jump Down", "-", "-", maxFrame);
+        AddTgcClipRow("Fall", "-", "-", maxFrame);
+        AddTgcClipRow("Run Shoot", "-", "-", maxFrame);
+        AddTgcClipRow("Jump Shoot", "-", "-", maxFrame);
+        AddTgcClipRow("Death", "-", "-", maxFrame);
+        TryLoadAnimationClipLabels(showFeedback: false);
+        UpdateTgcStripPreview();
+    }
+
+    private void LoadTgcOrangeWorkerEditorDefaults(string actorName, string sourceId)
+    {
+        _animationEditorName = actorName;
+        _animationEditorSource = "raw base assets/The Game Creator's Pack/The Game Creator's Pack/Graphic Pack/Platformer_SpriteSheet.png";
+        _animationEditorSourceKind = "raw-local-evaluation";
+        _animationEditorSourceId = sourceId;
+        _animationEditorFolder = "game-creators-pack-graphics-prep";
+        _animationEditorFileName = $"{sourceId}.dackanim.json";
+
+        SpriteFrame[] frames = SpriteAnimationSet.TryLoadTgcOrangeWorkerFrames(out SpriteFrame[] loaded) ? loaded : [];
+        SetAnimationEditorFrames(frames);
+        int maxFrame = Mathf.Max(0, _animationEditorFrameCount - 1);
+        ClearTgcClipRows();
+        AddTgcClipRow("Idle", 0, Mathf.Min(5, maxFrame), maxFrame);
+        AddTgcClipRow("Run", Mathf.Min(7, maxFrame), Mathf.Min(12, maxFrame), maxFrame);
+        AddTgcClipRow("Crawl", Mathf.Min(7, maxFrame), Mathf.Min(12, maxFrame), maxFrame);
+        AddTgcClipRow("Jump Up", "-", "-", maxFrame);
+        AddTgcClipRow("Jump Down", "-", "-", maxFrame);
+        AddTgcClipRow("Fall", "-", "-", maxFrame);
+        AddTgcClipRow("Run Shoot", "-", "-", maxFrame);
+        AddTgcClipRow("Jump Shoot", "-", "-", maxFrame);
+        AddTgcClipRow("Death", "-", "-", maxFrame);
+        TryLoadAnimationClipLabels(showFeedback: false);
+        UpdateTgcStripPreview();
+    }
+
+    private void LoadTgcRedRunnerEditorDefaults(string actorName, string sourceId)
+    {
+        _animationEditorName = actorName;
+        _animationEditorSource = "raw base assets/The Game Creator's Pack/The Game Creator's Pack/Graphic Pack/Platformer_SpriteSheet.png";
+        _animationEditorSourceKind = "raw-local-evaluation";
+        _animationEditorSourceId = sourceId;
+        _animationEditorFolder = "game-creators-pack-graphics-prep";
+        _animationEditorFileName = $"{sourceId}.dackanim.json";
+
+        SpriteFrame[] frames = SpriteAnimationSet.TryLoadTgcRedRunnerFrames(out SpriteFrame[] loaded) ? loaded : [];
+        SetAnimationEditorFrames(frames);
+        int maxFrame = Mathf.Max(0, _animationEditorFrameCount - 1);
+        ClearTgcClipRows();
+        AddTgcClipRow("Idle", 0, Mathf.Min(5, maxFrame), maxFrame);
+        AddTgcClipRow("Run", Mathf.Min(6, maxFrame), Mathf.Min(11, maxFrame), maxFrame);
+        AddTgcClipRow("Crawl", Mathf.Min(6, maxFrame), Mathf.Min(11, maxFrame), maxFrame);
+        AddTgcClipRow("Jump Up", "-", "-", maxFrame);
+        AddTgcClipRow("Jump Down", "-", "-", maxFrame);
+        AddTgcClipRow("Fall", "-", "-", maxFrame);
+        AddTgcClipRow("Run Shoot", "-", "-", maxFrame);
+        AddTgcClipRow("Jump Shoot", "-", "-", maxFrame);
+        AddTgcClipRow("Death", "-", "-", maxFrame);
+        TryLoadAnimationClipLabels(showFeedback: false);
+        UpdateTgcStripPreview();
+    }
+
+    private void LoadTgcBlueGuardEditorDefaults(string actorName, string sourceId)
+    {
+        _animationEditorName = actorName;
+        _animationEditorSource = "raw base assets/The Game Creator's Pack/The Game Creator's Pack/Graphic Pack/Platformer_SpriteSheet.png";
+        _animationEditorSourceKind = "raw-local-evaluation";
+        _animationEditorSourceId = sourceId;
+        _animationEditorFolder = "game-creators-pack-graphics-prep";
+        _animationEditorFileName = $"{sourceId}.dackanim.json";
+
+        SpriteFrame[] frames = SpriteAnimationSet.TryLoadTgcBlueGuardFrames(out SpriteFrame[] loaded) ? loaded : [];
+        SetAnimationEditorFrames(frames);
+        int maxFrame = Mathf.Max(0, _animationEditorFrameCount - 1);
+        ClearTgcClipRows();
+        AddTgcClipRow("Idle", 0, Mathf.Min(5, maxFrame), maxFrame);
+        AddTgcClipRow("Run", Mathf.Min(6, maxFrame), Mathf.Min(11, maxFrame), maxFrame);
+        AddTgcClipRow("Crawl", Mathf.Min(6, maxFrame), Mathf.Min(11, maxFrame), maxFrame);
+        AddTgcClipRow("Jump Up", "-", "-", maxFrame);
+        AddTgcClipRow("Jump Down", "-", "-", maxFrame);
+        AddTgcClipRow("Fall", "-", "-", maxFrame);
+        AddTgcClipRow("Run Shoot", "-", "-", maxFrame);
+        AddTgcClipRow("Jump Shoot", "-", "-", maxFrame);
+        AddTgcClipRow("Death", "-", "-", maxFrame);
+        TryLoadAnimationClipLabels(showFeedback: false);
+        UpdateTgcStripPreview();
+    }
+
+    private void LoadTgcGreenCrawlerEditorDefaults(string actorName, string sourceId)
+    {
+        _animationEditorName = actorName;
+        _animationEditorSource = "raw base assets/The Game Creator's Pack/The Game Creator's Pack/Graphic Pack/Platformer_SpriteSheet.png";
+        _animationEditorSourceKind = "raw-local-evaluation";
+        _animationEditorSourceId = sourceId;
+        _animationEditorFolder = "game-creators-pack-graphics-prep";
+        _animationEditorFileName = $"{sourceId}.dackanim.json";
+
+        SpriteFrame[] frames = SpriteAnimationSet.TryLoadTgcGreenCrawlerFrames(out SpriteFrame[] loaded) ? loaded : [];
+        SetAnimationEditorFrames(frames);
+        int maxFrame = Mathf.Max(0, _animationEditorFrameCount - 1);
+        ClearTgcClipRows();
+        AddTgcClipRow("Idle", 0, maxFrame, maxFrame);
+        AddTgcClipRow("Run", 0, maxFrame, maxFrame);
+        AddTgcClipRow("Crawl", 0, maxFrame, maxFrame);
+        AddTgcClipRow("Jump Up", "-", "-", maxFrame);
+        AddTgcClipRow("Jump Down", "-", "-", maxFrame);
+        AddTgcClipRow("Fall", "-", "-", maxFrame);
+        AddTgcClipRow("Run Shoot", "-", "-", maxFrame);
+        AddTgcClipRow("Jump Shoot", "-", "-", maxFrame);
+        AddTgcClipRow("Death", "-", "-", maxFrame);
+        TryLoadAnimationClipLabels(showFeedback: false);
+        UpdateTgcStripPreview();
+    }
+
+    private void LoadShooterBossEditorDefaults()
+    {
+        _animationEditorName = "Shooter Boss";
+        _animationEditorSource = "raw base assets/The Game Creator's Pack/The Game Creator's Pack/Graphic Pack/Shooter_Boss_Sprite.png";
+        _animationEditorSourceKind = "raw-local-evaluation";
+        _animationEditorSourceId = "tgc-shooter-boss";
+        _animationEditorFolder = "game-creators-pack-graphics-prep";
+        _animationEditorFileName = "tgc-shooter-boss.dackanim.json";
+
+        SpriteFrame[] frames = SpriteAnimationSet.TryLoadTgcShooterBossFrames(out SpriteFrame[] loaded) ? loaded : [];
+        SetAnimationEditorFrames(frames);
+        int maxFrame = Mathf.Max(0, _animationEditorFrameCount - 1);
+        ClearTgcClipRows();
+        AddTgcClipRow("Idle", 0, maxFrame, maxFrame);
+        AddTgcClipRow("Run", 0, maxFrame, maxFrame);
+        AddTgcClipRow("Death", 0, maxFrame, maxFrame);
+        TryLoadAnimationClipLabels(showFeedback: false);
+        UpdateTgcStripPreview();
+    }
+
+    private void LoadShooterFleetEditorDefaults()
+    {
+        _animationEditorName = "Shooter Fleet";
+        _animationEditorSource = "raw base assets/The Game Creator's Pack/The Game Creator's Pack/Graphic Pack/Shooter_SpriteSheet.png";
+        _animationEditorSourceKind = "raw-local-evaluation";
+        _animationEditorSourceId = "tgc-shooter-fleet";
+        _animationEditorFolder = "game-creators-pack-graphics-prep";
+        _animationEditorFileName = "tgc-shooter-fleet.dackanim.json";
+
+        SpriteFrame[] frames = SpriteAnimationSet.TryLoadTgcShooterFrames(out SpriteFrame[] loaded) ? loaded : [];
+        SetAnimationEditorFrames(frames);
+        int maxFrame = Mathf.Max(0, _animationEditorFrameCount - 1);
+        ClearTgcClipRows();
+        AddTgcClipRow("Idle", 0, Mathf.Min(5, maxFrame), maxFrame);
+        AddTgcClipRow("Run", 0, Mathf.Min(5, maxFrame), maxFrame);
+        AddTgcClipRow("Run Shoot", 0, Mathf.Min(5, maxFrame), maxFrame);
+        AddTgcClipRow("Death", 0, 0, maxFrame);
+        TryLoadAnimationClipLabels(showFeedback: false);
         UpdateTgcStripPreview();
     }
 
@@ -1543,81 +1909,67 @@ public partial class Main : Control
         ApplyDeathStrobeSettings();
         UpdateTgcStripPreview();
 
-        bool editingStickman = _animationEditorFileName.Contains("stickman", StringComparison.OrdinalIgnoreCase);
-        bool editingSunnyDragon = _animationEditorFileName.Contains("sunny-dragon", StringComparison.OrdinalIgnoreCase);
         SpriteAnimationSet? animationSet;
-        if (editingStickman)
+        switch (_animationEditorSourceId)
         {
-            animationSet = SpriteAnimationSet.TryLoadStickman(
-                idle,
-                run,
-                jumpUp,
-                jumpDown,
-                fall,
-                runShoot,
-                jumpShoot,
-                death,
-                idlePingPong,
-                runPingPong,
-                jumpUpPingPong,
-                jumpDownPingPong,
-                fallPingPong,
-                runShootPingPong,
-                jumpShootPingPong,
-                deathPingPong
-            );
-        }
-        else if (editingSunnyDragon)
-        {
-            animationSet = SpriteAnimationSet.TryLoadSunnyDragon(
-                idle,
-                run,
-                jumpUp,
-                jumpDown,
-                fall,
-                runShoot,
-                jumpShoot,
-                death,
-                idlePingPong,
-                runPingPong,
-                jumpUpPingPong,
-                jumpDownPingPong,
-                fallPingPong,
-                runShootPingPong,
-                jumpShootPingPong,
-                deathPingPong
-            );
-        }
-        else
-        {
-            animationSet = SpriteAnimationSet.TryLoadGameCreatorPlayer(
-                idle,
-                run,
-                jumpUp,
-                jumpDown,
-                fall,
-                runShoot,
-                jumpShoot,
-                death,
-                idlePingPong,
-                runPingPong,
-                jumpUpPingPong,
-                jumpDownPingPong,
-                fallPingPong,
-                runShootPingPong,
-                jumpShootPingPong,
-                deathPingPong
-            );
+            case "stickman-v0.1":
+                animationSet = SpriteAnimationSet.TryLoadStickman(idle, run, jumpUp, jumpDown, fall, runShoot, jumpShoot, death, idlePingPong, runPingPong, jumpUpPingPong, jumpDownPingPong, fallPingPong, runShootPingPong, jumpShootPingPong, deathPingPong);
+                break;
+            case "sunny-dragon-fly":
+                animationSet = SpriteAnimationSet.TryLoadSunnyDragon(idle, run, jumpUp, jumpDown, fall, runShoot, jumpShoot, death, idlePingPong, runPingPong, jumpUpPingPong, jumpDownPingPong, fallPingPong, runShootPingPong, jumpShootPingPong, deathPingPong);
+                break;
+            case "tgc-orange-worker":
+                animationSet = SpriteAnimationSet.TryLoadTgcOrangeWorker(idle, run, jumpUp, jumpDown, fall, runShoot, jumpShoot, death, idlePingPong, runPingPong, jumpUpPingPong, jumpDownPingPong, fallPingPong, runShootPingPong, jumpShootPingPong, deathPingPong);
+                break;
+            case "tgc-red-runner":
+                animationSet = SpriteAnimationSet.TryLoadTgcRedRunner(idle, run, jumpUp, jumpDown, fall, runShoot, jumpShoot, death, idlePingPong, runPingPong, jumpUpPingPong, jumpDownPingPong, fallPingPong, runShootPingPong, jumpShootPingPong, deathPingPong);
+                break;
+            case "tgc-blue-guard":
+                animationSet = SpriteAnimationSet.TryLoadTgcBlueGuard(idle, run, jumpUp, jumpDown, fall, runShoot, jumpShoot, death, idlePingPong, runPingPong, jumpUpPingPong, jumpDownPingPong, fallPingPong, runShootPingPong, jumpShootPingPong, deathPingPong);
+                break;
+            case "tgc-green-crawler":
+                animationSet = SpriteAnimationSet.TryLoadTgcGreenCrawler(idle, run, jumpUp, jumpDown, fall, runShoot, jumpShoot, death, idlePingPong, runPingPong, jumpUpPingPong, jumpDownPingPong, fallPingPong, runShootPingPong, jumpShootPingPong, deathPingPong);
+                break;
+            case "tgc-shooter-fleet":
+                animationSet = SpriteAnimationSet.TryLoadTgcShooterFleet(idle, run, jumpUp, jumpDown, fall, runShoot, jumpShoot, death, idlePingPong, runPingPong, jumpUpPingPong, jumpDownPingPong, fallPingPong, runShootPingPong, jumpShootPingPong, deathPingPong);
+                break;
+            case "tgc-shooter-boss":
+                animationSet = SpriteAnimationSet.TryLoadTgcShooterBoss();
+                break;
+            default:
+                animationSet = SpriteAnimationSet.TryLoadGameCreatorPlayer(idle, run, jumpUp, jumpDown, fall, runShoot, jumpShoot, death, idlePingPong, runPingPong, jumpUpPingPong, jumpDownPingPong, fallPingPong, runShootPingPong, jumpShootPingPong, deathPingPong);
+                break;
         }
 
         string note = $"{_animationEditorName} labels applied.\n\n"
             + $"Idle {idle.Start}-{idle.End}; Run {run.Start}-{run.End}; Jump-up {jumpUp.Start}-{jumpUp.End}; Jump-down {jumpDown.Start}-{jumpDown.End}; Fall {fall.Start}-{fall.End}; Run-shoot {runShoot.Start}-{runShoot.End}; Jump-shoot {jumpShoot.Start}-{jumpShoot.End}; Death {death.Start}-{death.End}.\n\n"
             + "Run Shoot and Jump Shoot now bind while firing. Death can be tested from the strip editor. PingPong turns short ranges into forward/back sequences.";
 
-        if (editingSunnyDragon)
-            SetEnemyCharacter(_animationEditorName, animationSet, note);
+        if (_selectedActor is not null && !_selectedActor.IsPlayable)
+            SetSelectedEnemyAnimation(_animationEditorName, animationSet, note, _animationEditorSourceId);
         else
-            SetPlayerCharacter(_animationEditorName, animationSet, note);
+            SetPlayerCharacter(_animationEditorName, animationSet, note, _animationEditorSourceId);
+    }
+
+    private void SetSelectedEnemyAnimation(string actorName, SpriteAnimationSet? animationSet, string note, string animationSourceId)
+    {
+        if (_selectedActor is null || _selectedActor.IsPlayable)
+            return;
+
+        if (animationSet is null)
+        {
+            _inspectorText.Text = $"{actorName} could not be applied. The animation source may be missing.";
+            return;
+        }
+
+        _selectedActor.ActorName = actorName;
+        _selectedActor.AnimationSourceId = animationSourceId;
+        _selectedActor.AnimationSet = animationSet;
+        _selectedActor.AnimationClock = 0;
+        _selectedActor.MotionState = ActorMotionState.Idle;
+        _selectedActor.QueueRedraw();
+        RefreshBindingText();
+        _inspectorText.Text = note + "\n\nApplied to the selected enemy. Save labels to make this source's frame mapping reusable.";
     }
 
     private void TriggerDeathAnimation()
@@ -1676,6 +2028,7 @@ public partial class Main : Control
             format = "dackanim",
             version = 1,
             sourceName = _animationEditorName,
+            sourceId = _animationEditorSourceId,
             source = _animationEditorSource,
             sourceKind = _animationEditorSourceKind,
             frameNumberBase = numberBase,
@@ -1695,11 +2048,17 @@ public partial class Main : Control
 
     private void LoadAnimationClipLabels()
     {
+        TryLoadAnimationClipLabels(showFeedback: true);
+    }
+
+    private bool TryLoadAnimationClipLabels(bool showFeedback)
+    {
         string inputPath = GetAnimationSavePath();
         if (!File.Exists(inputPath))
         {
-            _inspectorText.Text = $"No saved {_animationEditorName} animation labels found yet.\n\nExpected:\n{inputPath}";
-            return;
+            if (showFeedback)
+                _inspectorText.Text = $"No saved {_animationEditorName} animation labels found yet.\n\nExpected:\n{inputPath}";
+            return false;
         }
 
         DackAnimManifest? manifest;
@@ -1709,18 +2068,32 @@ public partial class Main : Control
         }
         catch (Exception ex)
         {
-            _inspectorText.Text = $"Could not load animation labels.\n\n{ex.Message}";
-            return;
+            if (showFeedback)
+                _inspectorText.Text = $"Could not load animation labels.\n\n{ex.Message}";
+            return false;
         }
 
         if (manifest?.labels is null || manifest.labels.Count == 0)
         {
-            _inspectorText.Text = $"Animation label file loaded, but it had no labels.\n\n{inputPath}";
-            return;
+            if (showFeedback)
+                _inspectorText.Text = $"Animation label file loaded, but it had no labels.\n\n{inputPath}";
+            return false;
         }
 
         _tgcNumberBase.Value = manifest.frameNumberBase;
         int maxFrame = Mathf.Max(0, _animationEditorFrameCount - 1);
+        int numberBase = Mathf.RoundToInt((float)_tgcNumberBase.Value);
+        bool incompatibleFrameNumbers = manifest.labels.Any(label =>
+            !label.unavailable
+            && (label.editorStart - numberBase > maxFrame || label.editorEnd - numberBase > maxFrame)
+        );
+        if (incompatibleFrameNumbers)
+        {
+            if (showFeedback)
+                _inspectorText.Text = $"{_animationEditorName} has saved labels, but they were made for a different frame cut.\n\nUsing the current importer defaults instead. Save labels again to update:\n{inputPath}";
+            return false;
+        }
+
         ClearTgcClipRows();
         foreach (DackAnimLabel label in manifest.labels)
         {
@@ -1743,7 +2116,9 @@ public partial class Main : Control
         }
 
         UpdateTgcStripPreview();
-        _inspectorText.Text = $"{_animationEditorName} animation labels loaded.\n\n{inputPath}\n\nPress APPLY ANIM LABELS to use them on the player.";
+        if (showFeedback)
+            _inspectorText.Text = $"{_animationEditorName} animation labels loaded.\n\n{inputPath}\n\nPress APPLY ANIM LABELS to use them on the selected actor.";
+        return true;
     }
 
     private string GetAnimationSavePath()
@@ -1779,9 +2154,15 @@ public partial class Main : Control
             enemyAiEnabled = _enemyAiEnabled,
             enemyTracksPlayer = _enemyTracksPlayer,
             enemyProjectilesEnabled = _enemyProjectilesEnabled,
+            partialDamageEnabled = _partialDamageEnabled,
+            enemyShotRangeUnits = _enemyShotRangeUnits,
+            playerMaxHealth = _playerMaxHealth,
+            enemyShotDamage = _enemyShotDamage,
+            playerShotPower = _playerShotPower,
             explosionsDamageText = _explosionsDamageText,
             platformerScore = _platformerScore,
             platformerLives = _platformerLives,
+            playerHealth = _playerHealth,
             platformerDeaths = _platformerDeaths,
             hudX = _platformerHud?.Position.X ?? 18f,
             hudY = _platformerHud?.Position.Y ?? 78f,
@@ -1833,9 +2214,15 @@ public partial class Main : Control
         _enemyAiEnabled = manifest.enemyAiEnabled;
         _enemyTracksPlayer = manifest.enemyTracksPlayer;
         _enemyProjectilesEnabled = manifest.enemyProjectilesEnabled;
+        _partialDamageEnabled = manifest.partialDamageEnabled;
+        _enemyShotRangeUnits = manifest.enemyShotRangeUnits <= 0 ? _enemyShotRangeUnits : manifest.enemyShotRangeUnits;
+        _playerMaxHealth = manifest.playerMaxHealth <= 0 ? _playerMaxHealth : manifest.playerMaxHealth;
+        _enemyShotDamage = manifest.enemyShotDamage <= 0 ? _enemyShotDamage : manifest.enemyShotDamage;
+        _playerShotPower = manifest.playerShotPower <= 0 ? _playerShotPower : manifest.playerShotPower;
         _explosionsDamageText = manifest.explosionsDamageText;
         _platformerScore = manifest.platformerScore;
         _platformerLives = manifest.platformerLives <= 0 ? 3 : manifest.platformerLives;
+        _playerHealth = manifest.playerHealth <= 0 ? _playerMaxHealth : Mathf.Min(manifest.playerHealth, _playerMaxHealth);
         _platformerDeaths = manifest.platformerDeaths;
         ClearEnemyShots();
         if (_platformerHud is not null && (manifest.hudX > 0 || manifest.hudY > 0))
@@ -1878,18 +2265,26 @@ public partial class Main : Control
 
             ActorView actor = _actors[saved.index];
             actor.ActorName = string.IsNullOrWhiteSpace(saved.name) ? actor.ActorName : saved.name;
+            actor.AnimationSourceId = string.IsNullOrWhiteSpace(saved.animationSourceId) ? saved.animationSource : saved.animationSourceId;
             actor.Visible = saved.visible || actor.IsPlayable;
             actor.FacingRight = saved.facingRight;
             actor.ManualPlacement = saved.manualPlacement;
+            actor.ShotToughness = saved.shotToughness <= 0 ? DefaultEnemyShotToughness(actor.ActorName) : Mathf.Clamp(saved.shotToughness, 1, 9);
             actor.MotionState = Enum.TryParse(saved.motionState, out ActorMotionState motionState) ? motionState : ActorMotionState.Idle;
             actor.Position = new Vector2(saved.x, saved.y);
             actor.Size = new Vector2(saved.width, saved.height);
             actor.CustomMinimumSize = actor.Size;
-            actor.AnimationSet = saved.animationSource switch
+            actor.AnimationSet = actor.AnimationSourceId switch
             {
                 "stickman-v0.1" => SpriteAnimationSet.TryLoadStickman(),
                 "sunny-dragon-fly" => SpriteAnimationSet.TryLoadSunnyDragon(),
                 "tgc-player" => SpriteAnimationSet.TryLoadGameCreatorPlayer(),
+                "tgc-orange-worker" => SpriteAnimationSet.TryLoadTgcOrangeWorker(),
+                "tgc-red-runner" => SpriteAnimationSet.TryLoadTgcRedRunner(),
+                "tgc-blue-guard" => SpriteAnimationSet.TryLoadTgcBlueGuard(),
+                "tgc-green-crawler" => SpriteAnimationSet.TryLoadTgcGreenCrawler(),
+                "tgc-shooter-boss" => SpriteAnimationSet.TryLoadTgcShooterBoss(),
+                "tgc-shooter-fleet" => SpriteAnimationSet.TryLoadTgcShooterFleet(),
                 _ => actor.AnimationSet
             };
         }
@@ -2032,6 +2427,15 @@ public partial class Main : Control
     private void AddTgcClipRow(string name, int start, int end, int maxFrame)
     {
         TgcClipRow row = BuildEditableClipRow(name, start, end, maxFrame);
+        _tgcClipRowModels.Add(row);
+        _tgcClipRows.AddChild(row.Row);
+    }
+
+    private void AddTgcClipRow(string name, string start, string end, int maxFrame)
+    {
+        TgcClipRow row = BuildEditableClipRow(name, 0, 0, maxFrame);
+        row.Start.Text = start;
+        row.End.Text = end;
         _tgcClipRowModels.Add(row);
         _tgcClipRows.AddChild(row.Row);
     }
@@ -2203,11 +2607,35 @@ public partial class Main : Control
     private void ToggleCockpit()
     {
         _cockpit.Visible = !_cockpit.Visible;
+        if (_cockpit.Visible)
+            FitCockpitToViewport();
         _brickbatOverlay.HudEditable = _cockpit.Visible;
         SyncEditorModeToScene();
         _playfield.QueueRedraw();
         RefreshCockpitStatus();
         UpdateCursorMode();
+    }
+
+    private void FitCockpitToViewport()
+    {
+        if (_cockpit is null || _playfield is null)
+            return;
+
+        Vector2 available = _playfield.Size;
+        if (available.X <= 0 || available.Y <= 0)
+            available = GetViewportRect().Size;
+
+        const float edge = 18f;
+        Vector2 desired = new(
+            Mathf.Clamp(available.X - edge * 2f, 620f, 1160f),
+            Mathf.Clamp(available.Y - edge * 2f, 360f, 620f)
+        );
+        _cockpit.Size = desired;
+        _cockpit.CustomMinimumSize = Vector2.Zero;
+        _cockpit.Position = new Vector2(
+            Mathf.Clamp(_cockpit.Position.X, edge, Mathf.Max(edge, available.X - desired.X - edge)),
+            Mathf.Clamp(_cockpit.Position.Y, edge, Mathf.Max(edge, available.Y - desired.Y - edge))
+        );
     }
 
     private void SetEditorMode(bool enabled)
@@ -2217,6 +2645,12 @@ public partial class Main : Control
         if (_editorMode)
         {
             ClearEnemyShots();
+            _enemyVelocities.Clear();
+            _enemyPatrolDirections.Clear();
+            foreach (ActorView enemy in _defeatedEnemies)
+                enemy.Visible = true;
+            _defeatedEnemies.Clear();
+            _enemyHealth.Clear();
             _platformerStatus = "EDITOR";
             _inspectorText.Text = "Editor mode enabled.\n\nMarkers, enemies, and toolkit objects are draggable/scalable. Enemy AI and shots are paused for safe layout.";
         }
@@ -2224,11 +2658,16 @@ public partial class Main : Control
         {
             SetPlaysetMode(PlaysetMode.Platformer);
             _platformerLives = Mathf.Max(1, _platformerLives);
+            _playerHealth = _playerMaxHealth;
             _platformerStatus = "PLAY";
             _contactInvulnerabilitySeconds = 1.25;
             _hazardArmDelaySeconds = 1.0;
             ClearPlayerShots();
             ClearEnemyShots();
+            _enemyVelocities.Clear();
+            _enemyPatrolDirections.Clear();
+            _defeatedEnemies.Clear();
+            _enemyHealth.Clear();
             SnapPlayerToStart();
             _inspectorText.Text = "Play mode enabled.\n\nStart Point is honored, editor-only markers are hidden, enemy AI/projectiles can run, and collisions count.";
         }
@@ -2334,6 +2773,7 @@ public partial class Main : Control
                 if (_platformerLives <= 0)
                 {
                     _platformerLives = 3;
+                    _playerHealth = _playerMaxHealth;
                     _platformerStatus = "TRY AGAIN";
                 }
                 SnapPlayerToStart();
@@ -2456,6 +2896,7 @@ public partial class Main : Control
 
         _playerShots.Add(new PlayerShot(origin, direction * shotSpeed, 1.35f));
         _shootAnimSeconds = 0.18;
+        PlaySound("player-shot");
         PushShotPositionsToPlayfield();
     }
 
@@ -2510,21 +2951,10 @@ public partial class Main : Control
             if (enemy.HomePosition == Vector2.Zero)
                 enemy.HomePosition = enemy.Position;
 
-            float phase = (float)_elapsed * 1.4f + i * 2.1f;
-            Vector2 patrol = new(
-                Mathf.Sin(phase) * _textUnitPixels * 5.5f,
-                Mathf.Sin(phase * 1.7f) * _textUnitPixels * 1.8f
-            );
-            if (_enemyTracksPlayer)
-            {
-                float chaseBias = Mathf.Clamp((_player.Position.X - enemy.HomePosition.X) * 0.18f, -_textUnitPixels * 7f, _textUnitPixels * 7f);
-                patrol.X += chaseBias;
-            }
-
-            enemy.Position = enemy.HomePosition + patrol;
-            if (_enemyTracksPlayer)
-                enemy.FacingRight = _player.Position.X > enemy.Position.X;
-            enemy.MotionState = ActorMotionState.Idle;
+            if (IsFlyingEnemy(enemy))
+                UpdateFlyingEnemy(enemy, dt, i);
+            else
+                UpdateGroundEnemy(enemy, dt);
 
             if (_enemyProjectilesEnabled && enemy.CanFireProjectiles && _hazardArmDelaySeconds <= 0)
             {
@@ -2541,6 +2971,124 @@ public partial class Main : Control
         }
     }
 
+    private void UpdateFlyingEnemy(ActorView enemy, float dt, int index)
+    {
+        float phase = (float)_elapsed * 1.4f + index * 2.1f;
+        Vector2 patrol = new(
+            Mathf.Sin(phase) * _textUnitPixels * 5.5f,
+            Mathf.Sin(phase * 1.7f) * _textUnitPixels * 1.8f
+        );
+        if (_enemyTracksPlayer)
+        {
+            float chaseBias = Mathf.Clamp((_player.Position.X - enemy.HomePosition.X) * 0.18f, -_textUnitPixels * 7f, _textUnitPixels * 7f);
+            patrol.X += chaseBias;
+        }
+
+        enemy.Position = enemy.HomePosition + patrol;
+        if (_enemyTracksPlayer)
+            enemy.FacingRight = _player.Position.X > enemy.Position.X;
+        enemy.MotionState = ActorMotionState.Idle;
+        enemy.AnimationClock += dt;
+    }
+
+    private void UpdateGroundEnemy(ActorView enemy, float dt)
+    {
+        float motionUnit = Mathf.Max(_textUnitPixels, 10f);
+        Vector2 velocity = _enemyVelocities.TryGetValue(enemy, out Vector2 existingVelocity) ? existingVelocity : Vector2.Zero;
+        float direction = _enemyPatrolDirections.TryGetValue(enemy, out float existingDirection) && !Mathf.IsZeroApprox(existingDirection)
+            ? Mathf.Sign(existingDirection)
+            : (enemy.FacingRight ? 1f : -1f);
+
+        float patrolRange = motionUnit * 11f;
+        float patrolSpeed = motionUnit * 5.2f;
+        if (_enemyTracksPlayer && Mathf.Abs(_player.Position.X - enemy.Position.X) < motionUnit * 28f)
+            direction = _player.Position.X >= enemy.Position.X ? 1f : -1f;
+        else if (enemy.Position.X < enemy.HomePosition.X - patrolRange)
+            direction = 1f;
+        else if (enemy.Position.X > enemy.HomePosition.X + patrolRange)
+            direction = -1f;
+
+        velocity.X = direction * patrolSpeed;
+        velocity.Y += motionUnit * 58f * _gravityScale * dt;
+
+        Vector2 next = enemy.Position + velocity * dt;
+        Rect2 playBounds = _playfield.PlayBounds;
+        next.X = Mathf.Clamp(next.X, playBounds.Position.X, Mathf.Max(playBounds.Position.X, playBounds.End.X - enemy.Size.X));
+        bool grounded = ResolveEnemyVerticalCollisions(enemy, ref next, ref velocity);
+        if (grounded && ShouldGroundEnemyReverseAtEdge(enemy, next, direction))
+        {
+            direction *= -1f;
+            velocity.X = direction * patrolSpeed;
+            next.X = Mathf.Clamp(enemy.Position.X + velocity.X * dt, playBounds.Position.X, Mathf.Max(playBounds.Position.X, playBounds.End.X - enemy.Size.X));
+            ResolveEnemyVerticalCollisions(enemy, ref next, ref velocity);
+        }
+
+        if (!_platformerSafetyFloor && next.Y > playBounds.End.Y + enemy.Size.Y)
+        {
+            next = enemy.HomePosition;
+            velocity = Vector2.Zero;
+        }
+
+        enemy.Position = next;
+        enemy.FacingRight = direction > 0;
+        enemy.MotionState = grounded && Mathf.Abs(velocity.X) > motionUnit * 0.25f ? ActorMotionState.Run : ActorMotionState.Idle;
+        enemy.AnimationClock += dt;
+        _enemyVelocities[enemy] = velocity;
+        _enemyPatrolDirections[enemy] = direction;
+    }
+
+    private bool ShouldGroundEnemyReverseAtEdge(ActorView enemy, Vector2 next, float direction)
+    {
+        Rect2 playBounds = _playfield.PlayBounds;
+        if (direction < 0 && next.X <= playBounds.Position.X + 1f)
+            return true;
+
+        if (direction > 0 && next.X + enemy.Size.X >= playBounds.End.X - 1f)
+            return true;
+
+        return !HasGroundSupportAhead(new Rect2(next, enemy.Size), direction);
+    }
+
+    private bool HasGroundSupportAhead(Rect2 actorBounds, float direction)
+    {
+        float motionUnit = Mathf.Max(_textUnitPixels, 10f);
+        float probeWidth = Mathf.Clamp(actorBounds.Size.X * 0.32f, 4f, motionUnit * 0.9f);
+        float lookAhead = Mathf.Clamp(motionUnit * 0.35f, 3f, actorBounds.Size.X * 0.45f);
+        float probeDepth = Mathf.Max(5f, motionUnit * 0.65f);
+        float probeX = direction >= 0
+            ? actorBounds.End.X + lookAhead - probeWidth
+            : actorBounds.Position.X - lookAhead;
+        Rect2 footProbe = new(new Vector2(probeX, actorBounds.End.Y - 2f), new Vector2(probeWidth, probeDepth));
+
+        foreach (Rect2 surface in GetSolidSurfaces())
+        {
+            if (SurfaceSupportsFootProbe(footProbe, actorBounds.End.Y, surface))
+                return true;
+        }
+
+        foreach (WorldObject surface in GetLineSurfaces())
+        {
+            float centerX = footProbe.GetCenter().X;
+            if (!surface.ContainsXRange(footProbe.Position.X, footProbe.End.X, _textUnitPixels, _playfield.ElapsedSeconds))
+                continue;
+
+            float surfaceY = surface.SurfaceYAt(centerX, _textUnitPixels, _playfield.ElapsedSeconds);
+            if (surfaceY >= actorBounds.End.Y - 3f && surfaceY <= footProbe.End.Y)
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool SurfaceSupportsFootProbe(Rect2 footProbe, float actorBottom, Rect2 surface)
+    {
+        if (surface.Position.Y < actorBottom - 3f || surface.Position.Y > footProbe.End.Y)
+            return false;
+
+        float overlap = Mathf.Min(footProbe.End.X, surface.End.X) - Mathf.Max(footProbe.Position.X, surface.Position.X);
+        return overlap > 0;
+    }
+
     private void FireEnemyShot(ActorView enemy)
     {
         const int maxEnemyShots = 6;
@@ -2549,6 +3097,10 @@ public partial class Main : Control
 
         Vector2 origin = enemy.Position + enemy.Size * 0.5f;
         Vector2 target = _player.Position + _player.Size * 0.5f;
+        float maxRange = Mathf.Max(_textUnitPixels * _enemyShotRangeUnits, 80f);
+        if (origin.DistanceTo(target) > maxRange)
+            return;
+
         if (_enemyTracksPlayer)
             enemy.FacingRight = target.X > origin.X;
 
@@ -2561,10 +3113,33 @@ public partial class Main : Control
             direction = direction.Normalized();
 
         float shotSpeed = Mathf.Max(_textUnitPixels * 28f, 190f);
-        _enemyShots.Add(new EnemyShot(origin, direction * shotSpeed, 2.2f, 0f, enemy.ActorName));
+        float shotLife = Mathf.Clamp(maxRange / shotSpeed, 0.45f, 2.8f);
+        _enemyShots.Add(new EnemyShot(origin, direction * shotSpeed, shotLife, 0f, enemy.ActorName));
         _platformerStatus = $"{enemy.ActorName.ToUpperInvariant()} FIRED";
         RefreshPlatformerHud();
         PushEnemyShotPositionsToPlayfield();
+    }
+
+    private string EnemyRangeButtonText()
+    {
+        string label = _enemyShotRangeUnits < 28f ? "Near" : _enemyShotRangeUnits < 45f ? "Mid" : "Far";
+        return $"Range: {label}";
+    }
+
+    private string PlayerShotPowerButtonText() => $"Gun Power: {_playerShotPower}x";
+
+    private void AdjustSelectedEnemyToughness(int delta)
+    {
+        if (_selectedActor is null || _selectedActor.IsPlayable)
+        {
+            _inspectorText.Text = "Select an enemy first, then adjust shot toughness.";
+            return;
+        }
+
+        _selectedActor.ShotToughness = Mathf.Clamp(_selectedActor.ShotToughness + delta, 1, 9);
+        _enemyHealth.Remove(_selectedActor);
+        _inspectorText.Text = $"{_selectedActor.ActorName} shot toughness set to {_selectedActor.ShotToughness}.\n\nThis means {_selectedActor.ShotToughness} regular 1x shot(s), or fewer with stronger guns.";
+        RefreshPlatformerHud();
     }
 
     private void PushImpactEffectsToPlayfield()
@@ -2577,6 +3152,7 @@ public partial class Main : Control
         }
 
         _playfield.SetImpactEffects(visuals);
+        _combatFxOverlay?.SetImpactEffects(visuals);
     }
 
     private void UpdateEnemyShots(float dt)
@@ -2601,7 +3177,7 @@ public partial class Main : Control
             {
                 AddImpactEffect(playerBounds.GetCenter());
                 _enemyShots.RemoveAt(i);
-                KillPlayer($"{shot.OwnerName.ToUpperInvariant()} SHOT");
+                DamagePlayer($"{shot.OwnerName.ToUpperInvariant()} SHOT", _enemyShotDamage);
             }
             else
             {
@@ -2737,13 +3313,78 @@ public partial class Main : Control
                 continue;
 
             impactPosition = enemyBounds.GetCenter();
-            _platformerScore += 100;
-            _platformerStatus = $"+100 {enemy.ActorName.ToUpperInvariant()}";
-            RefreshPlatformerHud();
+            DamageEnemy(enemy, _playerShotPower);
             return true;
         }
 
         return false;
+    }
+
+    private void DamageEnemy(ActorView enemy, int amount)
+    {
+        int currentHealth = _enemyHealth.TryGetValue(enemy, out int existing) ? existing : Mathf.Clamp(enemy.ShotToughness, 1, 9);
+        int shotPower = Mathf.Max(1, amount);
+        currentHealth -= shotPower;
+
+        if (currentHealth <= 0)
+        {
+            _enemyHealth.Remove(enemy);
+            _defeatedEnemies.Add(enemy);
+            enemy.Visible = false;
+            _enemyVelocities.Remove(enemy);
+            _enemyPatrolDirections.Remove(enemy);
+            _enemyShotTimers.Remove(enemy);
+            _platformerScore += 250;
+            _platformerStatus = $"DEFEATED {enemy.ActorName.ToUpperInvariant()}";
+            _playfield.ThrowDeathPhrase(enemy.Position + enemy.Size * 0.5f, "KAPOW");
+            PlaySound("enemy-defeat");
+        }
+        else
+        {
+            _enemyHealth[enemy] = currentHealth;
+            _platformerScore += 50;
+            _platformerStatus = $"{enemy.ActorName.ToUpperInvariant()} {currentHealth}/{enemy.ShotToughness}";
+            PlaySound("enemy-hit");
+        }
+
+        RefreshPlatformerHud();
+    }
+
+    private static int DefaultEnemyShotToughness(string actorName)
+    {
+        if (actorName.Contains("Boss", StringComparison.OrdinalIgnoreCase))
+            return 4;
+        if (actorName.Contains("Dragon", StringComparison.OrdinalIgnoreCase))
+            return 2;
+        if (actorName.Contains("Fleet", StringComparison.OrdinalIgnoreCase))
+            return 2;
+
+        return 1;
+    }
+
+    private void DamagePlayer(string reason, int amount)
+    {
+        if (_editorMode || _playsetMode != PlaysetMode.Platformer)
+            return;
+
+        if (_deathTestSeconds > 0 || _contactInvulnerabilitySeconds > 0)
+            return;
+
+        if (_partialDamageEnabled)
+        {
+            _playerHealth = Mathf.Max(0, _playerHealth - Mathf.Max(1, amount));
+            _platformerStatus = $"{reason} -{amount}";
+            _contactInvulnerabilitySeconds = 0.55;
+            _playfield.ThrowDeathPhrase(_player.Position + _player.Size * 0.5f, _platformerStatus);
+            if (_playerHealth > 0)
+            {
+                PlaySound("player-hurt");
+                RefreshPlatformerHud();
+                return;
+            }
+        }
+
+        LosePlayerLife(reason);
     }
 
     private void KillPlayer(string reason)
@@ -2754,13 +3395,20 @@ public partial class Main : Control
         if (_deathTestSeconds > 0 || _contactInvulnerabilitySeconds > 0)
             return;
 
+        LosePlayerLife(reason);
+    }
+
+    private void LosePlayerLife(string reason)
+    {
         _platformerLives = Mathf.Max(0, _platformerLives - 1);
+        _playerHealth = _playerMaxHealth;
         _platformerDeaths++;
         _platformerStatus = reason;
         _contactInvulnerabilitySeconds = 1.0;
         ClearPlayerShots();
         ClearEnemyShots();
         _playfield.ThrowDeathPhrase(_player.Position + _player.Size * 0.5f, reason);
+        PlaySound("player-hurt");
         TriggerDeathAnimation();
         RefreshPlatformerHud(reason);
     }
@@ -2878,8 +3526,8 @@ public partial class Main : Control
         int visibleEnemies = _actors.Skip(1).Count(actor => actor.Visible && actor.AnimationSet is not null);
         _platformerHudText.Text =
             $"SCORE  {_platformerScore}\n"
-            + $"LIVES  {_platformerLives}   DEATHS {_platformerDeaths}\n"
-            + $"ENEMY  {visibleEnemies}   SHOTS {_enemyShots.Count}\n"
+            + $"LIVES  {_platformerLives}   HP {_playerHealth}/{_playerMaxHealth}   DEATHS {_platformerDeaths}\n"
+            + $"ENEMY  {visibleEnemies}   SHOTS {_enemyShots.Count}   RNG {_enemyShotRangeUnits:0}\n"
             + _platformerStatus;
     }
 
@@ -2956,6 +3604,58 @@ public partial class Main : Control
             next.Y = 30;
             _playerVelocity.Y = 0;
         }
+    }
+
+    private bool ResolveEnemyVerticalCollisions(ActorView enemy, ref Vector2 next, ref Vector2 velocity)
+    {
+        bool grounded = false;
+        Rect2 nextBounds = new(next, enemy.Size);
+        float previousBottom = enemy.Position.Y + enemy.Size.Y;
+
+        foreach (Rect2 surface in GetSolidSurfaces())
+        {
+            if (velocity.Y >= 0
+                && previousBottom <= surface.Position.Y + 2f
+                && nextBounds.End.Y >= surface.Position.Y
+                && nextBounds.Position.X < surface.End.X
+                && nextBounds.End.X > surface.Position.X
+                && HasEnoughLandingSupport(nextBounds, surface))
+            {
+                next.Y = surface.Position.Y - enemy.Size.Y;
+                velocity.Y = 0;
+                grounded = true;
+                nextBounds = new Rect2(next, enemy.Size);
+            }
+        }
+
+        foreach (WorldObject surface in GetLineSurfaces())
+        {
+            float centerX = next.X + enemy.Size.X * 0.5f;
+            float surfaceY = surface.SurfaceYAt(centerX, _textUnitPixels, _playfield.ElapsedSeconds);
+            if (velocity.Y >= 0
+                && previousBottom <= surfaceY + _textUnitPixels * 0.4f
+                && nextBounds.End.Y >= surfaceY
+                && surface.ContainsXRange(nextBounds.Position.X, nextBounds.End.X, _textUnitPixels, _playfield.ElapsedSeconds)
+                && HasEnoughLandingSupport(nextBounds, surface.Bounds(_textUnitPixels, _playfield.ElapsedSeconds)))
+            {
+                next.Y = surfaceY - enemy.Size.Y;
+                velocity.Y = 0;
+                grounded = true;
+                nextBounds = new Rect2(next, enemy.Size);
+            }
+        }
+
+        return grounded;
+    }
+
+    private static bool IsFlyingEnemy(ActorView enemy)
+    {
+        string name = enemy.ActorName;
+        return name.Contains("Dragon", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("Ship", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("Fleet", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("Boss", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("Fly", StringComparison.OrdinalIgnoreCase);
     }
 
     private bool HasEnoughLandingSupport(Rect2 actorBounds, Rect2 surface)
@@ -3204,6 +3904,19 @@ public partial class Main : Control
         return button;
     }
 
+    private static HBoxContainer ButtonRow(params Button[] buttons)
+    {
+        HBoxContainer row = new();
+        row.AddThemeConstantOverride("separation", 6);
+        foreach (Button button in buttons)
+        {
+            button.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+            row.AddChild(button);
+        }
+
+        return row;
+    }
+
     private static HBoxContainer BuildClipRangeRow(string labelText, out SpinBox start, out SpinBox end, int defaultStart, int defaultEnd, int maxFrame)
     {
         HBoxContainer row = new();
@@ -3410,6 +4123,7 @@ public partial class Main : Control
 
     private sealed class DackAnimManifest
     {
+        public string sourceId { get; set; } = "";
         public int frameNumberBase { get; set; }
         public List<DackAnimLabel> labels { get; set; } = [];
     }
@@ -3441,6 +4155,12 @@ public partial class Main : Control
         public bool enemyAiEnabled { get; set; } = true;
         public bool enemyTracksPlayer { get; set; } = true;
         public bool enemyProjectilesEnabled { get; set; } = true;
+        public bool partialDamageEnabled { get; set; } = true;
+        public float enemyShotRangeUnits { get; set; } = 34f;
+        public int playerMaxHealth { get; set; } = 3;
+        public int playerHealth { get; set; } = 3;
+        public int enemyShotDamage { get; set; } = 1;
+        public int playerShotPower { get; set; } = 1;
         public bool explosionsDamageText { get; set; } = true;
         public int platformerScore { get; set; }
         public int platformerLives { get; set; } = 3;
@@ -3522,12 +4242,14 @@ public partial class Main : Control
     {
         public int index { get; set; }
         public string name { get; set; } = "";
+        public string animationSourceId { get; set; } = "";
         public string animationSource { get; set; } = "";
         public string motionState { get; set; } = "";
         public bool visible { get; set; }
         public bool playable { get; set; }
         public bool facingRight { get; set; }
         public bool manualPlacement { get; set; }
+        public int shotToughness { get; set; } = 1;
         public float x { get; set; }
         public float y { get; set; }
         public float width { get; set; }
@@ -3539,12 +4261,14 @@ public partial class Main : Control
             {
                 index = index,
                 name = actor.ActorName,
+                animationSourceId = GuessAnimationSource(actor),
                 animationSource = GuessAnimationSource(actor),
                 motionState = actor.MotionState.ToString(),
                 visible = actor.Visible,
                 playable = actor.IsPlayable,
                 facingRight = actor.FacingRight,
                 manualPlacement = actor.ManualPlacement,
+                shotToughness = actor.ShotToughness,
                 x = actor.Position.X,
                 y = actor.Position.Y,
                 width = actor.Size.X,
@@ -3554,12 +4278,10 @@ public partial class Main : Control
 
         private static string GuessAnimationSource(ActorView actor)
         {
-            string name = actor.ActorName.ToLowerInvariant();
-            if (name.Contains("sunny") || name.Contains("dragon"))
-                return "sunny-dragon-fly";
-            if (name.Contains("tgc"))
-                return "tgc-player";
-            return actor.IsPlayable ? "stickman-v0.1" : "";
+            if (!string.IsNullOrWhiteSpace(actor.AnimationSourceId))
+                return actor.AnimationSourceId;
+
+            return GuessAnimationSourceId(actor.ActorName, actor.IsPlayable);
         }
     }
 

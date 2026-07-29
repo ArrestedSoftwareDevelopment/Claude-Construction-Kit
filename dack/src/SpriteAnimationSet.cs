@@ -25,6 +25,7 @@ public sealed class SpriteAnimationSet
     private static readonly AnimationFrameRange DefaultGameCreatorDeath = new(16, 17);
 
     private readonly Dictionary<ActorMotionState, SpriteFrame[]> _frames;
+    private delegate bool SpriteFrameLoader(out SpriteFrame[] frames);
 
     private SpriteAnimationSet(Dictionary<ActorMotionState, SpriteFrame[]> frames)
     {
@@ -151,14 +152,439 @@ public sealed class SpriteAnimationSet
         ).WithCrawl(all, crawl);
     }
 
+    public static SpriteAnimationSet? TryLoadTgcOrangeWorker()
+    {
+        return TryLoadTgcFixedPlatformerEnemy(
+            TryLoadTgcOrangeWorkerFrames,
+            new AnimationFrameRange(0, 5),
+            new AnimationFrameRange(6, 11),
+            new AnimationFrameRange(6, 11),
+            new AnimationFrameRange(6, 11),
+            new AnimationFrameRange(6, 11),
+            new AnimationFrameRange(6, 11),
+            new AnimationFrameRange(6, 11),
+            new AnimationFrameRange(0, 5),
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false
+        );
+    }
+
+    public static SpriteAnimationSet? TryLoadTgcRedRunner()
+    {
+        return TryLoadTgcFixedPlatformerEnemy(
+            TryLoadTgcRedRunnerFrames,
+            new AnimationFrameRange(0, 5),
+            new AnimationFrameRange(7, 12),
+            new AnimationFrameRange(7, 12),
+            new AnimationFrameRange(7, 12),
+            new AnimationFrameRange(7, 12),
+            new AnimationFrameRange(7, 12),
+            new AnimationFrameRange(7, 12),
+            new AnimationFrameRange(0, 5),
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false
+        );
+    }
+
+    public static SpriteAnimationSet? TryLoadTgcBlueGuard()
+    {
+        return TryLoadTgcFixedPlatformerEnemy(
+            TryLoadTgcBlueGuardFrames,
+            new AnimationFrameRange(0, 5),
+            new AnimationFrameRange(6, 11),
+            new AnimationFrameRange(6, 11),
+            new AnimationFrameRange(6, 11),
+            new AnimationFrameRange(6, 11),
+            new AnimationFrameRange(6, 11),
+            new AnimationFrameRange(6, 11),
+            new AnimationFrameRange(0, 5),
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false
+        );
+    }
+
+    public static SpriteAnimationSet? TryLoadTgcGreenCrawler()
+    {
+        return TryLoadTgcFixedPlatformerEnemy(
+            TryLoadTgcGreenCrawlerFrames,
+            new AnimationFrameRange(0, 5),
+            new AnimationFrameRange(0, 5),
+            new AnimationFrameRange(0, 5),
+            new AnimationFrameRange(0, 5),
+            new AnimationFrameRange(0, 5),
+            new AnimationFrameRange(0, 5),
+            new AnimationFrameRange(0, 5),
+            new AnimationFrameRange(0, 5),
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false
+        );
+    }
+
+    public static SpriteAnimationSet? TryLoadTgcOrangeWorker(
+        AnimationFrameRange idle,
+        AnimationFrameRange run,
+        AnimationFrameRange jumpUp,
+        AnimationFrameRange jumpDown,
+        AnimationFrameRange fall,
+        AnimationFrameRange runShoot,
+        AnimationFrameRange jumpShoot,
+        AnimationFrameRange death,
+        bool idlePingPong,
+        bool runPingPong,
+        bool jumpUpPingPong,
+        bool jumpDownPingPong,
+        bool fallPingPong,
+        bool runShootPingPong,
+        bool jumpShootPingPong,
+        bool deathPingPong
+    )
+    {
+        return TryLoadTgcFixedPlatformerEnemy(
+            TryLoadTgcOrangeWorkerFrames,
+            idle,
+            run,
+            jumpUp,
+            jumpDown,
+            fall,
+            runShoot,
+            jumpShoot,
+            death,
+            idlePingPong,
+            runPingPong,
+            jumpUpPingPong,
+            jumpDownPingPong,
+            fallPingPong,
+            runShootPingPong,
+            jumpShootPingPong,
+            deathPingPong
+        );
+    }
+
+    public static SpriteAnimationSet? TryLoadTgcRedRunner(
+        AnimationFrameRange idle,
+        AnimationFrameRange run,
+        AnimationFrameRange jumpUp,
+        AnimationFrameRange jumpDown,
+        AnimationFrameRange fall,
+        AnimationFrameRange runShoot,
+        AnimationFrameRange jumpShoot,
+        AnimationFrameRange death,
+        bool idlePingPong,
+        bool runPingPong,
+        bool jumpUpPingPong,
+        bool jumpDownPingPong,
+        bool fallPingPong,
+        bool runShootPingPong,
+        bool jumpShootPingPong,
+        bool deathPingPong
+    )
+    {
+        return TryLoadTgcFixedPlatformerEnemy(
+            TryLoadTgcRedRunnerFrames,
+            idle,
+            run,
+            jumpUp,
+            jumpDown,
+            fall,
+            runShoot,
+            jumpShoot,
+            death,
+            idlePingPong,
+            runPingPong,
+            jumpUpPingPong,
+            jumpDownPingPong,
+            fallPingPong,
+            runShootPingPong,
+            jumpShootPingPong,
+            deathPingPong
+        );
+    }
+
+    public static SpriteAnimationSet? TryLoadTgcBlueGuard(
+        AnimationFrameRange idle,
+        AnimationFrameRange run,
+        AnimationFrameRange jumpUp,
+        AnimationFrameRange jumpDown,
+        AnimationFrameRange fall,
+        AnimationFrameRange runShoot,
+        AnimationFrameRange jumpShoot,
+        AnimationFrameRange death,
+        bool idlePingPong,
+        bool runPingPong,
+        bool jumpUpPingPong,
+        bool jumpDownPingPong,
+        bool fallPingPong,
+        bool runShootPingPong,
+        bool jumpShootPingPong,
+        bool deathPingPong
+    )
+    {
+        return TryLoadTgcFixedPlatformerEnemy(
+            TryLoadTgcBlueGuardFrames,
+            idle,
+            run,
+            jumpUp,
+            jumpDown,
+            fall,
+            runShoot,
+            jumpShoot,
+            death,
+            idlePingPong,
+            runPingPong,
+            jumpUpPingPong,
+            jumpDownPingPong,
+            fallPingPong,
+            runShootPingPong,
+            jumpShootPingPong,
+            deathPingPong
+        );
+    }
+
+    public static SpriteAnimationSet? TryLoadTgcGreenCrawler(
+        AnimationFrameRange idle,
+        AnimationFrameRange run,
+        AnimationFrameRange jumpUp,
+        AnimationFrameRange jumpDown,
+        AnimationFrameRange fall,
+        AnimationFrameRange runShoot,
+        AnimationFrameRange jumpShoot,
+        AnimationFrameRange death,
+        bool idlePingPong,
+        bool runPingPong,
+        bool jumpUpPingPong,
+        bool jumpDownPingPong,
+        bool fallPingPong,
+        bool runShootPingPong,
+        bool jumpShootPingPong,
+        bool deathPingPong
+    )
+    {
+        return TryLoadTgcFixedPlatformerEnemy(
+            TryLoadTgcGreenCrawlerFrames,
+            idle,
+            run,
+            jumpUp,
+            jumpDown,
+            fall,
+            runShoot,
+            jumpShoot,
+            death,
+            idlePingPong,
+            runPingPong,
+            jumpUpPingPong,
+            jumpDownPingPong,
+            fallPingPong,
+            runShootPingPong,
+            jumpShootPingPong,
+            deathPingPong
+        );
+    }
+
+    private static SpriteAnimationSet? TryLoadTgcFixedPlatformerEnemy(
+        SpriteFrameLoader loader,
+        AnimationFrameRange idle,
+        AnimationFrameRange run,
+        AnimationFrameRange jumpUp,
+        AnimationFrameRange jumpDown,
+        AnimationFrameRange fall,
+        AnimationFrameRange runShoot,
+        AnimationFrameRange jumpShoot,
+        AnimationFrameRange death,
+        bool idlePingPong,
+        bool runPingPong,
+        bool jumpUpPingPong,
+        bool jumpDownPingPong,
+        bool fallPingPong,
+        bool runShootPingPong,
+        bool jumpShootPingPong,
+        bool deathPingPong
+    )
+    {
+        if (!loader(out SpriteFrame[] all))
+            return null;
+
+        return BuildAnimationSetFromFrames(
+            all,
+            idle,
+            run,
+            jumpUp,
+            jumpDown,
+            fall,
+            runShoot,
+            jumpShoot,
+            death,
+            idlePingPong,
+            runPingPong,
+            jumpUpPingPong,
+            jumpDownPingPong,
+            fallPingPong,
+            runShootPingPong,
+            jumpShootPingPong,
+            deathPingPong
+        ).WithCrawl(all, run);
+    }
+
+    public static bool TryLoadTgcOrangeWorkerFrames(out SpriteFrame[] frames)
+    {
+        Rect2[] rects =
+        [
+            new Rect2(0, 0, 16, 16),
+            new Rect2(16, 0, 16, 16),
+            new Rect2(32, 0, 16, 16),
+            new Rect2(48, 0, 16, 16),
+            new Rect2(64, 0, 16, 16),
+            new Rect2(80, 0, 16, 16),
+            new Rect2(0, 16, 16, 16),
+            new Rect2(16, 16, 16, 16),
+            new Rect2(32, 16, 16, 16),
+            new Rect2(48, 16, 16, 16),
+            new Rect2(64, 16, 16, 16),
+            new Rect2(80, 16, 16, 16),
+            new Rect2(96, 16, 16, 16)
+        ];
+
+        return TryLoadFixedSourceFrames(TgcPlatformerRuntimePath, rects, out frames);
+    }
+
+    public static bool TryLoadTgcRedRunnerFrames(out SpriteFrame[] frames)
+    {
+        Rect2[] rects =
+        [
+            new Rect2(112, 0, 16, 16),
+            new Rect2(128, 0, 16, 16),
+            new Rect2(144, 0, 16, 16),
+            new Rect2(160, 0, 16, 16),
+            new Rect2(176, 0, 16, 16),
+            new Rect2(192, 0, 16, 16),
+            new Rect2(208, 0, 16, 16),
+            new Rect2(112, 16, 16, 16),
+            new Rect2(128, 16, 16, 16),
+            new Rect2(144, 16, 16, 16),
+            new Rect2(160, 16, 16, 16),
+            new Rect2(176, 16, 16, 16),
+            new Rect2(192, 16, 16, 16)
+        ];
+
+        return TryLoadFixedSourceFrames(TgcPlatformerRuntimePath, rects, out frames);
+    }
+
+    public static bool TryLoadTgcBlueGuardFrames(out SpriteFrame[] frames)
+    {
+        Rect2[] rects =
+        [
+            new Rect2(112, 32, 16, 16),
+            new Rect2(128, 32, 16, 16),
+            new Rect2(144, 32, 16, 16),
+            new Rect2(160, 32, 16, 16),
+            new Rect2(176, 32, 16, 16),
+            new Rect2(192, 32, 16, 16),
+            new Rect2(112, 48, 16, 16),
+            new Rect2(128, 48, 16, 16),
+            new Rect2(144, 48, 16, 16),
+            new Rect2(160, 48, 16, 16),
+            new Rect2(176, 48, 16, 16),
+            new Rect2(192, 48, 16, 16)
+        ];
+
+        return TryLoadFixedSourceFrames(TgcPlatformerRuntimePath, rects, out frames);
+    }
+
+    public static bool TryLoadTgcGreenCrawlerFrames(out SpriteFrame[] frames)
+    {
+        Rect2[] rects =
+        [
+            new Rect2(0, 88, 12, 32),
+            new Rect2(13, 88, 13, 32),
+            new Rect2(27, 88, 12, 32),
+            new Rect2(40, 88, 15, 32),
+            new Rect2(56, 88, 16, 32),
+            new Rect2(73, 88, 16, 32)
+        ];
+
+        return TryLoadFixedSourceFrames(TgcPlatformerRuntimePath, rects, out frames);
+    }
+
+    public static SpriteAnimationSet? TryLoadTgcPlatformerEnemy(
+        AnimationFrameRange idle,
+        AnimationFrameRange run,
+        AnimationFrameRange jumpUp,
+        AnimationFrameRange jumpDown,
+        AnimationFrameRange fall,
+        AnimationFrameRange runShoot,
+        AnimationFrameRange jumpShoot,
+        AnimationFrameRange death,
+        AnimationFrameRange crawl,
+        bool idlePingPong,
+        bool runPingPong,
+        bool jumpUpPingPong,
+        bool jumpDownPingPong,
+        bool fallPingPong,
+        bool runShootPingPong,
+        bool jumpShootPingPong,
+        bool deathPingPong
+    )
+    {
+        if (!TryLoadBlobFrames(TgcPlatformerRuntimePath, out SpriteFrame[] all))
+            return null;
+
+        return BuildAnimationSetFromFrames(
+            all,
+            idle,
+            run,
+            jumpUp,
+            jumpDown,
+            fall,
+            runShoot,
+            jumpShoot,
+            death,
+            idlePingPong,
+            runPingPong,
+            jumpUpPingPong,
+            jumpDownPingPong,
+            fallPingPong,
+            runShootPingPong,
+            jumpShootPingPong,
+            deathPingPong
+        ).WithCrawl(all, crawl);
+    }
+
     public static SpriteAnimationSet? TryLoadTgcShooterBoss()
     {
         return TryLoadSingleSprite(TgcShooterBossRuntimePath);
     }
 
+    public static bool TryLoadTgcShooterBossFrames(out SpriteFrame[] frames)
+    {
+        return TryLoadSingleSpriteFrames(TgcShooterBossRuntimePath, out frames);
+    }
+
     public static SpriteAnimationSet? TryLoadTgcShooterFleet()
     {
-        return TryLoadBlobFrames(TgcShooterRuntimePath, out SpriteFrame[] all)
+        return TryLoadTgcShooterFrames(out SpriteFrame[] all)
             ? BuildAnimationSetFromFrames(
                 all,
                 new AnimationFrameRange(0, Mathf.Min(5, all.Length - 1)),
@@ -179,6 +605,49 @@ public sealed class SpriteAnimationSet
                 false
             )
             : null;
+    }
+
+    public static SpriteAnimationSet? TryLoadTgcShooterFleet(
+        AnimationFrameRange idle,
+        AnimationFrameRange run,
+        AnimationFrameRange jumpUp,
+        AnimationFrameRange jumpDown,
+        AnimationFrameRange fall,
+        AnimationFrameRange runShoot,
+        AnimationFrameRange jumpShoot,
+        AnimationFrameRange death,
+        bool idlePingPong,
+        bool runPingPong,
+        bool jumpUpPingPong,
+        bool jumpDownPingPong,
+        bool fallPingPong,
+        bool runShootPingPong,
+        bool jumpShootPingPong,
+        bool deathPingPong
+    )
+    {
+        if (!TryLoadTgcShooterFrames(out SpriteFrame[] all))
+            return null;
+
+        return BuildAnimationSetFromFrames(
+            all,
+            idle,
+            run,
+            jumpUp,
+            jumpDown,
+            fall,
+            runShoot,
+            jumpShoot,
+            death,
+            idlePingPong,
+            runPingPong,
+            jumpUpPingPong,
+            jumpDownPingPong,
+            fallPingPong,
+            runShootPingPong,
+            jumpShootPingPong,
+            deathPingPong
+        );
     }
 
     public static SpriteAnimationSet? TryLoadSunnyDragon()
@@ -364,7 +833,7 @@ public sealed class SpriteAnimationSet
             return 0;
 
         strip.Convert(Image.Format.Rgba8);
-        return DetectBlobFrames(strip).Length;
+        return DetectGameCreatorPlayerFrames(strip).Length;
     }
 
     public static bool TryLoadGameCreatorPlayerFramePreview(out Texture2D? texture, out Rect2[] frames)
@@ -381,7 +850,7 @@ public sealed class SpriteAnimationSet
             return false;
 
         strip.Convert(Image.Format.Rgba8);
-        frames = DetectBlobFrames(strip);
+        frames = DetectGameCreatorPlayerFrames(strip);
         if (frames.Length == 0)
             return false;
 
@@ -403,9 +872,24 @@ public sealed class SpriteAnimationSet
         return frames.Length > 0;
     }
 
+    private static Rect2[] DetectGameCreatorPlayerFrames(Image image)
+    {
+        return DetectBlobFrames(
+            image,
+            minOpaquePixelsOverride: 180,
+            minHeightOverride: 30,
+            minWidthOverride: 16
+        );
+    }
+
     public static bool TryLoadTgcPlatformerFrames(out SpriteFrame[] frames)
     {
         return TryLoadBlobFrames(TgcPlatformerRuntimePath, out frames);
+    }
+
+    public static bool TryLoadTgcShooterFrames(out SpriteFrame[] frames)
+    {
+        return TryLoadBlobFrames(TgcShooterRuntimePath, out frames);
     }
 
     public static bool TryLoadStickmanFrames(out SpriteFrame[] frames)
@@ -466,23 +950,32 @@ public sealed class SpriteAnimationSet
 
     private static SpriteAnimationSet? TryLoadSingleSprite(string resourcePath)
     {
-        string filePath = ProjectSettings.GlobalizePath(resourcePath);
-        if (!File.Exists(filePath))
+        if (!TryLoadSingleSpriteFrames(resourcePath, out SpriteFrame[] frames))
             return null;
 
-        Image image = Image.LoadFromFile(filePath);
-        if (image.IsEmpty())
-            return null;
-
-        image.Convert(Image.Format.Rgba8);
-        ImageTexture texture = ImageTexture.CreateFromImage(image);
-        SpriteFrame frame = new(texture, new Rect2(0, 0, image.GetWidth(), image.GetHeight()), new Vector2(image.GetWidth(), image.GetHeight()));
-        SpriteFrame[] frames = [frame];
         Dictionary<ActorMotionState, SpriteFrame[]> states = [];
         foreach (ActorMotionState state in Enum.GetValues<ActorMotionState>())
             states[state] = frames;
 
         return new SpriteAnimationSet(states);
+    }
+
+    private static bool TryLoadSingleSpriteFrames(string resourcePath, out SpriteFrame[] frames)
+    {
+        frames = [];
+        string filePath = ProjectSettings.GlobalizePath(resourcePath);
+        if (!File.Exists(filePath))
+            return false;
+
+        Image image = Image.LoadFromFile(filePath);
+        if (image.IsEmpty())
+            return false;
+
+        image.Convert(Image.Format.Rgba8);
+        ImageTexture texture = ImageTexture.CreateFromImage(image);
+        SpriteFrame frame = new(texture, new Rect2(0, 0, image.GetWidth(), image.GetHeight()), new Vector2(image.GetWidth(), image.GetHeight()));
+        frames = [frame];
+        return true;
     }
 
     private static bool TryLoadBlobFrames(string resourcePath, out SpriteFrame[] frames)
@@ -501,6 +994,27 @@ public sealed class SpriteAnimationSet
         if (rects.Length == 0)
             return false;
 
+        ImageTexture texture = ImageTexture.CreateFromImage(image);
+        Vector2 displaySize = GetCommonDisplaySize(rects);
+        frames = new SpriteFrame[rects.Length];
+        for (int i = 0; i < rects.Length; i++)
+            frames[i] = new SpriteFrame(texture, rects[i], displaySize);
+
+        return true;
+    }
+
+    private static bool TryLoadFixedSourceFrames(string resourcePath, Rect2[] rects, out SpriteFrame[] frames)
+    {
+        frames = [];
+        string filePath = ProjectSettings.GlobalizePath(resourcePath);
+        if (!File.Exists(filePath))
+            return false;
+
+        Image image = Image.LoadFromFile(filePath);
+        if (image.IsEmpty())
+            return false;
+
+        image.Convert(Image.Format.Rgba8);
         ImageTexture texture = ImageTexture.CreateFromImage(image);
         Vector2 displaySize = GetCommonDisplaySize(rects);
         frames = new SpriteFrame[rects.Length];
@@ -621,7 +1135,12 @@ public sealed class SpriteAnimationSet
         return expanded;
     }
 
-    private static Rect2[] DetectBlobFrames(Image image)
+    private static Rect2[] DetectBlobFrames(
+        Image image,
+        int? minOpaquePixelsOverride = null,
+        int? minHeightOverride = null,
+        int? minWidthOverride = null
+    )
     {
         int width = image.GetWidth();
         int height = image.GetHeight();
@@ -636,9 +1155,10 @@ public sealed class SpriteAnimationSet
                     continue;
 
                 DetectedFrame frame = FloodFrame(image, visited, x, y);
-                int minPixels = height <= 180 ? 25 : 180;
-                int minHeight = height <= 180 ? 4 : 24;
-                if (frame.OpaquePixels < minPixels || frame.Height < minHeight || frame.Width < 4)
+                int minPixels = minOpaquePixelsOverride ?? (height <= 180 ? 25 : 180);
+                int minHeight = minHeightOverride ?? (height <= 180 ? 4 : 24);
+                int minWidth = minWidthOverride ?? 4;
+                if (frame.OpaquePixels < minPixels || frame.Height < minHeight || frame.Width < minWidth)
                     continue;
 
                 frames.Add(frame.Grow(1, width, height));

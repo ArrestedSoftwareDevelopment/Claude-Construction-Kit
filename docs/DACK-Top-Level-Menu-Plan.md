@@ -31,6 +31,29 @@ When the Cockpit is open, the compact top strip should eventually read like this
 Source  |  Snapshot  |  Play / Build / Understand  |  View Family  |  Preset  |  Word Sense  |  Boss  |  ×
 ```
 
+### Current implementation note
+
+The proof-of-concept top strip should stay deliberately small while the contextual shelves absorb the growing tool vocabulary.
+
+Current top-strip responsibilities:
+
+- Switch active playset/view family: Platformer, Brickbat, Pinball, Overhead.
+- Reset the current playfield state when explicitly requested.
+- Show/hide the Cockpit.
+- Trigger the Boss Key.
+
+Mode-specific tools should move into the relevant page/shelf instead of accumulating on the top strip. The Platformer shelf now uses this first-pass category model:
+
+- **Session:** Save Level, Load Level, Enter Play Mode / Return to Editor.
+- **Build Tools:** Ladder, Ramp, Slide, Conveyor, Elevator.
+- **Route / Logic:** Start, Checkpoint, Goal, Hidden Switch.
+- **Player Rules:** Safety Floor, Gun.
+- **Enemy Rules:** Enemy AI, Enemy Track, Enemy Shots.
+- **Text Rules:** Text Terrain, Text Crawl, Shot Text Damage.
+- **Reset:** Clear Placed Parts.
+
+This same pattern should be reused for Brickbat, Pinball, Overhead, and future families: the top strip answers "where am I and how do I hide/reset it?", while the contextual shelf answers "what can I build or tune here?"
+
 ### Source
 
 - Desktop
@@ -165,9 +188,12 @@ Presets:
 
 - **Combat / Tanks:** rotate, drive, shoot, ricochet, hide, duel.
 - **Driving:** steer, accelerate, brake/reverse, drift, follow roads or tracks.
-- **Planes / Spaceships:** rotate, thrust, coast/inertia, wrap/bounce, shoot.
+- **Planes / Atmospheric Flying:** steer/bank, throttle, climb/dive, drag, stall-ish slowdown, altitude bands, clouds/terrain as lanes.
+- **Spaceships / Thrust:** rotate, thrust, coast/inertia, wrap/bounce, shoot, local gravity wells, orbit hazards, Spacewar-style arenas.
+- **Lunar Lander:** rotate, thrust, conserve fuel, manage descent rate, touch down on safe pads, crash into document terrain.
 - **RPG / Adventure:** 8-way or click-to-move, interact, pick up, open, talk/fight.
 - **Animals / Insects:** crawl, wander, forage, flee, swarm, follow trails, climb over/around text.
+- **Horde / Robotron-like:** player-centered arena pressure, flock/chase groups, rescue/escort variants, projectile floods, and panic-room survival.
 - **Office Creatures / Workers:** inspect, patrol, carry, build, repair, emote, fight, respond to live document/desktop events.
 
 Primary shelves:
@@ -184,17 +210,27 @@ Primary shelves:
 - Safe zones
 - Line-of-sight tools
 - Scent/trail/swarm fields
+- Flock/horde emitters
+- Bullet-pattern emitters
 - Trigger/marker flags
 
 Important rules:
 
-- Movement model: tank / car / thrust / walk / crawl / swarm
+- Movement model: tank / car / atmospheric flyer / thrust-space / walk / crawl / swarm / flock
 - Actor collision profile
 - Projectile ricochet / pierce / explode
 - Line of sight
 - Cover
 - Per-actor text behavior
 - AI behavior blocks
+
+Flying/space physics need their own movement libraries:
+
+- **Atmospheric flyer:** facing direction, throttle, turn rate, climb/dive, drag, optional lift/stall, altitude bands, ground/ceiling avoidance.
+- **Thrust-space:** rotation, thrust vector, inertia, max velocity, damping/drag, wrap/bounce boundaries, rotate-to-aim vs independent turret aim.
+- **Lunar lander:** gravity, main/side thrusters, fuel, landing pads, safe descent/tilt thresholds, crash explosions, terrain/debris collision.
+- **Localized gravity:** point/region gravity wells, inverse-square-ish or constant pull, safe orbit radius, slingshot strength, black-hole/star hazards, per-actor gravity sensitivity.
+- **Arena rules:** screen wrap, edge bounce, kill boundary, asteroid/word debris, ricochet shots, local sun/planet/source-word gravity.
 
 First complete side-view level spine:
 
@@ -206,9 +242,26 @@ First complete side-view level spine:
 Enemy setup should be a small set of composable choices rather than one giant AI page:
 
 - Locomotion: grounded, flying, climbing, crawling, swimming, turret/static.
-- Behavior: patrol, guard, chase, flee, wander, ambush, swarm, escort target, defend goal.
+- Behavior: patrol, guard, chase, flee, wander, ambush, swarm, flock/horde, escort target, defend goal.
 - Attack: contact only, projectile, beam/laser, text-destroying shot, area pulse, none.
 - Text interaction: collide with text, ignore text, destroy text, climb text, tunnel text, seek/avoid OCR words.
+
+Flock/Horde should be a behavior card, not a bespoke game. Core exposed knobs:
+
+- group size / spawn budget;
+- cohesion, separation, and player-attraction weights;
+- leader/follow-leader vs pure boids;
+- panic radius / scatter behavior;
+- contact damage vs projectile emitters;
+- bullet pattern: aimed, radial, spiral, burst, lane, random spray;
+- friendly/escort mode for “rescue the office workers” variants.
+
+Defend should be another core behavior card:
+
+- defend a point, area, route node, word, object, NPC, or marker;
+- hold, orbit, patrol perimeter, block lane, or intercept intruders;
+- chase only within a pursuit radius, then return to the defended anchor;
+- bind directly to Goal, Checkpoint, Hidden Switch, door, tower-defense base, escort target, or semantic word-object.
 
 Sunny Dragon is the first practical test of this model: a flying guard that can block a route in platformer, side-view shooter, Brickbat bonus/hazard, pinball toy, or overhead modes without requiring new art.
 
@@ -294,6 +347,7 @@ Presets:
 
 - **RPG / Roguelike:** Rogue/Hack-style dungeon maps.
 - **Snake / Maze Chase:** collect, grow, flee/chase, tunnels, power states.
+- **Life / Snake / Minefield Mashup:** cellular growth, moving snake/chain bodies, hidden mines/traps, revealed danger counts, and chain reactions across text cells.
 - **BBS Terminal Mode:** opaque ASCII/ANSI/CP437 layer.
 - **Spreadsheet Dungeon:** grid cells as tiles.
 - **Word Quest:** seek/avoid/collect semantic words.
@@ -311,6 +365,7 @@ Primary shelves:
 - Tunnels/wrap edges
 - Fog/visibility
 - Traps
+- Cells/mines/life rules
 - Inventory/rules
 
 Important rules:
@@ -320,8 +375,17 @@ Important rules:
 - Turn-based vs realtime
 - Pathfinding
 - Word goals
+- Cellular birth/survival rules
+- Mine reveal / flag / detonation rules
 - Enemy chase/flee/scatter
 - Item/inventory logic
+
+The Life/Snake/Minefield mashup should be treated as an experimental throwback preset:
+
+- **Life layer:** cells are born/survive/die by simple neighbor rules, optionally seeded from text density or OCR categories.
+- **Snake layer:** the player or enemy chain moves through the grid, grows, sheds, tunnels, or consumes cells/words.
+- **Minefield layer:** hidden cells contain traps, bonuses, or chain-reaction explosives; adjacent danger counts can be shown as numbers, glyph colors, or document annotations in the clone.
+- **DACK twist:** words can become rule seeds: `BOMB`, `FOOD`, `WALL`, `LIFE`, `TARPIT`, `EXIT`, etc.
 
 ### 6. Route / Flow
 

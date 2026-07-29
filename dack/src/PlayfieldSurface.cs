@@ -703,7 +703,10 @@ public partial class PlayfieldSurface : Control
 
         foreach (Vector2 position in _enemyShotPositions)
         {
-            DrawProjectileFrame(position, 0, 0.72f);
+            DrawCircle(position, 8.5f, new Color("#202A34"));
+            DrawCircle(position, 6.2f, new Color("#FF2B2B"));
+            DrawProjectileFrame(position, 1, 0.82f);
+            DrawCircle(position, 2.2f, new Color("#FFF0A8"));
         }
 
         foreach (EffectVisual effect in _impactEffects)

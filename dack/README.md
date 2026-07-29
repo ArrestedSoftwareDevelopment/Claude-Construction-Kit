@@ -86,20 +86,23 @@ dotnet build DACK.csproj
 - `SUNNY DRAGON` adds the first animated enemy/import test from `raw base assets/Legacy Collection/.../sunny-dragon-fly.png`. It is treated as a 9-frame grid strip, appears as a visible animated enemy, and uses the same label/save/load editor path as player characters.
 - Enemy actors are now draggable directly on the playfield. Once dragged, they keep manual placement instead of snapping back to prototype anchor/bob positions. The existing `ACTOR 1/2x`, `ACTOR 1x`, and `ACTOR 2x` buttons scale the selected enemy when an enemy is selected, and tune the player/text ratio when the player is selected.
 - Enemy design now splits into locomotion, behavior, attack, and text-interaction choices. Sunny Dragon's default role is a flying guard: useful for platformer, side-view shooter, Brickbat hazards/bonuses, pinball toys, and overhead modes.
-- Platformer combat has a first playable slice: enemies hover/patrol around their authored home position, contact with an enemy kills the player, Sunny Dragon can fire simple aimed magenta projectiles, and player shots score against enemies. The Platformer shelf includes `Enemy AI` and `Enemy Shots` toggles so creators can build safely.
+- Platformer combat has a first playable slice: enemies patrol around their authored home position, contact with an enemy kills the player, projectile hits can use partial health damage or instant death, and player shots reduce enemy shot toughness until the enemy is defeated. The Platformer shelf includes `Enemy AI`, `Enemy Shots`, range, and damage toggles so creators can build safely.
 - Enemy projectile ability is now explicit per enemy. Sunny Dragon, Shooter Boss, and Shooter Fleet can fire in this RAD pass; ground/crawler TGC enemies are contact-only until designers assign weapons.
+- Enemy toughness is measured as regular shots to defeat, currently clamped from 1-9. Player gun power is a matching multiplier: a 2x gun removes two toughness points per hit. This should become a normal character-builder/Inspector field beside projectile, explosion, health, and behavior cards.
 - Player death now uses the word/effects system as debug: causes such as `DRAGON SHOT`, `BLUE GUARD CONTACT`, or `FALL DEATH` explode as visible text near the player.
 - Platformer combat has a basic `Enemy Track` toggle. When enabled, enemies bias their patrol toward the player, face the player, and face the player when firing; when disabled, they keep patrol/guard behavior and fire along their current facing.
 - Platformer now has a small draggable HUD overlay showing score, lives, deaths, enemy count, enemy shots, and recent status. This should eventually share the movable/white-space-aware HUD system planned for Brickbat and other playsets. The RAD level file persists HUD position.
 - Projectile/effect import has started. The first wired enemy projectile profile uses `fireball-impact-explosion.png`: frame 0 is the projectile, frame 1 is the impact, and later frames animate the explosion. Explosion impacts can randomly erase nearby letter regions inside the blast radius without OCR, giving low-cost document deformation and +5-per-letter scoring.
 - Explosion text damage now calls the reusable letter-shard routine: the number of randomly thrown letters matches the number of destroyed letter regions.
 - `dack/assets/project/effects/projectile-effect-profiles.json` catalogs eight cleared Itch-derived profiles from the explosion pack so designers can eventually assign projectile/explosion visuals to either player or enemy weapons.
+- First sound hooks are wired from a tiny CC0-labeled RAD subset: player shot, enemy hit, enemy defeat, and player hurt/death. `power-up.ogg` is staged for the first pickup/power-up pass. Exact public source URLs/creator names should be recorded before hub packaging.
 - The Game Creator's Pack graphic sheets are now copied into `dack/assets/project/game-creators-pack/` with `tgc-graphic-pack-catalog.json`. Initial named character profiles are Orange Worker, Red Runner, Blue Guard, Green Crawler, Shooter Boss, and Shooter Fleet; initial level-object profiles include Red Girder, Gray Blocks, Orange Bricks, and Retro Puzzle Blocks.
 - The Character Picker now shelves those TGC character profiles as enemies: Orange Worker, Red Runner, Blue Guard, Green Crawler, Shooter Boss, and Shooter Fleet. For this pass they all spawn as draggable/scalable enemies, not player replacements.
 - Enemy shelf spawns use the next hidden actor slot and stagger new enemies across the playfield with an explicit default size, making multi-enemy level setup visible and predictable.
 - Conveyor defaults are faster: new conveyors start at 14 units, and the speed inspector now ranges from -24 to 24.
 - Stickman v0.1 is hairline art: the 64 px sheets use very thin one-pixel strokes that can collapse into dotted limbs when scaled down to document-creature size. The runtime now gives Stickman imports a tiny one-pixel ink/dilation pass after white-to-transparent cleanup so the lines survive scaling more reliably.
 - `SAVE ANIM LABELS` and `LOAD ANIM LABELS` round-trip source-aware local `.dackanim.json` manifests. TGC saves under `dack/assets/quarantine/game-creators-pack-graphics-prep/`; Stickman saves under `dack/assets/quarantine/stickman-pack-v0.1/`. These files include displayed frame numbers, internal detected indices, labels, ping-pong flags, and strobe settings so numbering mistakes can be inspected and reapplied.
+- The animation editor is now actor/source-aware. Selecting a player or enemy loads that actor's frame source and any saved labels for its stable `animationSourceId`. Those saved mappings are meant to become promoted defaults once tested, so the next creator starts with working frame ranges instead of inventing them again.
 - Animation labels are range-based, not fixed-length. A label can point at one frame, many frames, a ping-ponged range, or `- / -` for unavailable. Typing `-` in either endpoint marks both endpoints dashed and tells the engine that character does not supply that action; fallback labels then carry the motion instead of forcing bogus frames.
 - Animation labels now include strobe/count fields for effects such as death flashes, damage flashes, invincibility, and power-ups. `TEST DEATH` plays the Death label with its strobe settings.
 - Platformer creator rules now include **Gun: On/Off**. Gun On enables projectiles plus Run Shoot / Jump Shoot animation labels; Gun Off shifts the game feel toward Mario-like jumping, climbing, digging, and stomping.
@@ -228,17 +231,25 @@ Builder rules to design:
 
 ## Overhead toolkit note
 
-Overhead is a camera/control family, not a single game type. Combat is the first preset, but the same foundation should support driving, planes/spaceships, RPG/adventure actors, animals, insects, office creatures, workers, and swarms.
+Overhead is a camera/control family, not a single game type. Combat is the first preset, but the same foundation should support driving, planes/spaceships, RPG/adventure actors, animals, insects, office creatures, workers, swarms, hordes, and Robotron-like arena pressure.
 
 Movement presets:
 
 - **Combat/tank**: rotate, drive, shoot, ricochet, hide behind cover.
 - **Driving**: steer, accelerate, brake/reverse, drift, follow roads/tracks.
 - **Plane/space**: rotate, thrust, coast/inertia, wrap/bounce at boundaries, shoot.
+- **Lunar Lander**: rotate, main/side thrust, fuel, gravity, safe descent/tilt thresholds, landing pads, terrain collision, crash explosions.
 - **RPG/adventure**: 8-way or click-to-move, interact, pick up, open, talk/fight.
 - **Animals/insects**: crawl, wander, forage, flee, follow scent/trails, swarm, climb text/UI shapes.
+- **Flock/Horde**: group chase, separation/cohesion, follow-leader, scatter/charge states, bullet-pattern emitters, rescue/escort variants, and panic-room survival.
 
 First proof: one overhead actor on the cloned playfield with tank-style rotate/drive/fire controls, ricochet projectiles, cover/solid regions, and one simple enemy behavior.
+
+Flock/Horde should become a drag-on behavior card for enemies rather than a separate genre button. The same card can support Robotron-like mobs, bullet-hell enemy groups, insect swarms, office gremlins, tower-defense waves, escort panic rooms, and ambient desktop creatures. Useful knobs: group size, spawn budget, cohesion, separation, target attraction, range in text units, contact damage, projectile pattern, cooldown, and rescue/hostile/team identity.
+
+`Defend` should be another drag-on behavior card. A defender protects a point, area, route node, object, NPC, marker, or word-object rather than merely chasing the player. Good targets include Goal, Checkpoint, Hidden Switch, door, tower-defense base, escort target, jackpot insert, or a semantic word such as `SAFE`, `VAULT`, `BOSS`, or `EXIT`. Useful knobs: defend radius, pursuit radius, return speed, alert radius, line-of-sight requirement, stance, team filter, and failure policy.
+
+Lunar Lander is a natural early thrust-space preset because the authoring grammar is tiny and very DACK-friendly: one craft, gravity, fuel, landing pads, descent-rate safety, tilt tolerance, crash explosions, and document/text terrain as jagged moonscape. A word such as `PAD`, `SAFE`, `FUEL`, `BASE`, or `CRATER` can become a semantic landing or hazard anchor later.
 
 ## Reusable visual effects library
 
@@ -308,6 +319,17 @@ Builder rules to design:
 - **Power states**: temporary invulnerability, reverse chase, slow/freeze enemies, double score, text magnet, tunnel reveal, wall-eating, and clone-only terrain deformation.
 - **Construction UI**: paint maze walls, mark pellets, drag tunnel endpoints, place enemy homes/spawns, define patrol/chase zones, set wrap edges, and preview route heatmaps.
 - **Cross-playset mutation**: Brickbat or platformer projectiles can punch holes into a page, then Snake/Maze can inherit those holes as altered corridors, blocked lanes, or dangerous gaps until the clone is reset.
+
+## Life / Snake / Minefield mashup note
+
+A throwback Grid/Text preset can combine cellular automata, snake movement, and minefield reveal rules:
+
+- **Life layer**: text cells, spreadsheet cells, or glyph tiles are born/survive/die by simple neighbor rules.
+- **Snake layer**: a player or enemy chain eats, grows, tunnels, sheds, poisons, or carries cells/letters/words.
+- **Minefield layer**: hidden cells contain traps, bonuses, glyph mines, or chain-reaction explosives; adjacent danger can be shown as numbers, colors, or cloned-page annotations.
+- **DACK twist**: OCR/Word Sense can seed rules from words such as `BOMB`, `FOOD`, `WALL`, `LIFE`, `TARPIT`, `EXIT`, `SAFE`, or `POISON`, while fallback generic glyphs keep the mode playable without OCR.
+
+This belongs under Grid/Text first, but its components are reusable: Life-style propagation can drive enemy infection, Snake-style chains can become worms/trains/convoys, and Minefield reveal can power hidden-switch and trap systems in platformer, overhead, and RPG modes.
 
 ## Semantic word-object concept
 

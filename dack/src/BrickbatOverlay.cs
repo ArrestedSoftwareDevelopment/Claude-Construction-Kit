@@ -1,4 +1,5 @@
 using Godot;
+using System;
 using System.Collections.Generic;
 
 namespace Dack;
@@ -33,6 +34,7 @@ public partial class BrickbatOverlay : Control
     public bool SidePaddle { get; set; }
     public TextObjectGranularity BrickGranularity { get; set; } = TextObjectGranularity.Letter;
     public TextCollisionMode TextCollisionMode { get; set; } = TextCollisionMode.Bounce;
+    public event Action<string>? SoundRequested;
     public bool HudEditable
     {
         get => _hudEditable;
@@ -257,6 +259,7 @@ public partial class BrickbatOverlay : Control
             {
                 BounceFromPaddle(ref ballPosition, ref ballVelocity);
                 _effects.PaddleSpark(ballPosition);
+                RequestSound("brickbat-paddle");
                 ApplyBallSpeedTiers();
             }
 
@@ -331,6 +334,7 @@ public partial class BrickbatOverlay : Control
         _hits++;
         _effects.TextHit(hitPosition, points, BrickGranularity == TextObjectGranularity.Word, label);
         RememberDestroyedWord(label);
+        RequestSound(BrickGranularity == TextObjectGranularity.Word ? "brickbat-word-break" : "brickbat-text-hit");
 
         if (_hits % _bonusEvery == 0)
             TriggerBonus(hitPosition);
@@ -342,11 +346,13 @@ public partial class BrickbatOverlay : Control
         if (wantsMultiball && SpawnMultiball())
         {
             _effects.Multiball(position);
+            RequestSound("power-up");
             _multiballCooldownSeconds = 30;
         }
         else
         {
             ArmLaser(position);
+            RequestSound("power-up");
         }
     }
 
@@ -381,6 +387,7 @@ public partial class BrickbatOverlay : Control
     {
         _ballPositions.RemoveAt(index);
         _ballVelocities.RemoveAt(index);
+        RequestSound("brickbat-ball-lost");
     }
 
     private void UpdateEffects(float delta)
@@ -588,6 +595,7 @@ public partial class BrickbatOverlay : Control
         if (Playfield is null)
             return;
 
+        RequestSound("brickbat-laser");
         _laserFlashSeconds = 0.45f;
         int strength = _laserStrength <= 0 ? _random.RandiRange(1, 10) : _laserStrength;
         Rect2 playBounds = Playfield.PlayBounds;
@@ -702,6 +710,11 @@ public partial class BrickbatOverlay : Control
     {
         _roundEnded = true;
         _effects.RoundBanner(Playfield.PlayBounds.GetCenter(), message, color);
+    }
+
+    private void RequestSound(string key)
+    {
+        SoundRequested?.Invoke(key);
     }
 
     private Rect2 GetHudRect(Rect2 bounds)
