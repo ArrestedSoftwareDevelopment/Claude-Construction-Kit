@@ -11,6 +11,7 @@ public partial class PlayfieldSurface : Control
     private Texture2D? _platform;
     private Texture2D? _window;
     private Texture2D? _fireballExplosion;
+    private Texture2D? _legacyEnemyDeath;
     private CapturedPageFrame? _capturedPage;
     private readonly PsychedelicEffects _letterEffects = new();
     private readonly List<WorldObject> _placedWorldObjects = [];
@@ -49,6 +50,7 @@ public partial class PlayfieldSurface : Control
         _platform = LoadPng("res://assets/third_party/8-bit-dungeon/platform.png");
         _window = LoadPng("res://assets/third_party/8-bit-dungeon/window-2.png");
         _fireballExplosion = LoadPng("res://assets/project/effects/fireball-impact-explosion.png");
+        _legacyEnemyDeath = LoadPng("res://assets/project/effects/legacy-enemy-death.png");
         _capturedPage = CapturedPageImportModule.TryLoadDefault();
         Resized += QueueRedraw;
         SetProcess(true);
@@ -175,6 +177,15 @@ public partial class PlayfieldSurface : Control
         }
 
         return GetPlatforms();
+    }
+
+    public bool IsTextRegionStillActive(Rect2 displayRegion)
+    {
+        if (_capturedPage is null)
+            return true;
+
+        Rect2 sourceRegion = DisplayToSourceRect(_capturedPage, displayRegion).Grow(2f);
+        return HasCurrentInkInRegion(_capturedPage, sourceRegion);
     }
 
     public Rect2 FindWhitespaceRect(Vector2 desiredSize)
@@ -345,12 +356,15 @@ public partial class PlayfieldSurface : Control
             WorldObjectKind.StartPoint => CreateMarker(center, unit, MarkerRole.Start, false),
             WorldObjectKind.GoalPoint => CreateMarker(center, unit, MarkerRole.End, true),
             WorldObjectKind.HiddenSwitch => CreateMarker(center, unit, MarkerRole.Switch, false),
-            WorldObjectKind.PinballFlipper => new WorldObject(kind, center + new Vector2(-unit * 8f, unit * 12f), center + new Vector2(unit * 10f, unit * 9f), 1.25f, 12f, 0f, 5f, MarkerRole.None, true, false, default, 0.92f),
+            WorldObjectKind.PinballFlipper => new WorldObject(kind, center + new Vector2(-unit * 8f, unit * 10f), center + new Vector2(unit * 10f, unit * 13f), 1.25f, 12f, 0f, 5f, MarkerRole.None, true, false, default, 0.92f),
             WorldObjectKind.PinballBumper => new WorldObject(kind, center, center + new Vector2(unit * 5f, 0), 1.2f, 0f, 0f, 5f, MarkerRole.None, true, false, default, 0.92f),
             WorldObjectKind.PinballPlunger => new WorldObject(kind, center + new Vector2(unit * 18f, unit * 16f), center + new Vector2(unit * 18f, -unit * 12f), 1.1f, 12f, 0f, 5f, MarkerRole.None, true, false, default, 0.9f),
             WorldObjectKind.PinballDrain => new WorldObject(kind, center + new Vector2(-unit * 12f, unit * 18f), center + new Vector2(unit * 12f, unit * 18f), 1.1f, 0f, 0f, 5f, MarkerRole.None, true, false, default, 0.9f),
             WorldObjectKind.PinballRollover => new WorldObject(kind, center + new Vector2(-unit * 5f, -unit * 4f), center + new Vector2(unit * 5f, -unit * 4f), 0.85f, 0f, 0f, 5f, MarkerRole.None, true, false, default, 0.88f),
             WorldObjectKind.PinballGate => new WorldObject(kind, center + new Vector2(-unit * 5f, unit * 2f), center + new Vector2(unit * 6f, -unit * 4f), 0.75f, 0f, 0f, 5f, MarkerRole.None, true, false, default, 0.88f),
+            WorldObjectKind.Coin => new WorldObject(kind, center - new Vector2(unit * 2.1f, unit * 2.1f), center + new Vector2(unit * 2.1f, unit * 2.1f), 0.8f, 0f, 0f, 5f, MarkerRole.None, true, false, default, 0.96f),
+            WorldObjectKind.Gem => new WorldObject(kind, center - new Vector2(unit * 2.4f, unit * 2.4f), center + new Vector2(unit * 2.4f, unit * 2.4f), 0.8f, 0f, 0f, 5f, MarkerRole.None, true, false, default, 0.96f),
+            WorldObjectKind.Barricade => new WorldObject(kind, center + new Vector2(-unit * 7f, unit * 4f), center + new Vector2(unit * 7f, unit * 4f), 1.6f, 0f, 0f, 5f, MarkerRole.None, true, false, default, 0.92f),
             _ => new WorldObject(kind, center - new Vector2(unit * 8f, 0), center + new Vector2(unit * 8f, 0), 0.8f)
         };
 
@@ -453,6 +467,11 @@ public partial class PlayfieldSurface : Control
             elevators.Add(new WorldObject(WorldObjectKind.Elevator, new Vector2(Size.X * 0.74f, Size.Y * 0.40f), new Vector2(Size.X * 0.86f, Size.Y * 0.40f), 0.9f, 1.6f, 0.25f));
 
         return elevators.ToArray();
+    }
+
+    public WorldObject[] GetBarricades()
+    {
+        return ObjectsOfKind(WorldObjectKind.Barricade).ToArray();
     }
 
     public bool IsTouchingLadder(Rect2 actorBounds)
@@ -761,7 +780,7 @@ public partial class PlayfieldSurface : Control
         }
 
         foreach (EffectVisual effect in _impactEffects)
-            DrawProjectileFrame(effect.Position, effect.Frame, 1.0f);
+            DrawEffectFrame(effect, 1.0f);
 
         _letterEffects.Draw(this);
     }
@@ -789,6 +808,34 @@ public partial class PlayfieldSurface : Control
     public void ThrowComicImpact(Vector2 position, string word, float intensity = 1.35f)
     {
         _letterEffects.ComicImpact(position, word, intensity);
+    }
+
+    private void DrawEffectFrame(EffectVisual effect, float scale)
+    {
+        if (effect.Kind == EffectVisualKind.LegacyEnemyDeath)
+        {
+            DrawLegacyEnemyDeathFrame(effect.Position, effect.Frame, scale * 2.25f);
+            return;
+        }
+
+        DrawProjectileFrame(effect.Position, effect.Frame, scale);
+    }
+
+    private void DrawLegacyEnemyDeathFrame(Vector2 position, int frame, float scale)
+    {
+        if (_legacyEnemyDeath is null)
+        {
+            DrawCircle(position, 18f, new Color("#FFF0A8", 0.7f));
+            DrawCircle(position, 9f, new Color("#FF2BD6", 0.92f));
+            return;
+        }
+
+        const int frameWidth = 48;
+        const int frameHeight = 48;
+        frame = Mathf.Clamp(frame, 0, 7);
+        Rect2 source = new(frame * frameWidth, 0, frameWidth, frameHeight);
+        Vector2 size = new Vector2(frameWidth, frameHeight) * scale;
+        DrawTextureRectRegion(_legacyEnemyDeath, new Rect2(position - size * 0.5f, size), source);
     }
 
     private void DrawProjectileFrame(Vector2 position, int frame, float scale)
@@ -856,6 +903,15 @@ public partial class PlayfieldSurface : Control
 
         foreach (WorldObject gate in ObjectsOfKind(WorldObjectKind.PinballGate))
             DrawPinballGate(gate);
+
+        foreach (WorldObject coin in ObjectsOfKind(WorldObjectKind.Coin))
+            DrawCoin(coin);
+
+        foreach (WorldObject gem in ObjectsOfKind(WorldObjectKind.Gem))
+            DrawGem(gem);
+
+        foreach (WorldObject barricade in ObjectsOfKind(WorldObjectKind.Barricade))
+            DrawBarricade(barricade);
 
         DrawSelectedWorldObjectHandles();
     }
@@ -939,7 +995,8 @@ public partial class PlayfieldSurface : Control
             or WorldObjectKind.PinballPlunger
             or WorldObjectKind.PinballDrain
             or WorldObjectKind.PinballRollover
-            or WorldObjectKind.PinballGate;
+            or WorldObjectKind.PinballGate
+            or WorldObjectKind.Barricade;
     }
 
     private float DistanceToWorldObjectSegment(WorldObject worldObject, Vector2 position)
@@ -1094,7 +1151,7 @@ public partial class PlayfieldSurface : Control
         for (int i = 0; i < sourceRects.Length; i++)
         {
             Rect2 source = sourceRects[i];
-            if (activeOnly && !HasCurrentInkInRegion(frame, source.Grow(1f)))
+            if (activeOnly && !HasCurrentInkInRegion(frame, source.Grow(2f)))
                 continue;
 
             mapped.Add(new Rect2(
@@ -1167,7 +1224,64 @@ public partial class PlayfieldSurface : Control
             return false;
 
         float luminance = pixel.R * 0.2126f + pixel.G * 0.7152f + pixel.B * 0.0722f;
-        return luminance < 0.38f;
+        float chroma = Math.Max(pixel.R, Math.Max(pixel.G, pixel.B)) - Math.Min(pixel.R, Math.Min(pixel.G, pixel.B));
+        return luminance < 0.50f && (luminance < 0.42f || chroma < 0.22f);
+    }
+
+    private static bool IsCurrentInkPixel(CapturedPageFrame frame, int x, int y)
+    {
+        Color current = frame.Image.GetPixel(x, y);
+        if (current.A < 0.5f)
+            return false;
+
+        Color originalBackground = EstimateLocalBackgroundColor(frame.OriginalImage, x, y);
+        if (ColorDistance(current, originalBackground) < 0.035f)
+            return false;
+
+        if (IsLikelyTextPixel(current))
+            return true;
+
+        float currentLuminance = Luminance(current);
+        float backgroundLuminance = Luminance(originalBackground);
+        float chroma = Math.Max(current.R, Math.Max(current.G, current.B)) - Math.Min(current.R, Math.Min(current.G, current.B));
+        float contrast = backgroundLuminance - currentLuminance;
+        return contrast > 0.075f && currentLuminance < 0.78f && chroma < 0.26f;
+    }
+
+    private static Color EstimateLocalBackgroundColor(Image image, int x, int y)
+    {
+        Dictionary<int, ColorBucket> buckets = [];
+        for (int dy = -8; dy <= 8; dy += 4)
+        {
+            for (int dx = -8; dx <= 8; dx += 4)
+            {
+                if (Math.Abs(dx) <= 2 && Math.Abs(dy) <= 2)
+                    continue;
+
+                int sx = Mathf.Clamp(x + dx, 0, image.GetWidth() - 1);
+                int sy = Mathf.Clamp(y + dy, 0, image.GetHeight() - 1);
+                Color sample = image.GetPixel(sx, sy);
+                if (IsLikelyTextPixel(sample))
+                    continue;
+
+                int key = QuantizeColor(sample);
+                buckets.TryGetValue(key, out ColorBucket bucket);
+                bucket.Add(sample);
+                buckets[key] = bucket;
+            }
+        }
+
+        if (buckets.Count == 0)
+            return new Color("#FBFBF8");
+
+        ColorBucket best = default;
+        foreach (ColorBucket bucket in buckets.Values)
+        {
+            if (bucket.Count > best.Count)
+                best = bucket;
+        }
+
+        return best.Average();
     }
 
     private static void FloodEraseConnectedInk(CapturedPageFrame frame, Rect2 sourceRegion, Color fill)
@@ -1237,7 +1351,8 @@ public partial class PlayfieldSurface : Control
         if (ColorDistance(current, fill) < 0.03f)
             return false;
 
-        return IsLikelyTextPixel(original)
+        return IsCurrentInkPixel(frame, point.X, point.Y)
+            || IsLikelyTextPixel(original)
             || IsLikelyInkEdge(original, fill)
             || IsLikelyTextPixel(current)
             || IsLikelyInkEdge(current, fill);
@@ -1247,15 +1362,18 @@ public partial class PlayfieldSurface : Control
     {
         Rect2I bounds = ClampToImage(frame.Image, sourceRegion);
         int inkPixels = 0;
+        int requiredPixels = Mathf.Clamp((bounds.Size.X * bounds.Size.Y) / 220, 2, 10);
         for (int y = bounds.Position.Y; y < bounds.End.Y; y++)
         {
             for (int x = bounds.Position.X; x < bounds.End.X; x++)
             {
-                if (!IsLikelyTextPixel(frame.Image.GetPixel(x, y)))
+                Color current = frame.Image.GetPixel(x, y);
+                Color original = frame.OriginalImage.GetPixel(x, y);
+                if (!IsFastCurrentInkPixel(current, original))
                     continue;
 
                 inkPixels++;
-                if (inkPixels >= 2)
+                if (inkPixels >= requiredPixels)
                     return true;
             }
         }
@@ -1279,13 +1397,29 @@ public partial class PlayfieldSurface : Control
             for (int x = bounds.Position.X; x < bounds.End.X; x += step)
             {
                 samples++;
-                if (IsLikelyTextPixel(_capturedPage.Image.GetPixel(x, y)))
+                Color current = _capturedPage.Image.GetPixel(x, y);
+                Color original = _capturedPage.OriginalImage.GetPixel(x, y);
+                if (IsFastCurrentInkPixel(current, original))
                     ink++;
             }
         }
 
         float lowerRightBias = displayRegion.GetCenter().X * 0.001f + displayRegion.GetCenter().Y * 0.001f;
         return samples == 0 ? lowerRightBias : -((float)ink / samples) + lowerRightBias;
+    }
+
+    private static bool IsFastCurrentInkPixel(Color current, Color original)
+    {
+        if (current.A < 0.5f)
+            return false;
+
+        float currentLuminance = Luminance(current);
+        if (currentLuminance < 0.42f)
+            return true;
+
+        float originalLuminance = Luminance(original);
+        float chroma = Math.Max(current.R, Math.Max(current.G, current.B)) - Math.Min(current.R, Math.Min(current.G, current.B));
+        return originalLuminance - currentLuminance > 0.075f && currentLuminance < 0.78f && chroma < 0.26f;
     }
 
     private static void CleanupTinyInkSpecks(CapturedPageFrame frame, Rect2 sourceRegion, Color fill)
@@ -1350,7 +1484,12 @@ public partial class PlayfieldSurface : Control
         if (ColorDistance(current, fill) < 0.03f)
             return false;
 
-        return IsLikelyTextPixel(current) || IsLikelyInkEdge(current, fill);
+        return IsCurrentInkPixel(frame, point.X, point.Y) || IsLikelyInkEdge(current, fill);
+    }
+
+    private static float Luminance(Color pixel)
+    {
+        return pixel.R * 0.2126f + pixel.G * 0.7152f + pixel.B * 0.0722f;
     }
 
     private static bool IsLikelyInkEdge(Color pixel, Color background)
@@ -1636,6 +1775,71 @@ public partial class PlayfieldSurface : Control
         DrawLine(start, end, body, TextUnitPixels * 0.45f);
         DrawLine(end - direction * TextUnitPixels * 1.6f + normal * TextUnitPixels * 0.85f, end, new Color("#FFF0A8", body.A), 2f);
         DrawLine(end - direction * TextUnitPixels * 1.6f - normal * TextUnitPixels * 0.85f, end, new Color("#FFF0A8", body.A), 2f);
+    }
+
+    private void DrawCoin(WorldObject coin)
+    {
+        Rect2 bounds = coin.Bounds(TextUnitPixels, ElapsedSeconds);
+        Vector2 center = bounds.GetCenter();
+        float radius = Mathf.Max(TextUnitPixels * 1.35f, Mathf.Min(bounds.Size.X, bounds.Size.Y) * 0.33f);
+        Color body = coin.Styled(new Color("#F4C95D"));
+        DrawCircle(center + new Vector2(2, 3), radius + 2f, new Color(0, 0, 0, 0.24f));
+        DrawCircle(center, radius, body);
+        DrawCircle(center, radius * 0.64f, new Color("#FFF0A8", body.A * 0.92f));
+        DrawCircle(center, radius, new Color("#202A34", body.A * 0.70f), false, 1.4f);
+        DrawString(ThemeDB.FallbackFont, center + new Vector2(-radius * 0.42f, radius * 0.38f), "$", HorizontalAlignment.Center, radius * 0.84f, 13, new Color("#202A34", body.A));
+    }
+
+    private void DrawGem(WorldObject gem)
+    {
+        Rect2 bounds = gem.Bounds(TextUnitPixels, ElapsedSeconds);
+        Vector2 center = bounds.GetCenter();
+        float radius = Mathf.Max(TextUnitPixels * 1.55f, Mathf.Min(bounds.Size.X, bounds.Size.Y) * 0.35f);
+        Color body = gem.Styled(new Color("#B56CFF"));
+        Vector2[] points =
+        [
+            center + new Vector2(0, -radius),
+            center + new Vector2(radius * 0.92f, -radius * 0.18f),
+            center + new Vector2(radius * 0.50f, radius * 0.92f),
+            center + new Vector2(-radius * 0.50f, radius * 0.92f),
+            center + new Vector2(-radius * 0.92f, -radius * 0.18f)
+        ];
+        Vector2 shadowOffset = new(2, 3);
+        Vector2[] shadowPoints =
+        [
+            points[0] + shadowOffset,
+            points[1] + shadowOffset,
+            points[2] + shadowOffset,
+            points[3] + shadowOffset,
+            points[4] + shadowOffset
+        ];
+        DrawColoredPolygon(shadowPoints, new Color(0, 0, 0, 0.24f));
+        DrawColoredPolygon(points, body);
+        DrawPolyline([points[0], points[1], points[2], points[3], points[4], points[0]], new Color("#F7F5EF", body.A), 1.5f);
+        DrawLine(points[0], points[2], new Color("#FFF0A8", body.A * 0.72f), 1.2f);
+        DrawLine(points[0], points[3], new Color("#FFF0A8", body.A * 0.72f), 1.2f);
+    }
+
+    private void DrawBarricade(WorldObject barricade)
+    {
+        Vector2 start = barricade.ResolvePoint(barricade.Start, TextUnitPixels, ElapsedSeconds);
+        Vector2 end = barricade.ResolvePoint(barricade.End, TextUnitPixels, ElapsedSeconds);
+        Color body = barricade.Styled(new Color("#8A5A37"));
+        float thickness = Mathf.Max(TextUnitPixels * barricade.ThicknessUnits, 10f);
+        DrawLine(start + new Vector2(3, 5), end + new Vector2(3, 5), new Color(0, 0, 0, 0.28f), thickness * 1.15f);
+        DrawLine(start, end, new Color("#202A34", body.A * 0.98f), thickness * 1.05f);
+        DrawLine(start, end, body, thickness * 0.82f);
+        DrawLine(start, end, new Color("#FFF0A8", body.A * 0.78f), 2f);
+        Vector2 direction = (end - start).LengthSquared() < 0.01f ? Vector2.Right : (end - start).Normalized();
+        Vector2 normal = new(-direction.Y, direction.X);
+        float length = start.DistanceTo(end);
+        int slats = Mathf.Clamp(Mathf.RoundToInt(length / Mathf.Max(14f, TextUnitPixels * 2.4f)), 1, 12);
+        for (int i = 0; i <= slats; i++)
+        {
+            float t = slats == 0 ? 0f : i / (float)slats;
+            Vector2 point = start.Lerp(end, t);
+            DrawLine(point - normal * thickness * 0.46f, point + normal * thickness * 0.46f, new Color("#202A34", body.A * 0.75f), 1.6f);
+        }
     }
 
     private void DrawEditorOnlyObject(WorldObject worldObject, string label, Color color)

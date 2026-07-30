@@ -118,6 +118,22 @@
       "explosionFrames": [0, 6],
       "defaultRadiusUnits": 3.5,
       "textBlast": true
+    },
+    {
+      "id": "legacy-enemy-death",
+      "name": "Legacy Enemy Death",
+      "runtimePath": "res://assets/project/effects/legacy-enemy-death.png",
+      "rawPath": "raw base assets/Legacy Collection/Legacy Collection/Assets/Explosions and Magic/EnemyDeath/spritesheet.png",
+      "frameWidth": 48,
+      "frameHeight": 48,
+      "frameCount": 8,
+      "projectileFrames": null,
+      "impactFrames": null,
+      "explosionFrames": [0, 7],
+      "defaultRadiusUnits": 4.0,
+      "textBlast": true,
+      "importCategory": "effects/projectiles",
+      "importStatus": "Legacy Collection RAD import test; keep provenance-reviewed before hub/export use"
     }
   ]
 }

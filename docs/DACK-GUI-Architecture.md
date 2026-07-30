@@ -1,5 +1,7 @@
 # DACK GUI Architecture: Collapsible Construction Cockpit
 
+Related: [DACK Sprite Studio Mini-App](DACK-Sprite-Studio-Mini-App.md).
+
 ## Purpose
 
 DACK is not one game with menus. It is a desktop/world transformer with multiple construction kits. The GUI therefore needs to scale from a nearly invisible play overlay to a serious editor without burying the playfield under chrome.

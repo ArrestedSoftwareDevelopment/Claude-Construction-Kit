@@ -20,6 +20,13 @@ public sealed record CapturedPageFrame(
 
 public static class CapturedPageImportModule
 {
+    private const int MinTextRowInkPixels = 8;
+    private const int MinTextRowSpan = 8;
+    private const int MinTextBandInkPixels = 8;
+    private const int MinTextBandWidth = 4;
+    private const float LocalContrastThreshold = 0.105f;
+    private const float LightInkContrastThreshold = 0.075f;
+
     private static readonly string[] CandidatePaths =
     [
         "res://../Screenshot 2026-07-26 174658.png",
@@ -98,7 +105,7 @@ public static class CapturedPageImportModule
                 rowMaxX = Math.Max(rowMaxX, x);
             }
 
-            bool textRow = rowDarkPixels >= 18 && rowMaxX - rowMinX >= 24;
+            bool textRow = rowDarkPixels >= MinTextRowInkPixels && rowMaxX - rowMinX >= MinTextRowSpan;
             if (textRow)
             {
                 if (!inBand)
@@ -152,7 +159,7 @@ public static class CapturedPageImportModule
                 rowMaxX = Math.Max(rowMaxX, x);
             }
 
-            bool textRow = rowDarkPixels >= 18 && rowMaxX - rowMinX >= 24;
+            bool textRow = rowDarkPixels >= MinTextRowInkPixels && rowMaxX - rowMinX >= MinTextRowSpan;
             if (textRow)
             {
                 if (!inBand)
@@ -206,7 +213,7 @@ public static class CapturedPageImportModule
                 rowMaxX = Math.Max(rowMaxX, x);
             }
 
-            bool textRow = rowDarkPixels >= 18 && rowMaxX - rowMinX >= 24;
+            bool textRow = rowDarkPixels >= MinTextRowInkPixels && rowMaxX - rowMinX >= MinTextRowSpan;
             if (textRow)
             {
                 if (!inBand)
@@ -294,7 +301,7 @@ public static class CapturedPageImportModule
         int height = endY - startY + 1;
         int width = maxX - minX + 1;
 
-        if (height is < 2 or > 32 || width < 30 || darkPixels < 30)
+        if (height is < 2 or > 36 || width < MinTextBandWidth || darkPixels < MinTextBandInkPixels)
             return;
 
         platforms.Add(new Rect2(minX, startY + height - 1, width, 3));
@@ -310,7 +317,7 @@ public static class CapturedPageImportModule
         int height = endY - startY + 1;
         int width = maxX - minX + 1;
 
-        if (height is < 2 or > 32 || width < 30 || darkPixels < 30)
+        if (height is < 2 or > 36 || width < MinTextBandWidth || darkPixels < MinTextBandInkPixels)
             return;
 
         int runStartX = -1;
@@ -397,7 +404,7 @@ public static class CapturedPageImportModule
         int height = endY - startY + 1;
         int width = maxX - minX + 1;
 
-        if (height is < 2 or > 32 || width < 30 || darkPixels < 30)
+        if (height is < 2 or > 36 || width < MinTextBandWidth || darkPixels < MinTextBandInkPixels)
             return;
 
         lines.Add(new Rect2(minX - 1, startY - 1, width + 2, Math.Max(6, height + 2)));
@@ -513,7 +520,13 @@ public static class CapturedPageImportModule
         if (samples == 0)
             return false;
 
-        return backgroundLuminance / samples - pixelLuminance > 0.16f;
+        float background = backgroundLuminance / samples;
+        float contrast = background - pixelLuminance;
+        if (contrast > LocalContrastThreshold)
+            return true;
+
+        float chroma = Math.Max(pixel.R, Math.Max(pixel.G, pixel.B)) - Math.Min(pixel.R, Math.Min(pixel.G, pixel.B));
+        return contrast > LightInkContrastThreshold && pixelLuminance < 0.74f && chroma < 0.22f;
     }
 
     private static bool IsBonusAnchorPixel(Color pixel)

@@ -145,6 +145,50 @@ This argues that the first importer should not assume square frames or perfect g
 
 `Knight`, `Props`, `Sprites`, `MountainDuskGodot`, `all_64c`, and `all_spr` need explicit provenance before any curated runtime admission. They may still inform editor/animator design locally.
 
+### 7. Legacy Collection deep pass: sorted animation vault
+
+The Legacy Collection has now been processed into a local-only quarantine catalog:
+
+- `dack/assets/quarantine/legacy-collection-prep/legacy-collection-summary.md`
+- `dack/assets/quarantine/legacy-collection-prep/legacy-collection-catalog.json`
+- `dack/assets/quarantine/legacy-collection-prep/legacy-collection-bundles.json`
+
+The pack is stronger than a generic art dump. It is organized into coherent game-family folders and contains many complete animation bundles.
+
+Observed pass results:
+
+| Area | Result |
+| --- | ---: |
+| Files | 2,210 |
+| Image files | 1,809 |
+| Candidate bundles | 111 |
+| Spritesheet-ready bundles | 53 |
+| Sequence-ready bundles | 11 |
+
+High-value bundle families:
+
+- **Explosions and Magic:** EnemyDeath, Explosions pack, Ground Explosion, Grotto Escape FX, Warped shooting FX, Water splash. This should feed the reusable effects/projectile library first.
+- **Gothicvania characters:** Bridge Heroine, Terrible Knight, Hell Beast, Hell Hound, Ogre, ghost/death/demon/flying-eye/flying-bird families. These are rich side-view character/enemy candidates.
+- **TinyRPG:** frogs, mummies, ogres, slimes, wizards, monsters, top-down fantasy, dungeon robot. This supports RPG, maze, Snake/Pac-like, escort, and small arena experiments.
+- **Warped:** alien walkers/flyers, mech unit, space marine, spaceship unit, tank unit, top-down boss, top-down shooter enemies/ships, vehicles. This is the best source bucket for overhead/Combat/Robotron/space/tank/Lunar-Lander-style work.
+- **Misc sunny characters:** sunny dragon, bunny, froggy, mushroom. These are useful cute-platformer and all-purpose enemy/player test actors.
+
+Importer implications:
+
+- Treat PNG/GIF as the first import tier. PSD, ASE, and ASEPRITE files remain source/reference until we deliberately add those bridges.
+- Prefer bundle-level import over file-level import. The editor should show "Bridge Heroine" or "Warped tank unit," then expose detected sheets/sequences inside that bundle.
+- The bundle manifest is a better source for shelves than the raw tree because it groups animation intent, common dimensions, preview GIFs, and spritesheets.
+- The first promotion pass should be effects/projectiles, then Warped overhead/tank/ship actors, then TinyRPG monsters, then fuller Gothicvania side-view actors.
+- Do not ship the raw collection. Promote only curated DACK presets into `dack/assets/project/` or `dack/assets/third_party/` with explicit provenance.
+
+Current import process decision:
+
+- Import one category at a time.
+- Start with **Effects / Projectiles**, because those are reusable across every game family.
+- First runtime test import: `Legacy Enemy Death`, an 8-frame 48x48 spritesheet from `Explosions and Magic/EnemyDeath`.
+- Use imported effects for clear gameplay jobs first. In the RAD, this sheet is bound to enemy defeat bursts while ordinary projectile hits keep the existing fireball impact.
+- After the effect shelf feels right, repeat the same process for one actor category: likely Warped overhead/space/tank actors before larger Gothicvania side-view actors.
+
 ## Asset Governance Rules
 
 1. **Raw is not runtime.** Nothing in `raw base assets/` ships or enters hub packages by default.
@@ -158,6 +202,8 @@ This argues that the first importer should not assume square frames or perfect g
 ## Sprite Editor / Animator Boundary
 
 DACK should have two cooperating art tools:
+
+Detailed mini-app plan: [DACK Sprite Studio Mini-App](DACK-Sprite-Studio-Mini-App.md).
 
 ### Live-linked sprite pad
 

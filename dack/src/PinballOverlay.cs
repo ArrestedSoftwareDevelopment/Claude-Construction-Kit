@@ -321,8 +321,8 @@ public partial class PinballOverlay : Control
             Vector2 rightPivot = new(bounds.Position.X + bounds.Size.X * 0.62f, bounds.End.Y - unit * 8f);
             bool leftActive = IsLeftFlipperHeld();
             bool rightActive = IsRightFlipperHeld();
-            Vector2 leftRest = leftPivot + new Vector2(unit * 11f, -unit * 1.5f);
-            Vector2 rightRest = rightPivot + new Vector2(-unit * 11f, -unit * 1.5f);
+            Vector2 leftRest = leftPivot + new Vector2(unit * 11f, unit * 1.7f);
+            Vector2 rightRest = rightPivot + new Vector2(-unit * 11f, unit * 1.7f);
             flippers.Add(new FlipperGeometry(leftPivot, leftPivot + (leftRest - leftPivot).Rotated(Mathf.DegToRad(leftActive ? -34f : 0f)), Mathf.Max(10f, unit * 1.45f), true, leftActive, 780f));
             flippers.Add(new FlipperGeometry(rightPivot, rightPivot + (rightRest - rightPivot).Rotated(Mathf.DegToRad(rightActive ? 34f : 0f)), Mathf.Max(10f, unit * 1.45f), false, rightActive, 780f));
         }

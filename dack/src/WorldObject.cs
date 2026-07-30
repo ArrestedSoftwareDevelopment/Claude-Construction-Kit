@@ -19,7 +19,10 @@ public enum WorldObjectKind
     PinballPlunger,
     PinballDrain,
     PinballRollover,
-    PinballGate
+    PinballGate,
+    Coin,
+    Gem,
+    Barricade
 }
 
 public enum MarkerRole

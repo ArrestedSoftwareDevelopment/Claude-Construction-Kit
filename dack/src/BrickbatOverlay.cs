@@ -281,6 +281,12 @@ public partial class BrickbatOverlay : Control
                 if (!ball.Intersects(_bricks[i].Bounds, true))
                     continue;
 
+                if (_bricks[i].Actor is null && Playfield is not null && !Playfield.IsTextRegionStillActive(_bricks[i].Bounds))
+                {
+                    _bricks.RemoveAt(i);
+                    continue;
+                }
+
                 if (TextCollisionMode == TextCollisionMode.Bounce)
                     BounceFrom(_bricks[i].Bounds, ref ballPosition, ref ballVelocity);
 

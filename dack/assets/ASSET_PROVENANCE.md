@@ -114,3 +114,26 @@ are explicitly prepared.
   player strips, mixed sprite sheets, loose object sheets, and single sprites.
   This makes it a strong local use case for blob detection, manual frame
   grouping, animation clip naming, and future `.dackanim.json` manifest export.
+
+### Legacy Collection
+
+- Local source:
+  `raw base assets/Legacy Collection/Legacy Collection/`
+- Local license records:
+  `raw base assets/Legacy Collection/Legacy Collection/public-license.pdf`
+  and
+  `raw base assets/Legacy Collection/Legacy Collection/Legacy Collection Assets Guide.pdf`
+- Current status: local RAD import testing. The collection has been cataloged
+  into quarantine metadata, but individual runtime admissions still need
+  explicit license/credit review before public builds, exports, hub packages, or
+  repository commits intended for redistribution.
+- Catalog outputs:
+  `quarantine/legacy-collection-prep/legacy-collection-summary.md`
+  and
+  `quarantine/legacy-collection-prep/legacy-collection-bundles.json`
+- First category import test:
+  `project/effects/legacy-enemy-death.png`, copied from
+  `raw base assets/Legacy Collection/Legacy Collection/Assets/Explosions and Magic/EnemyDeath/spritesheet.png`.
+- Intended evaluation use: reusable effects/projectiles shelf wiring, enemy
+  defeat animation, impact/death effect profile handling, and text-shrapnel
+  blast behavior.

@@ -28,6 +28,7 @@ public partial class Main : Control
 
     private Control _workspace = null!;
     private Control _bossOverlay = null!;
+    private PanelContainer _playfieldFrame = null!;
     private PlayfieldSurface _playfield = null!;
     private CombatFxOverlay _combatFxOverlay = null!;
     private SpritePad _spritePad = null!;
@@ -50,6 +51,11 @@ public partial class Main : Control
     private Control _brickbatPanel = null!;
     private Control _pinballPanel = null!;
     private Control _overheadPanel = null!;
+    private Label _legacyLibraryStatus = null!;
+    private List<LegacyAssetBundle> _legacyBundles = [];
+    private CharacterPreviewPanel _characterPreview = null!;
+    private CharacterPreviewPanel _spriteEditorPreview = null!;
+    private Label _characterWorkbenchStatus = null!;
     private readonly List<Button> _editorPlayButtons = [];
     private Label _cockpitStatus = null!;
     private Label _inspectorText = null!;
@@ -69,6 +75,7 @@ public partial class Main : Control
     private string _animationEditorSourceId = "tgc-player";
     private string _animationEditorFolder = "game-creators-pack-graphics-prep";
     private string _animationEditorFileName = "tgc-player.dackanim.json";
+    private SpriteFrame[] _animationEditorFrames = [];
     private int _animationEditorFrameCount;
     private bool _syncingClipUnavailable;
     private bool _syncingCharacterName;
@@ -203,7 +210,10 @@ public partial class Main : Control
                  && !escKey.Echo
                  && escKey.Keycode == Key.Escape)
         {
-            ToggleCockpit();
+            if (_sidebar is not null && _sidebar.Visible)
+                CloseSpritePanel();
+            else
+                ToggleCockpit();
             GetViewport().SetInputAsHandled();
         }
     }
@@ -245,11 +255,11 @@ public partial class Main : Control
         status.AddThemeFontSizeOverride("font_size", 13);
         headerRow.AddChild(status);
 
-        Button bossButton = Button("BOSS KEY  Ctrl+Alt+B");
+        Button bossButton = Button("Boss Key  Ctrl+Alt+B");
         bossButton.Pressed += ToggleBossMode;
         headerRow.AddChild(bossButton);
 
-        _spritePanelButton = Button("SHOW SPRITE PAD");
+        _spritePanelButton = Button("Show Sprite Pad");
         _spritePanelButton.Pressed += ToggleSpritePanel;
         headerRow.AddChild(_spritePanelButton);
 
@@ -260,15 +270,15 @@ public partial class Main : Control
         };
         _workspace.AddChild(body);
 
-        PanelContainer playfieldFrame = new()
+        _playfieldFrame = new PanelContainer
         {
             CustomMinimumSize = Vector2.Zero
         };
-        playfieldFrame.AddThemeStyleboxOverride("panel", FlatStyle("#111820", 0));
-        body.AddChild(playfieldFrame);
+        _playfieldFrame.AddThemeStyleboxOverride("panel", FlatStyle("#111820", 0));
+        body.AddChild(_playfieldFrame);
 
         MarginContainer playfieldMargin = Margins(0, 0, 0, 0);
-        playfieldFrame.AddChild(playfieldMargin);
+        _playfieldFrame.AddChild(playfieldMargin);
         _playfield = new PlayfieldSurface
         {
             ClipContents = true,
@@ -287,10 +297,7 @@ public partial class Main : Control
         BuildCockpit();
         BuildPlatformerHud();
 
-        _sidebar = new PanelContainer
-        {
-            CustomMinimumSize = new Vector2(392, 0)
-        };
+        _sidebar = new PanelContainer();
         _sidebar.AddThemeStyleboxOverride("panel", FlatStyle("#F2EFE8", 0));
         body.AddChild(_sidebar);
 
@@ -299,6 +306,31 @@ public partial class Main : Control
         VBoxContainer side = new();
         side.AddThemeConstantOverride("separation", 10);
         sidebarMargin.AddChild(side);
+
+        HBoxContainer spriteEditorTop = new();
+        spriteEditorTop.AddThemeConstantOverride("separation", 8);
+        side.AddChild(spriteEditorTop);
+
+        Label spriteEditorTitle = Heading("SPRITE / ANIMATION EDITOR");
+        spriteEditorTitle.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        spriteEditorTop.AddChild(spriteEditorTitle);
+
+        Button closeSpriteEditor = Button("×");
+        closeSpriteEditor.TooltipText = "Close Sprite / Animation Editor";
+        closeSpriteEditor.CustomMinimumSize = new Vector2(42, 34);
+        closeSpriteEditor.Pressed += CloseSpritePanel;
+        spriteEditorTop.AddChild(closeSpriteEditor);
+
+        _spriteEditorPreview = new CharacterPreviewPanel
+        {
+            CustomMinimumSize = new Vector2(0, 260),
+            BackgroundColor = new Color("#FFFFFF"),
+            BorderColor = new Color("#D9DEE5"),
+            TitleColor = new Color("#202A34"),
+            TextColor = new Color("#202A34"),
+            MutedTextColor = new Color("#52606D")
+        };
+        side.AddChild(_spriteEditorPreview);
 
         Label selectedHeading = Heading("SELECTED ACTOR");
         side.AddChild(selectedHeading);
@@ -330,7 +362,7 @@ public partial class Main : Control
         HBoxContainer characterPicker = new();
         side.AddChild(characterPicker);
 
-        Button stickman = Button("STICKMAN");
+        Button stickman = Button("Stickman");
         stickman.TooltipText = "Use the current OctoPyte stick figure animation set.";
         stickman.Pressed += () =>
         {
@@ -339,7 +371,7 @@ public partial class Main : Control
         };
         characterPicker.AddChild(stickman);
 
-        Button gameCreatorPlayer = Button("TGC PLAYER");
+        Button gameCreatorPlayer = Button("TGC Player");
         gameCreatorPlayer.TooltipText = "Use The Game Creator's Pack player strip via local blob-detected frames.";
         gameCreatorPlayer.Pressed += () =>
         {
@@ -348,7 +380,7 @@ public partial class Main : Control
         };
         characterPicker.AddChild(gameCreatorPlayer);
 
-        Button sunnyDragon = Button("SUNNY DRAGON");
+        Button sunnyDragon = Button("Sunny Dragon");
         sunnyDragon.TooltipText = "Add the Legacy Collection Sunny Dragon fly strip as the first animated enemy.";
         sunnyDragon.Pressed += () =>
         {
@@ -357,7 +389,7 @@ public partial class Main : Control
         };
         characterPicker.AddChild(sunnyDragon);
 
-        Button tgcOrange = Button("ORANGE WORKER");
+        Button tgcOrange = Button("Orange Worker");
         tgcOrange.TooltipText = "Add the TGC Orange Worker as an enemy.";
         tgcOrange.Pressed += () => AddTgcEnemy(
             "Orange Worker",
@@ -366,7 +398,7 @@ public partial class Main : Control
         );
         characterPicker.AddChild(tgcOrange);
 
-        Button tgcRed = Button("RED RUNNER");
+        Button tgcRed = Button("Red Runner");
         tgcRed.TooltipText = "Add the TGC Red Runner as an enemy.";
         tgcRed.Pressed += () => AddTgcEnemy(
             "Red Runner",
@@ -375,7 +407,7 @@ public partial class Main : Control
         );
         characterPicker.AddChild(tgcRed);
 
-        Button tgcBlue = Button("BLUE GUARD");
+        Button tgcBlue = Button("Blue Guard");
         tgcBlue.TooltipText = "Add the TGC Blue Guard as an enemy.";
         tgcBlue.Pressed += () => AddTgcEnemy(
             "Blue Guard",
@@ -384,7 +416,7 @@ public partial class Main : Control
         );
         characterPicker.AddChild(tgcBlue);
 
-        Button tgcGreen = Button("GREEN CRAWLER");
+        Button tgcGreen = Button("Green Crawler");
         tgcGreen.TooltipText = "Add the TGC Green Crawler as an enemy.";
         tgcGreen.Pressed += () => AddTgcEnemy(
             "Green Crawler",
@@ -393,7 +425,7 @@ public partial class Main : Control
         );
         characterPicker.AddChild(tgcGreen);
 
-        Button tgcBoss = Button("SHOOTER BOSS");
+        Button tgcBoss = Button("Shooter Boss");
         tgcBoss.TooltipText = "Add the TGC Shooter Boss as a static/large enemy.";
         tgcBoss.Pressed += () => AddTgcEnemy(
             "Shooter Boss",
@@ -402,7 +434,7 @@ public partial class Main : Control
         );
         characterPicker.AddChild(tgcBoss);
 
-        Button tgcFleet = Button("SHOOTER FLEET");
+        Button tgcFleet = Button("Shooter Fleet");
         tgcFleet.TooltipText = "Add the TGC Shooter Fleet sheet as an enemy.";
         tgcFleet.Pressed += () => AddTgcEnemy(
             "Shooter Fleet",
@@ -411,7 +443,7 @@ public partial class Main : Control
         );
         characterPicker.AddChild(tgcFleet);
 
-        Button battleShip = Button("BATTLE SHIP");
+        Button battleShip = Button("Battle Ship");
         battleShip.TooltipText = "Use the Legacy top-down shooter ship as the Overhead/space player.";
         battleShip.Pressed += () => SetPlayerCharacter(
             "Battle Ship 01",
@@ -451,7 +483,7 @@ public partial class Main : Control
         side.AddChild(_tgcClipRows);
         LoadTgcEditorDefaults();
 
-        Button addPreset = Button("ADD PRESET LABEL");
+        Button addPreset = Button("Add Preset Label");
         addPreset.Pressed += () =>
         {
             string label = NextMissingPresetLabel();
@@ -463,7 +495,7 @@ public partial class Main : Control
         };
         side.AddChild(addPreset);
 
-        Button addLabel = Button("ADD LABEL");
+        Button addLabel = Button("Add Label");
         addLabel.Pressed += () =>
         {
             int maxFrame = Mathf.Max(0, _animationEditorFrameCount - 1);
@@ -474,23 +506,23 @@ public partial class Main : Control
         };
         side.AddChild(addLabel);
 
-        Button applyTgcClips = Button("APPLY ANIM LABELS");
+        Button applyTgcClips = Button("Apply Anim Labels");
         applyTgcClips.Pressed += ApplyTgcClipRanges;
         side.AddChild(applyTgcClips);
 
-        Button reloadDefaultAnim = Button("RELOAD DEFAULT ANIM");
+        Button reloadDefaultAnim = Button("Reload Default Anim");
         reloadDefaultAnim.Pressed += ReloadSelectedAnimationDefaults;
         side.AddChild(reloadDefaultAnim);
 
-        Button testDeath = Button("TEST DEATH");
+        Button testDeath = Button("Test Death");
         testDeath.Pressed += TriggerDeathAnimation;
         side.AddChild(testDeath);
 
-        Button loadTgcClips = Button("LOAD ANIM LABELS");
+        Button loadTgcClips = Button("Load Anim Labels");
         loadTgcClips.Pressed += LoadAnimationClipLabels;
         side.AddChild(loadTgcClips);
 
-        Button saveTgcClips = Button("SAVE ANIM LABELS");
+        Button saveTgcClips = Button("Save Anim Labels");
         saveTgcClips.Pressed += SaveTgcClipLabels;
         side.AddChild(saveTgcClips);
 
@@ -500,7 +532,7 @@ public partial class Main : Control
         HBoxContainer tools = new();
         side.AddChild(tools);
 
-        Button paint = Button("PAINT");
+        Button paint = Button("Paint");
         paint.Pressed += () =>
         {
             _spritePad.Erasing = false;
@@ -508,7 +540,7 @@ public partial class Main : Control
         };
         tools.AddChild(paint);
 
-        Button erase = Button("ERASE");
+        Button erase = Button("Erase");
         erase.Pressed += () =>
         {
             _spritePad.Erasing = true;
@@ -552,12 +584,12 @@ public partial class Main : Control
         HBoxContainer actions = new();
         side.AddChild(actions);
 
-        Button fork = Button("FORK SELECTED");
+        Button fork = Button("Fork Selected");
         fork.TooltipText = "Give this actor its own independent sprite.";
         fork.Pressed += ForkSelected;
         actions.AddChild(fork);
 
-        Button reset = Button("RESET FIGURE");
+        Button reset = Button("Reset Figure");
         reset.Pressed += () => _selectedActor.Model.ResetToProcedural();
         actions.AddChild(reset);
 
@@ -576,12 +608,12 @@ public partial class Main : Control
         HBoxContainer motionButtons = new();
         side.AddChild(motionButtons);
 
-        Button horizontal = Button("PITFALL");
+        Button horizontal = Button("Pitfall");
         horizontal.TooltipText = "Horizontal platformer tuning.";
         horizontal.Pressed += () => SetPlatformerMode(PlatformerMode.Horizontal);
         motionButtons.AddChild(horizontal);
 
-        Button vertical = Button("CLIMBER");
+        Button vertical = Button("Climber");
         vertical.TooltipText = "Vertical platformer tuning with ladders.";
         vertical.Pressed += () => SetPlatformerMode(PlatformerMode.Vertical);
         motionButtons.AddChild(vertical);
@@ -607,13 +639,13 @@ public partial class Main : Control
 
         HBoxContainer actorSizeRow = new();
         actorSizeRow.AddThemeConstantOverride("separation", 6);
-        Button halfSize = Button("ACTOR 1/2x");
+        Button halfSize = Button("Actor 1/2x");
         halfSize.Pressed += () => SetActorSizeMultiplier(0.5f);
         actorSizeRow.AddChild(halfSize);
-        Button normalSize = Button("ACTOR 1x");
+        Button normalSize = Button("Actor 1x");
         normalSize.Pressed += () => SetActorSizeMultiplier(1f);
         actorSizeRow.AddChild(normalSize);
-        Button doubleSize = Button("ACTOR 2x");
+        Button doubleSize = Button("Actor 2x");
         doubleSize.Pressed += () => SetActorSizeMultiplier(2f);
         actorSizeRow.AddChild(doubleSize);
         side.AddChild(actorSizeRow);
@@ -759,6 +791,11 @@ public partial class Main : Control
         columns.AddChild(_brickbatPanel);
         columns.AddChild(_pinballPanel);
         columns.AddChild(_overheadPanel);
+        columns.AddChild(BuildLegacyLibraryPanel());
+        columns.AddChild(BuildEnemiesPanel());
+        columns.AddChild(BuildProjectilesPanel());
+        columns.AddChild(BuildObjectsPanel());
+        columns.AddChild(BuildCharacterWorkbenchPanel());
         columns.AddChild(BuildInspectorPanel());
         columns.AddChild(BuildUnderstandingPanel());
         FitCockpitToViewport();
@@ -824,7 +861,7 @@ public partial class Main : Control
         PanelContainer panel = CockpitPanel(260);
         VBoxContainer shelf = PanelVBox(panel);
         shelf.AddChild(CockpitHeading("PLATFORMER"));
-        AddGameTypeSessionBlock(shelf, PlaysetMode.Platformer, "ENTER PLATFORMER");
+        AddGameTypeSessionBlock(shelf, PlaysetMode.Platformer, "Enter Platformer");
 
         shelf.AddChild(CockpitHeading("BUILD TOOLS"));
         shelf.AddChild(ButtonRow(
@@ -958,7 +995,7 @@ public partial class Main : Control
         shelf.AddChild(textDestruction);
 
         shelf.AddChild(CockpitHeading("RESET"));
-        Button clear = Button("CLEAR PLACED PARTS");
+        Button clear = Button("Clear Placed Parts");
         clear.Pressed += () =>
         {
             _playfield.ClearPlacedObjects();
@@ -975,7 +1012,7 @@ public partial class Main : Control
         PanelContainer panel = CockpitPanel(250);
         VBoxContainer brickbat = PanelVBox(panel);
         brickbat.AddChild(CockpitHeading("BRICKBAT PAGE"));
-        AddGameTypeSessionBlock(brickbat, PlaysetMode.Brickbat, "ENTER BRICKBAT");
+        AddGameTypeSessionBlock(brickbat, PlaysetMode.Brickbat, "Enter Brickbat");
 
         Button paddle = Button(_brickbatOverlay.SidePaddle ? "Paddle: Side" : "Paddle: Bottom");
         paddle.Pressed += () =>
@@ -1019,7 +1056,7 @@ public partial class Main : Control
         };
         brickbat.AddChild(textCollision);
 
-        Button reset = Button("RESET BRICKBAT");
+        Button reset = Button("Reset Brickbat");
         reset.Pressed += () =>
         {
             SetPlaysetMode(PlaysetMode.Brickbat);
@@ -1028,7 +1065,7 @@ public partial class Main : Control
         };
         brickbat.AddChild(reset);
 
-        Button resetHud = Button("AUTO-PLACE SCORE");
+        Button resetHud = Button("Auto-Place Score");
         resetHud.Pressed += () =>
         {
             _brickbatOverlay.ResetHudPosition();
@@ -1044,7 +1081,7 @@ public partial class Main : Control
         PanelContainer panel = CockpitPanel(250);
         VBoxContainer pinball = PanelVBox(panel);
         pinball.AddChild(CockpitHeading("PINBALL PAGE"));
-        AddGameTypeSessionBlock(pinball, PlaysetMode.Pinball, "ENTER PINBALL");
+        AddGameTypeSessionBlock(pinball, PlaysetMode.Pinball, "Enter Pinball");
 
         pinball.AddChild(CockpitHeading("FIRST PARTS"));
         pinball.AddChild(PinballShelfButton("Add Flipper", WorldObjectKind.PinballFlipper, "Pivot-to-tip flipper placeholder. A/B handles define pivot, length, and resting angle."));
@@ -1061,7 +1098,550 @@ public partial class Main : Control
         PanelContainer panel = CockpitPanel(250);
         VBoxContainer overhead = PanelVBox(panel);
         overhead.AddChild(CockpitHeading("OVERHEAD PAGE"));
-        AddGameTypeSessionBlock(overhead, PlaysetMode.Overhead, "ENTER OVERHEAD");
+        AddGameTypeSessionBlock(overhead, PlaysetMode.Overhead, "Enter Overhead");
+        return panel;
+    }
+
+    private Control BuildLegacyLibraryPanel()
+    {
+        _legacyBundles = LoadLegacyBundles();
+
+        PanelContainer panel = CockpitPanel(330);
+        VBoxContainer library = PanelVBox(panel);
+        library.AddChild(CockpitHeading("ASSET LIBRARY"));
+        _legacyLibraryStatus = CockpitNote(LegacyLibraryStatusText());
+        library.AddChild(_legacyLibraryStatus);
+
+        Button refresh = Button("Refresh Legacy Catalog");
+        refresh.TooltipText = "Reload the generated Legacy Collection bundle manifest from quarantine.";
+        refresh.Pressed += () =>
+        {
+            _legacyBundles = LoadLegacyBundles();
+            _legacyLibraryStatus.Text = LegacyLibraryStatusText();
+            _inspectorText.Text = "Legacy asset catalog refreshed.\n\nThe visible shelf is built when the Cockpit opens; close/reopen the Cockpit after regenerating the catalog to rebuild the candidate buttons.";
+        };
+        library.AddChild(refresh);
+
+        AddLegacyBundleGroup(
+            library,
+            "EFFECTS / PROJECTILES",
+            bundle => bundle.primaryCategory is "effects" or "projectiles",
+            "Reusable FX deck: assign to projectiles, impacts, deaths, Brickbat bursts, Pinball hits, and text shrapnel."
+        );
+
+        AddLegacyBundleGroup(
+            library,
+            "SIDE VIEW ACTORS",
+            bundle => bundle.bundleRoot.StartsWith("Gothicvania/Characters", StringComparison.OrdinalIgnoreCase)
+                || bundle.bundleRoot.StartsWith("Misc/Characters", StringComparison.OrdinalIgnoreCase),
+            "Side-view shelf: platformer enemies, bosses, flyers, animated Brickbat/Pinball targets, and side-scroller player tests."
+        );
+
+        AddLegacyBundleGroup(
+            library,
+            "OVERHEAD / SPACE / TANK",
+            bundle => bundle.bundleRoot.StartsWith("Warped/Characters", StringComparison.OrdinalIgnoreCase)
+                || bundle.bundleRoot.Contains("asteroid-fighter", StringComparison.OrdinalIgnoreCase),
+            "Overhead shelf: Combat, Robotron, tank/vehicle, flying, space, Lunar Lander, and invasion-style playsets."
+        );
+
+        AddLegacyBundleGroup(
+            library,
+            "RPG / MAZE / MONSTERS",
+            bundle => bundle.bundleRoot.StartsWith("TinyRPG/Characters", StringComparison.OrdinalIgnoreCase),
+            "RPG shelf: Rogue/Hack/Pac-like/Snake/maze/escort actors, dungeon robots, battle sprites, and monster tokens."
+        );
+
+        AddLegacyBundleGroup(
+            library,
+            "OBJECTS / TILES / WORLDS",
+            bundle => bundle.primaryCategory is "objects_and_pickups" or "tiles_and_surfaces"
+                || bundle.bundleRoot.Contains("/Environments/", StringComparison.OrdinalIgnoreCase),
+            "Object shelf: pickups, office/game furniture, solids, decorative underlays, board/table parts, and future tile/world slices.",
+            limit: 8
+        );
+
+        library.AddChild(CockpitNote("This panel reads quarantine metadata only. Promoting art into the playable runtime remains explicit, curated, and provenance-recorded."));
+        return panel;
+    }
+
+    private void AddLegacyBundleGroup(VBoxContainer library, string heading, Func<LegacyAssetBundle, bool> predicate, string intent, int limit = 6)
+    {
+        List<LegacyAssetBundle> bundles = _legacyBundles
+            .Where(predicate)
+            .OrderBy(bundle => LegacyBundleQualityRank(bundle.quality))
+            .ThenByDescending(bundle => bundle.imageFiles)
+            .ThenBy(bundle => bundle.bundleRoot, StringComparer.OrdinalIgnoreCase)
+            .Take(limit)
+            .ToList();
+
+        library.AddChild(CockpitHeading(heading));
+        if (bundles.Count == 0)
+        {
+            library.AddChild(CockpitNote("No candidate bundles found yet. Regenerate the Legacy catalog if new assets were added."));
+            return;
+        }
+
+        library.AddChild(CockpitNote(intent));
+        for (int i = 0; i < bundles.Count; i += 2)
+        {
+            Button first = LegacyBundleButton(bundles[i], intent);
+            if (i + 1 < bundles.Count)
+                library.AddChild(ButtonRow(first, LegacyBundleButton(bundles[i + 1], intent)));
+            else
+                library.AddChild(first);
+        }
+    }
+
+    private Button LegacyBundleButton(LegacyAssetBundle bundle, string intent)
+    {
+        Button button = Button(CompactLegacyBundleName(bundle.displayName));
+        button.TooltipText = $"{bundle.bundleRoot}\n{bundle.primaryCategory}, {bundle.quality}, {bundle.imageFiles} images";
+        button.Pressed += () => SelectLegacyBundle(bundle, intent);
+        return button;
+    }
+
+    private void SelectLegacyBundle(LegacyAssetBundle bundle, string intent)
+    {
+        string dimensions = bundle.commonDimensions.Count > 0
+            ? string.Join(", ", bundle.commonDimensions.Take(3).Select(pair => $"{pair.Key} ({pair.Value})"))
+            : "mixed/unknown";
+        string sheets = bundle.spriteSheets.Count > 0
+            ? string.Join("\n", bundle.spriteSheets.Take(4).Select(path => "- " + path))
+            : "- no obvious spritesheet; likely sequence/manual review";
+        string previews = bundle.previews.Count > 0
+            ? string.Join("\n", bundle.previews.Take(3).Select(path => "- " + path))
+            : "- no preview GIF/preview file detected";
+        string runtimeHint = LegacyRuntimeHint(bundle);
+
+        _inspectorText.Text =
+            $"Legacy bundle selected: {bundle.displayName}\n\n"
+            + $"{bundle.bundleRoot}\n\n"
+            + $"Shelf intent: {intent}\n\n"
+            + $"Readiness: {bundle.quality}\n"
+            + $"Category: {bundle.primaryCategory}\n"
+            + $"Images: {bundle.imageFiles}\n"
+            + $"Common sizes: {dimensions}\n\n"
+            + $"Sheets:\n{sheets}\n\n"
+            + $"Previews:\n{previews}\n\n"
+            + runtimeHint;
+    }
+
+    private string LegacyRuntimeHint(LegacyAssetBundle bundle)
+    {
+        if (bundle.bundleRoot.Contains("sunny-dragon", StringComparison.OrdinalIgnoreCase))
+            return "Already partly wired: use Enemies -> Sunny Dragon to place it now. Next step is to let this Library button promote/open it directly.";
+        if (bundle.bundleRoot.Contains("top-down-shooter-ship", StringComparison.OrdinalIgnoreCase))
+            return "Already partly wired: use Character Editor -> Battle Ship Player for the red ship test. This is our overhead/space heading-bin prototype.";
+        if (bundle.primaryCategory is "effects" or "projectiles")
+            return "Best next wiring: feed this into the Projectile/Explosion shelf as assignable projectile art, impact frames, blast radius, sound hooks, and text-shrapnel rules.";
+        if (bundle.bundleRoot.StartsWith("Warped/Characters", StringComparison.OrdinalIgnoreCase))
+            return "Best next wiring: import as an Overhead actor preset with movement physics chosen by role: ship inertia, tank drive, walker patrol, flyer hover, or boss pattern.";
+        if (bundle.bundleRoot.StartsWith("TinyRPG/Characters", StringComparison.OrdinalIgnoreCase))
+            return "Best next wiring: import as RPG/Maze actor tokens with simple direction/facing frames, contact rules, chase/avoid/defend AI, and text-goal behavior.";
+        if (bundle.primaryCategory is "objects_and_pickups" or "tiles_and_surfaces")
+            return "Best next wiring: slice as shelf objects, then tag each as pickup, solid, cover, hazard, decoration, underlay, or trigger.";
+        return "Best next wiring: manual review, then promote as a curated DACK preset if it earns a shelf slot.";
+    }
+
+    private string LegacyLibraryStatusText()
+    {
+        if (_legacyBundles.Count == 0)
+            return "Legacy catalog not found yet. Run the cataloger to populate the shelf.";
+
+        int spritesheetReady = _legacyBundles.Count(bundle => bundle.quality == "spritesheet_ready");
+        int sequenceReady = _legacyBundles.Count(bundle => bundle.quality == "sequence_ready");
+        return $"{_legacyBundles.Count} bundles loaded from quarantine. {spritesheetReady} spritesheet-ready, {sequenceReady} sequence-ready.";
+    }
+
+    private static int LegacyBundleQualityRank(string quality)
+    {
+        return quality switch
+        {
+            "spritesheet_ready" => 0,
+            "sequence_ready" => 1,
+            "manual_review" => 2,
+            _ => 3,
+        };
+    }
+
+    private static string CompactLegacyBundleName(string name)
+    {
+        string cleaned = name
+            .Replace("-Files", "", StringComparison.OrdinalIgnoreCase)
+            .Replace(" Files", "", StringComparison.OrdinalIgnoreCase)
+            .Replace("_", " ")
+            .Replace("-", " ")
+            .Trim();
+        return cleaned.Length <= 22 ? cleaned : cleaned[..21] + "…";
+    }
+
+    private List<LegacyAssetBundle> LoadLegacyBundles()
+    {
+        string projectRoot = ProjectSettings.GlobalizePath("res://");
+        string manifestPath = Path.GetFullPath(Path.Combine(
+            projectRoot,
+            "assets",
+            "quarantine",
+            "legacy-collection-prep",
+            "legacy-collection-bundles.json"
+        ));
+
+        if (!File.Exists(manifestPath))
+            return [];
+
+        try
+        {
+            string json = File.ReadAllText(manifestPath);
+            LegacyBundleManifest? manifest = JsonSerializer.Deserialize<LegacyBundleManifest>(json);
+            return manifest?.bundles ?? [];
+        }
+        catch (Exception ex)
+        {
+            GD.PushWarning($"Could not load Legacy Collection bundle catalog: {ex.Message}");
+            return [];
+        }
+    }
+
+    private Control BuildEnemiesPanel()
+    {
+        PanelContainer panel = CockpitPanel(270);
+        VBoxContainer enemies = PanelVBox(panel);
+        enemies.AddChild(CockpitHeading("ENEMIES"));
+        enemies.AddChild(CockpitNote("Pick by role first. The same art can later be reassigned, but these buttons give useful starter defaults: contact, shooter, flyer/ship, vehicle, boss."));
+
+        enemies.AddChild(CockpitHeading("GROUND CONTACT"));
+        Button redContact = Button("Red Runner");
+        redContact.TooltipText = "Fast ground contact hazard: patrol/chase, no shots by default.";
+        redContact.Pressed += () => AddEnemyCharacter(
+            "Red Runner",
+            SpriteAnimationSet.TryLoadTgcRedRunner(),
+            "Red Runner added as a ground contact enemy.",
+            "Starter role: fast patrol/chase blocker. Projectile ability starts OFF.",
+            canFireProjectiles: false,
+            animationSourceId: "tgc-red-runner"
+        );
+
+        Button greenContact = Button("Green Crawler");
+        greenContact.TooltipText = "Low crawling/slime/insect contact hazard: no shots by default.";
+        greenContact.Pressed += () => AddEnemyCharacter(
+            "Green Crawler",
+            SpriteAnimationSet.TryLoadTgcGreenCrawler(),
+            "Green Crawler added as a crawling contact enemy.",
+            "Starter role: crawl/slime/insect hazard. Projectile ability starts OFF.",
+            canFireProjectiles: false,
+            animationSourceId: "tgc-green-crawler"
+        );
+        enemies.AddChild(ButtonRow(redContact, greenContact));
+
+        enemies.AddChild(CockpitHeading("GROUND SHOOTERS / GUARDS"));
+        Button orangeShooter = Button("Orange Shooter");
+        orangeShooter.TooltipText = "Ground shooter/worker. Uses the Orange Worker art with projectile ability on.";
+        orangeShooter.Pressed += () => AddEnemyCharacter(
+            "Orange Shooter",
+            SpriteAnimationSet.TryLoadTgcOrangeWorker(),
+            "Orange Worker art added as a ground shooter.",
+            "Starter role: ground shooter/guard. Projectile ability starts ON.",
+            canFireProjectiles: true,
+            animationSourceId: "tgc-orange-worker"
+        );
+
+        Button blueGuard = Button("Blue Guard");
+        blueGuard.TooltipText = "Ground guard/shooter candidate. Projectile ability on for guard tests.";
+        blueGuard.Pressed += () => AddEnemyCharacter(
+            "Blue Guard",
+            SpriteAnimationSet.TryLoadTgcBlueGuard(),
+            "Blue Guard added as a ground shooter/guard.",
+            "Starter role: guard/shooter. Projectile ability starts ON.",
+            canFireProjectiles: true,
+            animationSourceId: "tgc-blue-guard"
+        );
+        enemies.AddChild(ButtonRow(orangeShooter, blueGuard));
+
+        enemies.AddChild(CockpitHeading("FLYERS / SPACE SHIPS"));
+        Button sunnyDragon = Button("Sunny Dragon");
+        sunnyDragon.TooltipText = "Animated flying enemy. Good across platformer, Brickbat, pinball, and side/overhead modes.";
+        sunnyDragon.Pressed += () =>
+        {
+            LoadSunnyDragonEditorDefaults();
+            SetEnemyCharacter("Sunny Dragon", SpriteAnimationSet.TryLoadSunnyDragon(), "Sunny Dragon added as a flying shooter enemy.");
+        };
+
+        Button fleet = Button("Shooter Fleet");
+        fleet.TooltipText = "Ship/fleet source for overhead, space, bullet hell, and invasion modes.";
+        fleet.Pressed += () => AddEnemyCharacter(
+            "Shooter Fleet",
+            SpriteAnimationSet.TryLoadTgcShooterFleet(),
+            "TGC Shooter Fleet added as a flyer/space enemy.",
+            "Starter role: ship/fleet shooter. This remains a rough atlas import until per-ship slicing is refined.",
+            canFireProjectiles: true,
+            animationSourceId: "tgc-shooter-fleet"
+        );
+        enemies.AddChild(ButtonRow(sunnyDragon, fleet));
+
+        enemies.AddChild(CockpitHeading("TANKS / VEHICLES"));
+        enemies.AddChild(CockpitNote("Tank/vehicle import buttons come next. Starter behavior: ground drive, turret/projectile package, text-aware obstacle handling, possible defend/patrol logic."));
+
+        enemies.AddChild(CockpitHeading("BOSSES / LARGE HAZARDS"));
+        Button boss = Button("Shooter Boss");
+        boss.TooltipText = "Large shooter/boss/pinball toy candidate.";
+        boss.Pressed += () => AddEnemyCharacter(
+            "Shooter Boss",
+            SpriteAnimationSet.TryLoadTgcShooterBoss(),
+            "TGC Shooter Boss added as a large hazard/boss.",
+            "Starter role: boss shooter or large pinball/Brickbat target. Projectile ability starts ON.",
+            canFireProjectiles: true,
+            animationSourceId: "tgc-shooter-boss"
+        );
+        enemies.AddChild(boss);
+
+        enemies.AddChild(CockpitHeading("BEHAVIOR STARTERS"));
+        Button enemyAi = Button(_enemyAiEnabled ? "AI: On" : "AI: Off");
+        enemyAi.Pressed += () =>
+        {
+            _enemyAiEnabled = !_enemyAiEnabled;
+            enemyAi.Text = _enemyAiEnabled ? "AI: On" : "AI: Off";
+            _inspectorText.Text = _enemyAiEnabled
+                ? "Enemy AI enabled. Enemies patrol/hover, collide, and can block routes."
+                : "Enemy AI disabled. Enemies stay placed for editing.";
+        };
+
+        Button enemyTrack = Button(_enemyTracksPlayer ? "Track Player: On" : "Track Player: Off");
+        enemyTrack.Pressed += () =>
+        {
+            _enemyTracksPlayer = !_enemyTracksPlayer;
+            enemyTrack.Text = _enemyTracksPlayer ? "Track Player: On" : "Track Player: Off";
+            _inspectorText.Text = _enemyTracksPlayer
+                ? "Enemy tracking enabled. Enemies bias facing/firing toward the player."
+                : "Enemy tracking disabled. Enemies keep patrol/guard facing.";
+        };
+
+        Button selectedShoots = Button("Selected Shoots: Toggle");
+        selectedShoots.Pressed += ToggleSelectedEnemyProjectileAbility;
+
+        Button toughness = Button("Toughness +");
+        toughness.Pressed += () => AdjustSelectedEnemyToughness(1);
+
+        enemies.AddChild(ButtonRow(enemyAi, enemyTrack));
+        enemies.AddChild(ButtonRow(selectedShoots, toughness));
+        enemies.AddChild(CockpitNote("Behavior menu seeds: patrol, chase, defend, horde/flock, ground-only, flying, shooter, collision hazard, escort blocker."));
+        return panel;
+    }
+
+    private Control BuildProjectilesPanel()
+    {
+        PanelContainer panel = CockpitPanel(260);
+        VBoxContainer projectiles = PanelVBox(panel);
+        projectiles.AddChild(CockpitHeading("PROJECTILES"));
+        projectiles.AddChild(CockpitNote("Shared projectile and explosion rules for players, enemies, Brickbat-like modes, pinball toys, and future overhead/space games."));
+
+        Button playerGun = Button(_gunEnabled ? "Player Gun: On" : "Player Gun: Off");
+        playerGun.Pressed += () =>
+        {
+            _gunEnabled = !_gunEnabled;
+            playerGun.Text = _gunEnabled ? "Player Gun: On" : "Player Gun: Off";
+            ClearPlayerShots();
+            _inspectorText.Text = _gunEnabled
+                ? "Player gun enabled. Characters can use Run Shoot / Jump Shoot labels and fire projectiles."
+                : "Player gun disabled. This character/game now leans Mario/climber/digger instead of Contra.";
+        };
+
+        Button enemyShots = Button(_enemyProjectilesEnabled ? "Enemy Shots: On" : "Enemy Shots: Off");
+        enemyShots.Pressed += () =>
+        {
+            _enemyProjectilesEnabled = !_enemyProjectilesEnabled;
+            enemyShots.Text = _enemyProjectilesEnabled ? "Enemy Shots: On" : "Enemy Shots: Off";
+            ClearEnemyShots();
+            _inspectorText.Text = _enemyProjectilesEnabled
+                ? "Enemy projectile system enabled. Individual enemies still need projectile ability."
+                : "Enemy projectile system disabled. Contact danger can remain, but enemies will not fire.";
+        };
+
+        projectiles.AddChild(ButtonRow(playerGun, enemyShots));
+
+        Button shotPower = Button(PlayerShotPowerButtonText());
+        shotPower.Pressed += () =>
+        {
+            _playerShotPower = _playerShotPower >= 4 ? 1 : _playerShotPower + 1;
+            shotPower.Text = PlayerShotPowerButtonText();
+            _inspectorText.Text = $"Player gun power set to {_playerShotPower}x. Enemy toughness is reduced by that amount per hit.";
+        };
+
+        Button enemyDamage = Button(EnemyShotDamageButtonText());
+        enemyDamage.Pressed += () =>
+        {
+            _enemyShotDamage = _enemyShotDamage >= 3 ? 1 : _enemyShotDamage + 1;
+            enemyDamage.Text = EnemyShotDamageButtonText();
+            _inspectorText.Text = $"Enemy shot damage set to {_enemyShotDamage}. Heart games can tune this separately from instant-death games.";
+        };
+
+        projectiles.AddChild(ButtonRow(shotPower, enemyDamage));
+
+        Button enemyRange = Button(EnemyRangeButtonText());
+        enemyRange.Pressed += () =>
+        {
+            _enemyShotRangeUnits = _enemyShotRangeUnits < 28f ? 34f : _enemyShotRangeUnits < 45f ? 55f : 18f;
+            enemyRange.Text = EnemyRangeButtonText();
+            ClearEnemyShots();
+            _inspectorText.Text = $"Enemy shot range set to {_enemyShotRangeUnits:0} text units.";
+        };
+
+        Button blastText = Button(_explosionsDamageText ? "Blast Letters: On" : "Blast Letters: Off");
+        blastText.Pressed += () =>
+        {
+            _explosionsDamageText = !_explosionsDamageText;
+            blastText.Text = _explosionsDamageText ? "Blast Letters: On" : "Blast Letters: Off";
+            _inspectorText.Text = _explosionsDamageText
+                ? "Explosion blast radius can throw/remove letters in the cloned playfield."
+                : "Explosion visuals stay cosmetic; text is not damaged by blast radius.";
+        };
+
+        projectiles.AddChild(ButtonRow(enemyRange, blastText));
+
+        Button clearShots = Button("Clear All Shots");
+        clearShots.Pressed += () =>
+        {
+            ClearPlayerShots();
+            ClearEnemyShots();
+            _impactEffects.Clear();
+            PushImpactEffectsToPlayfield();
+            _inspectorText.Text = "All active player shots, enemy shots, and explosion visuals cleared.";
+        };
+        projectiles.AddChild(clearShots);
+        projectiles.AddChild(CockpitNote("Next workbench step: assign projectile sprite, impact frame, explosion strip, fire sound, hit sound, speed, range, damage, blast radius, and text rules per actor."));
+        return panel;
+    }
+
+    private Control BuildObjectsPanel()
+    {
+        PanelContainer panel = CockpitPanel(260);
+        VBoxContainer objects = PanelVBox(panel);
+        objects.AddChild(CockpitHeading("OBJECTS"));
+        objects.AddChild(CockpitNote("Level furniture and pickups: gems, coins, barricades, keys, doors, office junk, bonus icons, and future text-bound rewards."));
+
+        objects.AddChild(CockpitHeading("PICKUPS"));
+        objects.AddChild(ButtonRow(
+            ObjectShelfButton("Coin", WorldObjectKind.Coin, "Score pickup placeholder. Drag/scale it now; collection/scoring rules come next."),
+            ObjectShelfButton("Gem", WorldObjectKind.Gem, "Higher-value pickup placeholder. Good for bonuses, keys, fuel, spell words, and rare targets.")));
+
+        objects.AddChild(CockpitHeading("SOLIDS / COVER"));
+        objects.AddChild(ObjectShelfButton("Barricade", WorldObjectKind.Barricade, "Chunky line obstacle. It is draggable/scalable and already acts like a simple standable top surface in side-view tests."));
+
+        objects.AddChild(CockpitHeading("FUTURE OBJECT SET"));
+        objects.AddChild(CockpitNote(
+            "- keys / locks / doors\n"
+            + "- health, ammo, shield, fuel\n"
+            + "- office items: staple, paperclip, pushpin, folder, coffee, sticky note\n"
+            + "- text-bound pickups: collect this word, protect that word\n"
+            + "- visible / invisible triggers using the same object model"
+        ));
+        return panel;
+    }
+
+    private Control BuildCharacterWorkbenchPanel()
+    {
+        PanelContainer panel = CockpitPanel(340);
+        VBoxContainer workbench = PanelVBox(panel);
+        workbench.AddChild(CockpitHeading("CHARACTER EDITOR"));
+        workbench.AddChild(CockpitNote("Selected sprite first; shelves underneath wire the actor into the rest of DACK."));
+
+        _characterPreview = new CharacterPreviewPanel();
+        workbench.AddChild(_characterPreview);
+
+        _characterWorkbenchStatus = CockpitNote("No actor selected yet.");
+        workbench.AddChild(_characterWorkbenchStatus);
+
+        workbench.AddChild(CockpitHeading("PLAYER CHARACTERS"));
+        Button stickmanPlayer = Button("Stickman Player");
+        stickmanPlayer.TooltipText = "Use the OctoPyte stick figure animation set as the current player.";
+        stickmanPlayer.Pressed += () =>
+        {
+            SetPlayerCharacter(
+                "Playable Scout",
+                SpriteAnimationSet.TryLoadStickman(),
+                "Stickman loaded as the current player character.",
+                "stickman-v0.1"
+            );
+            LoadStickmanEditorDefaults();
+        };
+
+        Button tgcPlayer = Button("TGC Player");
+        tgcPlayer.TooltipText = "Use The Game Creator's Pack player strip as the current player.";
+        tgcPlayer.Pressed += () =>
+        {
+            SetPlayerCharacter(
+                "TGC Player",
+                SpriteAnimationSet.TryLoadGameCreatorPlayer(),
+                "TGC Player loaded as the current player character.",
+                "tgc-player"
+            );
+            LoadTgcEditorDefaults();
+        };
+        workbench.AddChild(ButtonRow(stickmanPlayer, tgcPlayer));
+
+        Button battleShip = Button("Battle Ship Player");
+        battleShip.TooltipText = "Use the Legacy top-down shooter ship as the Overhead/space player.";
+        battleShip.Pressed += () => SetPlayerCharacter(
+            "Battle Ship 01",
+            SpriteAnimationSet.TryLoadBattleFleetRedShip01(),
+            "Battle Ship 01 loaded as the Overhead/space player. Its frames are heading bins, not walk frames.",
+            "battle-fleet-red-ship-01"
+        );
+        workbench.AddChild(battleShip);
+
+        workbench.AddChild(CockpitHeading("SELECTED ACTOR"));
+        Button openSpritePad = Button("Open Sprite / Anim Editor");
+        openSpritePad.Pressed += () =>
+        {
+            if (!_sidebar.Visible)
+                ToggleSpritePanel();
+            _inspectorText.Text = "Sprite/animation editor opened. This remains the detailed frame-label editor while the Workbench becomes the higher-level wiring surface.";
+        };
+
+        Button selectPlayer = Button("Select Player");
+        selectPlayer.Pressed += () => SelectActor(_player);
+        workbench.AddChild(ButtonRow(selectPlayer, openSpritePad));
+
+        workbench.AddChild(CockpitHeading("SLOTS / SHELVES"));
+        workbench.AddChild(CharacterSlotShelf(
+            "Projectile",
+            "Current: " + (_selectedActor is not null && !_selectedActor.IsPlayable && _selectedActor.CanFireProjectiles ? "Enemy fireball" : _gunEnabled ? "Player shot" : "None"),
+            "Assign projectile art, speed, range, damage, muzzle point, fire sound, and text rules."
+        ));
+        workbench.AddChild(CharacterSlotShelf(
+            "Explosion",
+            "Current: Fireball impact profile",
+            "Assign explosion strip, blast radius, letter shrapnel, impact sound, and screen/effects response."
+        ));
+        workbench.AddChild(CharacterSlotShelf(
+            "AI / Behavior",
+            "Current: " + (_selectedActor is not null && !_selectedActor.IsPlayable ? "Role default" : "Player input"),
+            "Assign patrol, chase, defend, contact, shooter, flyer, tank, horde/flock, or boss logic."
+        ));
+        workbench.AddChild(CharacterSlotShelf(
+            "Sounds",
+            "Current: starter sound deck",
+            "Assign jump, land, fire, hurt, defeat, pickup, alert, and ambient/idle sounds."
+        ));
+        workbench.AddChild(CharacterSlotShelf(
+            "Text Rules",
+            "Current: game defaults",
+            "Assign text-solid, text-crawl, text-destroy, text-harvest, protected-word, and word-target behavior."
+        ));
+
+        Button selectedShoots = Button("Toggle Selected Shots");
+        selectedShoots.Pressed += ToggleSelectedEnemyProjectileAbility;
+
+        Button reloadAnims = Button("Reload Default Anims");
+        reloadAnims.Pressed += ReloadSelectedAnimationDefaults;
+        workbench.AddChild(ButtonRow(selectedShoots, reloadAnims));
+
+        Button saveAnims = Button("Save Anim Labels");
+        saveAnims.Pressed += SaveTgcClipLabels;
+        Button loadAnims = Button("Load Anim Labels");
+        loadAnims.Pressed += LoadAnimationClipLabels;
+        workbench.AddChild(ButtonRow(saveAnims, loadAnims));
+
         return panel;
     }
 
@@ -1082,7 +1662,7 @@ public partial class Main : Control
 
         page.AddChild(ButtonRow(enter, play));
 
-        Button reset = Button("RESET THIS GAME");
+        Button reset = Button("Reset This Game");
         reset.Pressed += () => ResetCurrentPlayset(mode);
         page.AddChild(reset);
 
@@ -1143,9 +1723,9 @@ public partial class Main : Control
 
         inspector.AddChild(CockpitHeading("ACTOR COMBAT"));
         inspector.AddChild(CockpitNote("Enemy toughness is regular shots to defeat. Gun power subtracts that many shot-points per hit."));
-        Button tougher = Button("TOUGHNESS +");
+        Button tougher = Button("Toughness +");
         tougher.Pressed += () => AdjustSelectedEnemyToughness(1);
-        Button weaker = Button("TOUGHNESS -");
+        Button weaker = Button("Toughness -");
         weaker.Pressed += () => AdjustSelectedEnemyToughness(-1);
         inspector.AddChild(ButtonRow(weaker, tougher));
 
@@ -1243,7 +1823,7 @@ public partial class Main : Control
         inspector.AddChild(CockpitNote("Opacity"));
         inspector.AddChild(_opacitySlider);
 
-        Button clearTint = Button("DEFAULT COLOR");
+        Button clearTint = Button("Default Color");
         clearTint.Pressed += () =>
         {
             _playfield.ClearSelectedTint();
@@ -1251,7 +1831,7 @@ public partial class Main : Control
         };
         inspector.AddChild(clearTint);
 
-        Button reverse = Button("REVERSE DIRECTION");
+        Button reverse = Button("Reverse Direction");
         reverse.Pressed += () =>
         {
             _playfield.ReverseSelectedDirection();
@@ -1259,13 +1839,13 @@ public partial class Main : Control
         };
         inspector.AddChild(reverse);
 
-        Button rotateLeft = Button("ROTATE -15°");
+        Button rotateLeft = Button("Rotate -15°");
         rotateLeft.Pressed += () =>
         {
             _playfield.RotateSelected(-15f);
             UpdateAttributeControls(_playfield.GetSelectedWorldObject());
         };
-        Button rotateRight = Button("ROTATE +15°");
+        Button rotateRight = Button("Rotate +15°");
         rotateRight.Pressed += () =>
         {
             _playfield.RotateSelected(15f);
@@ -1273,7 +1853,7 @@ public partial class Main : Control
         };
         inspector.AddChild(ButtonRow(rotateLeft, rotateRight));
 
-        Button normalize = Button("RAMP UP / SLIDE DOWN");
+        Button normalize = Button("Ramp Up / Slide Down");
         normalize.Pressed += () =>
         {
             _playfield.NormalizeSelectedSlope();
@@ -1294,15 +1874,15 @@ public partial class Main : Control
         inspector.AddChild(CockpitNote("Player gravity scale"));
         inspector.AddChild(_gravitySlider);
 
-        Button spritePad = Button("TOGGLE SPRITE PAD");
+        Button spritePad = Button("Toggle Sprite Pad");
         spritePad.Pressed += ToggleSpritePanel;
         inspector.AddChild(spritePad);
 
-        Button platformer = Button("PLATFORMER MODE");
+        Button platformer = Button("Platformer Mode");
         platformer.Pressed += () => SetPlaysetMode(PlaysetMode.Platformer);
         inspector.AddChild(platformer);
 
-        Button resetScout = Button("RESET SCOUT START");
+        Button resetScout = Button("Reset Scout Start");
         resetScout.Pressed += SnapPlayerToStart;
         inspector.AddChild(resetScout);
 
@@ -1369,23 +1949,23 @@ public partial class Main : Control
         _playsetToolbarToggle.Pressed += TogglePlaysetToolbar;
         _playsetToolbarRow.AddChild(_playsetToolbarToggle);
 
-        Button platformer = Button("PLATFORMER");
+        Button platformer = Button("Platformer");
         platformer.Pressed += () => SetPlaysetMode(PlaysetMode.Platformer);
         _playsetToolbarRow.AddChild(platformer);
 
-        Button brickbat = Button("BRICKBAT");
+        Button brickbat = Button("Brickbat");
         brickbat.Pressed += () => SetPlaysetMode(PlaysetMode.Brickbat);
         _playsetToolbarRow.AddChild(brickbat);
 
-        Button pinball = Button("PINBALL");
+        Button pinball = Button("Pinball");
         pinball.Pressed += () => SetPlaysetMode(PlaysetMode.Pinball);
         _playsetToolbarRow.AddChild(pinball);
 
-        Button overhead = Button("OVERHEAD");
+        Button overhead = Button("Overhead");
         overhead.Pressed += () => SetPlaysetMode(PlaysetMode.Overhead);
         _playsetToolbarRow.AddChild(overhead);
 
-        Button reset = Button("RESET");
+        Button reset = Button("Reset");
         reset.Pressed += () =>
         {
             if (_playsetMode == PlaysetMode.Brickbat)
@@ -1397,11 +1977,11 @@ public partial class Main : Control
         };
         _playsetToolbarRow.AddChild(reset);
 
-        Button cockpit = Button("COCKPIT");
+        Button cockpit = Button("Cockpit");
         cockpit.Pressed += ToggleCockpit;
         _playsetToolbarRow.AddChild(cockpit);
 
-        Button boss = Button("BOSS");
+        Button boss = Button("Boss");
         boss.Pressed += ToggleBossMode;
         _playsetToolbarRow.AddChild(boss);
     }
@@ -1489,6 +2069,11 @@ public partial class Main : Control
         _spritePad.Model = actor.Model;
         LoadAnimationEditorForActor(actor);
         RefreshBindingText();
+        if (_characterPreview is not null)
+            _characterPreview.Actor = actor;
+        if (_spriteEditorPreview is not null)
+            _spriteEditorPreview.Actor = actor;
+        RefreshCharacterWorkbenchStatus();
     }
 
     private void RenameSelectedCharacter(string name)
@@ -1505,6 +2090,7 @@ public partial class Main : Control
             _animationEditorName = trimmed;
 
         RefreshBindingText();
+        RefreshCharacterWorkbenchStatus();
         _selectedActor.TooltipText = $"Select {trimmed}";
     }
 
@@ -1912,8 +2498,11 @@ public partial class Main : Control
 
     private void SetAnimationEditorFrames(SpriteFrame[] frames)
     {
+        _animationEditorFrames = frames;
         _animationEditorFrameCount = frames.Length;
         _tgcStripPreview?.SetFrames(frames);
+        if (_spriteEditorPreview is not null)
+            _spriteEditorPreview.Actor = _selectedActor;
     }
 
     private void ClearTgcClipRows()
@@ -2588,7 +3177,51 @@ public partial class Main : Control
         strobeCount.ValueChanged += _ => UpdateTgcStripPreview();
         row.AddChild(strobeCount);
 
-        return new TgcClipRow(row, nameEdit, start, end, pingPong, strobe, strobeCount);
+        TgcClipRow clipRow = new(row, nameEdit, start, end, pingPong, strobe, strobeCount);
+        row.GuiInput += inputEvent =>
+        {
+            if (inputEvent is InputEventMouseButton mouseButton
+                && mouseButton.ButtonIndex == MouseButton.Left
+                && mouseButton.Pressed)
+            {
+                PreviewTgcClipRow(clipRow);
+            }
+        };
+        nameEdit.FocusEntered += () => PreviewTgcClipRow(clipRow);
+        start.FocusEntered += () => PreviewTgcClipRow(clipRow);
+        end.FocusEntered += () => PreviewTgcClipRow(clipRow);
+        return clipRow;
+    }
+
+    private void PreviewTgcClipRow(TgcClipRow row)
+    {
+        if (_spriteEditorPreview is null)
+            return;
+
+        if (IsUnavailableClipRow(row) || _animationEditorFrames.Length == 0)
+        {
+            _spriteEditorPreview.Actor = _selectedActor;
+            _inspectorText.Text = $"{row.Name.Text} is unavailable for this character. Preview falls back to the selected actor's default idle animation.";
+            return;
+        }
+
+        int numberBase = Mathf.RoundToInt((float)(_tgcNumberBase?.Value ?? 0));
+        AnimationFrameRange range = DisplayToInternalRange(EndpointRange(row.Start, row.End), numberBase, _animationEditorFrames.Length);
+        int start = Mathf.Clamp(Mathf.Min(range.Start, range.End), 0, _animationEditorFrames.Length - 1);
+        int end = Mathf.Clamp(Mathf.Max(range.Start, range.End), 0, _animationEditorFrames.Length - 1);
+        List<SpriteFrame> frames = [];
+        for (int i = start; i <= end; i++)
+            frames.Add(_animationEditorFrames[i]);
+
+        if (row.PingPong.ButtonPressed && frames.Count > 1)
+        {
+            for (int i = frames.Count - 2; i > 0; i--)
+                frames.Add(frames[i]);
+        }
+
+        string label = string.IsNullOrWhiteSpace(row.Name.Text) ? "Animation" : row.Name.Text.Trim();
+        _spriteEditorPreview.ShowFrames(frames.ToArray(), label);
+        _inspectorText.Text = $"Previewing {label}: frames {row.Start.Text}–{row.End.Text}.\n\nClick another animation label to test its sequence on the large white stage.";
     }
 
     private void OnClipEndpointTextChanged(LineEdit changed, LineEdit partner, string text, int maxFrame)
@@ -2688,8 +3321,21 @@ public partial class Main : Control
 
     private void ToggleSpritePanel()
     {
-        _sidebar.Visible = !_sidebar.Visible;
+        bool opening = !_sidebar.Visible;
+        _sidebar.Visible = opening;
+        if (_playfieldFrame is not null)
+            _playfieldFrame.Visible = !opening;
         _spritePanelButton.Text = _sidebar.Visible ? "HIDE SPRITE PAD" : "SHOW SPRITE PAD";
+
+        if (opening && _cockpit is not null && _cockpit.Visible)
+        {
+            _cockpit.Visible = false;
+            _resumePlayWhenCockpitCloses = false;
+            _brickbatOverlay.HudEditable = false;
+            SyncEditorModeToScene();
+            _playfield.QueueRedraw();
+        }
+
         UpdateCursorMode();
     }
 
@@ -2699,6 +3345,8 @@ public partial class Main : Control
             return;
 
         _sidebar.Visible = false;
+        if (_playfieldFrame is not null)
+            _playfieldFrame.Visible = true;
         if (_spritePanelButton is not null)
             _spritePanelButton.Text = "SHOW SPRITE PAD";
         UpdateCursorMode();
@@ -2740,17 +3388,14 @@ public partial class Main : Control
         if (available.X <= 0 || available.Y <= 0)
             available = GetViewportRect().Size;
 
-        const float edge = 18f;
+        const float edge = 8f;
         Vector2 desired = new(
-            Mathf.Clamp(available.X - edge * 2f, 620f, 1160f),
-            Mathf.Clamp(available.Y - edge * 2f, 360f, 620f)
+            Mathf.Max(620f, available.X - edge * 2f),
+            Mathf.Max(360f, available.Y - edge * 2f)
         );
         _cockpit.Size = desired;
         _cockpit.CustomMinimumSize = Vector2.Zero;
-        _cockpit.Position = new Vector2(
-            Mathf.Clamp(_cockpit.Position.X, edge, Mathf.Max(edge, available.X - desired.X - edge)),
-            Mathf.Clamp(_cockpit.Position.Y, edge, Mathf.Max(edge, available.Y - desired.Y - edge))
-        );
+        _cockpit.Position = new Vector2(edge, edge);
     }
 
     private void SetEditorMode(bool enabled)
@@ -2940,13 +3585,13 @@ public partial class Main : Control
             _player.HomePosition = _player.Position;
         }
 
-        if (_playsetMode is not (PlaysetMode.Brickbat or PlaysetMode.Pinball))
-            return;
-
         for (int i = 1; i < _actors.Count; i++)
         {
             ActorView actor = _actors[i];
             if (!actor.Visible || actor.AnimationSet is null)
+                continue;
+
+            if (!_editorMode && _playsetMode == PlaysetMode.Platformer)
                 continue;
 
             actor.MotionState = IsFlyingEnemy(actor) ? ActorMotionState.Idle : ActorMotionState.Run;
@@ -3207,9 +3852,10 @@ public partial class Main : Control
             {
                 _playerShots.RemoveAt(i);
             }
-            else if (TryHitEnemy(shotBounds, out Vector2 enemyImpact))
+            else if (TryHitEnemy(shotBounds, out Vector2 enemyImpact, out bool defeatedEnemy))
             {
-                AddImpactEffect(enemyImpact);
+                if (!defeatedEnemy)
+                    AddImpactEffect(enemyImpact);
                 _playerShots.RemoveAt(i);
             }
             else if (TryHitTextObject(shotBounds, out Vector2 textImpact))
@@ -3416,6 +4062,52 @@ public partial class Main : Control
     }
 
     private string PlayerShotPowerButtonText() => $"Gun Power: {_playerShotPower}x";
+    private string EnemyShotDamageButtonText() => $"Enemy Damage: {_enemyShotDamage}";
+
+    private void ToggleSelectedEnemyProjectileAbility()
+    {
+        if (_selectedActor is null)
+        {
+            _inspectorText.Text = "Select an enemy first, then toggle its projectile ability.";
+            return;
+        }
+
+        if (_selectedActor.IsPlayable)
+        {
+            _inspectorText.Text = "The selected actor is the player. Use Projectiles -> Player Gun for the player-wide gun toggle.";
+            return;
+        }
+
+        _selectedActor.CanFireProjectiles = !_selectedActor.CanFireProjectiles;
+        ClearEnemyShots();
+        _inspectorText.Text = $"{_selectedActor.ActorName} projectile ability: {(_selectedActor.CanFireProjectiles ? "ON" : "OFF")}.\n\nGlobal Enemy Shots must also be on for this enemy to fire during play.";
+        RefreshCharacterWorkbenchStatus();
+    }
+
+    private void RefreshCharacterWorkbenchStatus()
+    {
+        if (_characterWorkbenchStatus is null)
+            return;
+
+        if (_selectedActor is null)
+        {
+            _characterWorkbenchStatus.Text = "No actor selected yet.";
+            return;
+        }
+
+        string role = _selectedActor.IsPlayable ? "Player" : "Enemy / object actor";
+        string source = string.IsNullOrWhiteSpace(_selectedActor.AnimationSourceId) ? "unlabeled source" : _selectedActor.AnimationSourceId;
+        string projectile = _selectedActor.IsPlayable
+            ? (_gunEnabled ? "player gun on" : "player gun off")
+            : (_selectedActor.CanFireProjectiles ? "can fire" : "no shots");
+        string toughness = _selectedActor.IsPlayable ? $"HP {_playerHealth}/{_playerMaxHealth}" : $"toughness {_selectedActor.ShotToughness}";
+        _characterWorkbenchStatus.Text =
+            $"Selected: {_selectedActor.ActorName}\n"
+            + $"Role: {role}\n"
+            + $"Animation: {source}\n"
+            + $"Combat: {projectile}, {toughness}\n"
+            + $"Size: {_selectedActor.Size.X:0} × {_selectedActor.Size.Y:0}";
+    }
 
     private void AdjustSelectedEnemyToughness(int delta)
     {
@@ -3428,6 +4120,7 @@ public partial class Main : Control
         _selectedActor.ShotToughness = Mathf.Clamp(_selectedActor.ShotToughness + delta, 1, 9);
         _enemyHealth.Remove(_selectedActor);
         _inspectorText.Text = $"{_selectedActor.ActorName} shot toughness set to {_selectedActor.ShotToughness}.\n\nThis means {_selectedActor.ShotToughness} regular 1x shot(s), or fewer with stronger guns.";
+        RefreshCharacterWorkbenchStatus();
         RefreshPlatformerHud();
     }
 
@@ -3436,8 +4129,10 @@ public partial class Main : Control
         EffectVisual[] visuals = new EffectVisual[_impactEffects.Count];
         for (int i = 0; i < _impactEffects.Count; i++)
         {
-            int frame = Mathf.Clamp(1 + Mathf.FloorToInt(_impactEffects[i].Age / 0.052f), 1, 12);
-            visuals[i] = new EffectVisual(_impactEffects[i].Position, frame);
+            int frame = _impactEffects[i].Kind == EffectVisualKind.LegacyEnemyDeath
+                ? Mathf.Clamp(1 + Mathf.FloorToInt(_impactEffects[i].Age / 0.075f), 1, 6)
+                : Mathf.Clamp(1 + Mathf.FloorToInt(_impactEffects[i].Age / 0.052f), 1, 12);
+            visuals[i] = new EffectVisual(_impactEffects[i].Position, frame, _impactEffects[i].Kind);
         }
 
         _playfield.SetImpactEffects(visuals);
@@ -3477,9 +4172,9 @@ public partial class Main : Control
         PushEnemyShotPositionsToPlayfield();
     }
 
-    private void AddImpactEffect(Vector2 position)
+    private void AddImpactEffect(Vector2 position, EffectVisualKind kind = EffectVisualKind.FireballImpact)
     {
-        _impactEffects.Add(new ImpactEffect(position, 0f));
+        _impactEffects.Add(new ImpactEffect(position, 0f, kind));
         ApplyExplosionTextBlast(position);
         PushImpactEffectsToPlayfield();
     }
@@ -3588,9 +4283,10 @@ public partial class Main : Control
         return "ENEMY CONTACT";
     }
 
-    private bool TryHitEnemy(Rect2 shotBounds, out Vector2 impactPosition)
+    private bool TryHitEnemy(Rect2 shotBounds, out Vector2 impactPosition, out bool defeated)
     {
         impactPosition = shotBounds.GetCenter();
+        defeated = false;
         for (int i = 1; i < _actors.Count; i++)
         {
             ActorView enemy = _actors[i];
@@ -3602,14 +4298,14 @@ public partial class Main : Control
                 continue;
 
             impactPosition = enemyBounds.GetCenter();
-            DamageEnemy(enemy, _playerShotPower);
+            defeated = DamageEnemy(enemy, _playerShotPower);
             return true;
         }
 
         return false;
     }
 
-    private void DamageEnemy(ActorView enemy, int amount)
+    private bool DamageEnemy(ActorView enemy, int amount)
     {
         int currentHealth = _enemyHealth.TryGetValue(enemy, out int existing) ? existing : Mathf.Clamp(enemy.ShotToughness, 1, 9);
         int shotPower = Mathf.Max(1, amount);
@@ -3626,8 +4322,11 @@ public partial class Main : Control
             _enemyShotTimers.Remove(enemy);
             _platformerScore += 250;
             _platformerStatus = $"DEFEATED {enemy.ActorName.ToUpperInvariant()}";
-            _playfield.ThrowComicImpact(impact, RandomComicWord("defeat"), 1.75f);
+            AddImpactEffect(impact, EffectVisualKind.LegacyEnemyDeath);
+            _playfield.ThrowComicImpact(impact + new Vector2(0f, -enemy.Size.Y * 0.35f), RandomComicWord("defeat"), 1.05f);
             PlaySound("enemy-defeat");
+            RefreshPlatformerHud();
+            return true;
         }
         else
         {
@@ -3639,6 +4338,7 @@ public partial class Main : Control
         }
 
         RefreshPlatformerHud();
+        return false;
     }
 
     private static int DefaultEnemyShotToughness(string actorName)
@@ -4001,6 +4701,9 @@ public partial class Main : Control
             foreach (Rect2 platform in _playfield.GetPlatforms())
                 yield return platform;
 
+            foreach (WorldObject barricade in _playfield.GetBarricades())
+                yield return barricade.Bounds(_textUnitPixels, _playfield.ElapsedSeconds);
+
             yield break;
         }
 
@@ -4012,6 +4715,9 @@ public partial class Main : Control
                     new Vector2(word.Size.X + _textUnitPixels * 0.36f, Mathf.Max(2f, Mathf.Min(word.Size.Y, _textUnitPixels * 0.45f)))
                 );
         }
+
+        foreach (WorldObject barricade in _playfield.GetBarricades())
+            yield return barricade.Bounds(_textUnitPixels, _playfield.ElapsedSeconds);
 
         if (_platformerSafetyFloor)
             yield return new Rect2(_playfield.PlayBounds.Position.X, _playfield.PlayBounds.End.Y - 4f, _playfield.PlayBounds.Size.X, 4f);
@@ -4331,6 +5037,33 @@ public partial class Main : Control
         return button;
     }
 
+    private Button ObjectShelfButton(string text, WorldObjectKind kind, string description)
+    {
+        Button button = Button(text);
+        button.TooltipText = description;
+        button.Pressed += () =>
+        {
+            _playfield.AddPlacedObject(kind);
+            SyncEditorModeToScene();
+            _inspectorText.Text = $"{text} placed.\n\n{description}\n\nObjects are shared level furniture: they can belong to platformer, pinball, Brickbat, overhead, text quests, or later builder presets.";
+            RefreshCockpitStatus();
+        };
+        return button;
+    }
+
+    private Control CharacterSlotShelf(string title, string current, string description)
+    {
+        Button shelf = Button($"{title}\n{current}");
+        shelf.CustomMinimumSize = new Vector2(0, 54);
+        shelf.TooltipText = description;
+        shelf.Pressed += () =>
+        {
+            _inspectorText.Text = $"{title} shelf\n\n{description}\n\nNext pass: drag a card here from Projectiles, Effects, Sounds, AI, or Text Rules. For now, use the matching Cockpit page and the selected actor.";
+        };
+        shelf.AddThemeFontSizeOverride("font_size", 11);
+        return shelf;
+    }
+
     private static HSlider AttributeSlider(double min, double max, double value, double step)
     {
         HSlider slider = new()
@@ -4365,6 +5098,9 @@ public partial class Main : Control
             WorldObjectKind.PinballDrain => new Color("#202A34"),
             WorldObjectKind.PinballRollover => new Color("#F4C95D"),
             WorldObjectKind.PinballGate => new Color("#5CB8FF"),
+            WorldObjectKind.Coin => new Color("#F4C95D"),
+            WorldObjectKind.Gem => new Color("#B56CFF"),
+            WorldObjectKind.Barricade => new Color("#8A5A37"),
             _ => new Color("#5CB8A7")
         };
     }
@@ -4448,10 +5184,11 @@ public partial class Main : Control
         public string OwnerName = ownerName;
     }
 
-    private struct ImpactEffect(Vector2 position, float age)
+    private struct ImpactEffect(Vector2 position, float age, EffectVisualKind kind)
     {
         public Vector2 Position = position;
         public float Age = age;
+        public EffectVisualKind Kind = kind;
     }
 
     private sealed class DackAnimManifest
@@ -4616,6 +5353,29 @@ public partial class Main : Control
 
             return GuessAnimationSourceId(actor.ActorName, actor.IsPlayable);
         }
+    }
+
+    private sealed class LegacyBundleManifest
+    {
+        public string sourceRoot { get; set; } = "";
+        public string generatedUtc { get; set; } = "";
+        public string note { get; set; } = "";
+        public List<LegacyAssetBundle> bundles { get; set; } = [];
+    }
+
+    private sealed class LegacyAssetBundle
+    {
+        public string bundleRoot { get; set; } = "";
+        public string displayName { get; set; } = "";
+        public string primaryCategory { get; set; } = "";
+        public string quality { get; set; } = "";
+        public int imageFiles { get; set; }
+        public Dictionary<string, int> categoryCounts { get; set; } = [];
+        public Dictionary<string, int> animationHintCounts { get; set; } = [];
+        public Dictionary<string, int> commonDimensions { get; set; } = [];
+        public List<string> spriteSheets { get; set; } = [];
+        public List<string> previews { get; set; } = [];
+        public List<string> sampleFiles { get; set; } = [];
     }
 
     private sealed record TgcClipRow(
