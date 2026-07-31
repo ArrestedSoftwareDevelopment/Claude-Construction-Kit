@@ -7,6 +7,7 @@ public partial class CharacterPreviewPanel : Control
     private ActorView? _actor;
     private SpriteFrame[]? _previewFrames;
     private string _previewTitle = "Idle preview";
+    private int _fixedFrameIndex = -1;
     private double _clock;
 
     public Color BackgroundColor { get; set; } = new("#101820");
@@ -23,16 +24,27 @@ public partial class CharacterPreviewPanel : Control
             _actor = value;
             _previewFrames = null;
             _previewTitle = "Idle preview";
+            _fixedFrameIndex = -1;
             _clock = 0;
             QueueRedraw();
         }
     }
 
-    public void ShowFrames(SpriteFrame[] frames, string title)
+    public void ShowFrames(SpriteFrame[] frames, string title, int fixedFrameIndex = -1)
     {
         _previewFrames = frames.Length == 0 ? null : frames;
         _previewTitle = string.IsNullOrWhiteSpace(title) ? "Animation preview" : title;
+        _fixedFrameIndex = frames.Length == 0 ? -1 : Mathf.Clamp(fixedFrameIndex, -1, frames.Length - 1);
         _clock = 0;
+        QueueRedraw();
+    }
+
+    public void SetFixedFrameIndex(int fixedFrameIndex)
+    {
+        if (_previewFrames is null || _previewFrames.Length == 0)
+            return;
+
+        _fixedFrameIndex = Mathf.Clamp(fixedFrameIndex, -1, _previewFrames.Length - 1);
         QueueRedraw();
     }
 
@@ -65,8 +77,11 @@ public partial class CharacterPreviewPanel : Control
             return;
         }
 
-        SpriteFrame frame = _previewFrames is { Length: > 0 } frames
-            ? frames[Mathf.PosMod(Mathf.FloorToInt((float)_clock * 8), frames.Length)]
+        int frameIndex = _previewFrames is { Length: > 0 } frames
+            ? (_fixedFrameIndex >= 0 ? _fixedFrameIndex : Mathf.PosMod(Mathf.FloorToInt((float)_clock * 8), frames.Length))
+            : -1;
+        SpriteFrame frame = _previewFrames is { Length: > 0 } previewFrames
+            ? previewFrames[frameIndex]
             : _actor!.AnimationSet!.GetFrame(ActorMotionState.Idle, _clock);
         Vector2 stableDisplay = new(Mathf.Max(1f, frame.DisplaySize.X), Mathf.Max(1f, frame.DisplaySize.Y));
         float availableWidth = Mathf.Max(1f, Size.X - 36f);
@@ -80,7 +95,8 @@ public partial class CharacterPreviewPanel : Control
         );
 
         string actorName = _actor?.ActorName ?? "Sprite";
-        DrawString(ThemeDB.FallbackFont, new Vector2(14, 22), $"{actorName}  //  {_previewTitle}", HorizontalAlignment.Left, Size.X - 28f, 14, TitleColor);
+        string frameText = _previewFrames is { Length: > 0 } && frameIndex >= 0 ? $"  //  frame {frameIndex + 1}/{_previewFrames.Length}" : "";
+        DrawString(ThemeDB.FallbackFont, new Vector2(14, 22), $"{actorName}  //  {_previewTitle}{frameText}", HorizontalAlignment.Left, Size.X - 28f, 14, TitleColor);
         DrawLine(new Vector2(18, Size.Y - 14f), new Vector2(Size.X - 18f, Size.Y - 14f), new Color("#202A34", 0.20f), 1.2f);
         DrawSpriteShadow(frame.Texture, frame.SourceRegion, drawPosition, drawSize);
 

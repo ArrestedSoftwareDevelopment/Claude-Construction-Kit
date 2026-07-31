@@ -33,6 +33,7 @@ public partial class PlayfieldSurface : Control
     public Rect2 PlayBounds => _capturedPage is not null ? GetCapturedPageDrawRect(_capturedPage) : new Rect2(Vector2.Zero, Size);
     public event Action<string>? WorldObjectSelectionChanged;
     public event Action<WorldObject?>? WorldObjectSelectionObjectChanged;
+    public event Action<Godot.Collections.Dictionary, Vector2>? CardDroppedOnPlayfield;
     public float ElapsedSeconds
     {
         get => (float)_elapsed;
@@ -54,6 +55,23 @@ public partial class PlayfieldSurface : Control
         _capturedPage = CapturedPageImportModule.TryLoadDefault();
         Resized += QueueRedraw;
         SetProcess(true);
+    }
+
+    public override bool _CanDropData(Vector2 atPosition, Variant data)
+    {
+        if (data.VariantType != Variant.Type.Dictionary)
+            return false;
+
+        Godot.Collections.Dictionary card = data.AsGodotDictionary();
+        return card.ContainsKey("dackCardKind") && card.ContainsKey("dackCardId");
+    }
+
+    public override void _DropData(Vector2 atPosition, Variant data)
+    {
+        if (data.VariantType != Variant.Type.Dictionary)
+            return;
+
+        CardDroppedOnPlayfield?.Invoke(data.AsGodotDictionary(), atPosition);
     }
 
     public override void _Process(double delta)
@@ -356,6 +374,7 @@ public partial class PlayfieldSurface : Control
             WorldObjectKind.StartPoint => CreateMarker(center, unit, MarkerRole.Start, false),
             WorldObjectKind.GoalPoint => CreateMarker(center, unit, MarkerRole.End, true),
             WorldObjectKind.HiddenSwitch => CreateMarker(center, unit, MarkerRole.Switch, false),
+            WorldObjectKind.EnemySpawnPoint => CreateMarker(center, unit, MarkerRole.EnemySpawn, false) with { SpeedUnits = 5f, ThicknessUnits = 1f, RangeUnits = 3f },
             WorldObjectKind.PinballFlipper => new WorldObject(kind, center + new Vector2(-unit * 8f, unit * 10f), center + new Vector2(unit * 10f, unit * 13f), 1.25f, 12f, 0f, 5f, MarkerRole.None, true, false, default, 0.92f),
             WorldObjectKind.PinballBumper => new WorldObject(kind, center, center + new Vector2(unit * 5f, 0), 1.2f, 0f, 0f, 5f, MarkerRole.None, true, false, default, 0.92f),
             WorldObjectKind.PinballPlunger => new WorldObject(kind, center + new Vector2(unit * 18f, unit * 16f), center + new Vector2(unit * 18f, -unit * 12f), 1.1f, 12f, 0f, 5f, MarkerRole.None, true, false, default, 0.9f),
@@ -391,6 +410,7 @@ public partial class PlayfieldSurface : Control
         WorldObjectKind kind = role switch
         {
             MarkerRole.Switch => WorldObjectKind.HiddenSwitch,
+            MarkerRole.EnemySpawn => WorldObjectKind.EnemySpawnPoint,
             MarkerRole.Start => WorldObjectKind.StartPoint,
             MarkerRole.End => WorldObjectKind.GoalPoint,
             _ => WorldObjectKind.Checkpoint
@@ -615,13 +635,18 @@ public partial class PlayfieldSurface : Control
 
     public void SetSelectedSpeed(float speedUnits)
     {
-        UpdateSelected(selected => selected with { SpeedUnits = speedUnits });
+        UpdateSelected(selected => selected.Kind == WorldObjectKind.EnemySpawnPoint
+            ? selected with { SpeedUnits = Mathf.Clamp(Mathf.Round(speedUnits), 1f, 10f) }
+            : selected with { SpeedUnits = speedUnits });
     }
 
     public void SetSelectedThickness(float thicknessUnits)
     {
         UpdateSelected(selected =>
         {
+            if (selected.Kind == WorldObjectKind.EnemySpawnPoint)
+                return selected with { ThicknessUnits = Mathf.Clamp(Mathf.Round(thicknessUnits), 1f, 10f) };
+
             float maxThickness = selected.Kind == WorldObjectKind.Ladder ? 2.5f : 3.0f;
             return selected with { ThicknessUnits = Mathf.Clamp(thicknessUnits, 0.3f, maxThickness) };
         });
@@ -629,9 +654,12 @@ public partial class PlayfieldSurface : Control
 
     public void SetSelectedRange(float rangeUnits)
     {
-        UpdateSelected(selected => selected.Kind == WorldObjectKind.Elevator
-            ? selected with { RangeUnits = Mathf.Clamp(rangeUnits, 0f, 16f) }
-            : selected);
+        UpdateSelected(selected => selected.Kind switch
+        {
+            WorldObjectKind.Elevator => selected with { RangeUnits = Mathf.Clamp(rangeUnits, 0f, 16f) },
+            WorldObjectKind.EnemySpawnPoint => selected with { RangeUnits = Mathf.Clamp(Mathf.Round(rangeUnits), 1f, 10f) },
+            _ => selected
+        });
     }
 
     public void SetSelectedTint(Color tint)
@@ -885,6 +913,9 @@ public partial class PlayfieldSurface : Control
 
         foreach (WorldObject hiddenSwitch in ObjectsOfKind(WorldObjectKind.HiddenSwitch))
             DrawEditorOnlyObject(hiddenSwitch, "SWITCH", new Color("#FF2BD6"));
+
+        foreach (WorldObject spawn in ObjectsOfKind(WorldObjectKind.EnemySpawnPoint))
+            DrawEnemySpawnPoint(spawn);
 
         foreach (WorldObject flipper in ObjectsOfKind(WorldObjectKind.PinballFlipper))
             DrawPinballFlipper(flipper);
@@ -1857,6 +1888,41 @@ public partial class PlayfieldSurface : Control
         DrawCircle(center, radius, WithAlpha(styled, styled.A * 0.62f));
         DrawCircle(center, radius, new Color("#F7F5EF"), false, 2f);
         DrawString(ThemeDB.FallbackFont, center + new Vector2(radius + 5f, 4f), label, HorizontalAlignment.Left, 90f, 12, new Color("#FFF0A8"));
+    }
+
+    private void DrawEnemySpawnPoint(WorldObject spawn)
+    {
+        if (!ShowEditorOnlyObjects)
+            return;
+
+        Vector2 basePoint = spawn.ResolvePoint(spawn.Start, TextUnitPixels, ElapsedSeconds);
+        Vector2 topPoint = spawn.ResolvePoint(spawn.End, TextUnitPixels, ElapsedSeconds);
+        Vector2 center = (basePoint + topPoint) * 0.5f;
+        Color body = spawn.Styled(new Color("#FF2B2B"));
+        float unit = TextUnitPixels;
+        float maxActive = Mathf.Clamp(Mathf.Round(spawn.RangeUnits), 1f, 10f);
+        float burst = Mathf.Clamp(Mathf.Round(spawn.ThicknessUnits), 1f, 10f);
+        float interval = Mathf.Clamp(Mathf.Round(Mathf.Abs(spawn.SpeedUnits)), 1f, 10f);
+
+        DrawLine(basePoint + new Vector2(2, 3), topPoint + new Vector2(2, 3), new Color(0, 0, 0, 0.28f), 3f);
+        DrawLine(basePoint, topPoint, new Color("#202A34"), 3f);
+
+        Vector2 flagA = topPoint;
+        Vector2 flagB = topPoint + new Vector2(unit * 5.2f, unit * 1.4f);
+        Vector2 flagC = topPoint + new Vector2(unit * 1.0f, unit * 3.0f);
+        DrawColoredPolygon([flagA, flagB, flagC], WithAlpha(body, body.A * 0.82f));
+        DrawPolyline([flagA, flagB, flagC, flagA], new Color("#F7F5EF"), 1.5f);
+
+        float radius = Mathf.Max(unit * 2.0f, 13f);
+        DrawCircle(center + new Vector2(2, 3), radius + 3f, new Color(0, 0, 0, 0.30f));
+        DrawCircle(center, radius, WithAlpha(body, body.A * 0.66f));
+        DrawCircle(center, radius, new Color("#F7F5EF"), false, 2f);
+        DrawCircle(center + new Vector2(-radius * 0.35f, -radius * 0.12f), radius * 0.14f, new Color("#202A34"));
+        DrawCircle(center + new Vector2(radius * 0.35f, -radius * 0.12f), radius * 0.14f, new Color("#202A34"));
+        DrawLine(center + new Vector2(-radius * 0.32f, radius * 0.34f), center + new Vector2(radius * 0.32f, radius * 0.34f), new Color("#202A34"), 2f);
+
+        string caption = $"SPAWN  {interval:0}s  x{burst:0}  max {maxActive:0}";
+        DrawString(ThemeDB.FallbackFont, center + new Vector2(radius + 6f, 4f), caption, HorizontalAlignment.Left, 150f, 12, new Color("#FFF0A8"));
     }
 
     private void DrawSelectedWorldObjectHandles()

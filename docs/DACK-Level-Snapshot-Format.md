@@ -1,5 +1,9 @@
 # DACK Level Snapshot and Package Format
 
+- **Status:** Normative persistence contract; Version 1 remains provisional until the first complete package round-trip
+- **Canonical editable format:** `.dacklevel`
+- **Related engineering plan:** [DACK Optimization and Refactoring Plan](DACK-Optimization-and-Refactoring-Plan.md)
+
 ## Purpose
 
 `Snapshot` is the author-facing word for freezing a playable clone at the moment it feels right.
@@ -19,6 +23,41 @@ This turns the current proof-of-concept loop into an intentional workflow:
 
 The key promise: the original source remains untouched. DACK always works on a clone.
 
+## Normative Version, Identity, and Coordinate Contract
+
+This section is the authoritative contract for saved levels. Prototype save code may temporarily implement only part of it, but new persistence work should converge here rather than create another level format.
+
+### Canonical container and version
+
+- `.dacklevel` is the one canonical editable level format. The current `rad-test.dacklevel.json` file is a migration fixture, not a second supported format.
+- `.dackpack` is a publishing/campaign container that embeds or references canonical `.dacklevel` records; it does not redefine level semantics.
+- Every root manifest must contain `format`, `formatVersion`, and a stable level `id`.
+- `formatVersion` versions the serialized schema. `dackVersion` records which application build wrote it; these fields must not be used interchangeably.
+- Readers must migrate older known versions deliberately. A newer unsupported major format must produce a clear compatibility error rather than being guessed at or partially loaded.
+- Save/migrate operations preserve the last good file until the replacement has validated and completed atomically.
+
+### Stable identity
+
+- Levels, snapshots, geometry regions, words, objects, actors, triggers, routes, cards, assets, effects, and mutations receive stable IDs at creation.
+- IDs are immutable within the lifetime of an authored item and remain unchanged when lists are reordered, files are re-saved, or display names change.
+- References use IDs, never array positions, display labels, pixel hashes alone, or source filenames alone.
+- A duplicated item receives a new ID and may record `derivedFromId`; it must not reuse the source item's identity.
+- Snapshot hashes verify content, while snapshot IDs preserve authored identity. They serve different purposes.
+- Algorithm-derived geometry should also record the detector/algorithm version so a re-scan can be distinguished from the geometry the creator approved.
+
+### Native snapshot coordinate space
+
+- All persisted playfield geometry uses `snapshot-pixels`: origin at the frozen image's top-left, positive X to the right, positive Y downward.
+- One saved coordinate unit equals one pixel in the Snapshot image. A point `[604, 318]` addresses that exact native-resolution pixel location.
+- `pixelSize` defines the bounds of the coordinate space. Stored rectangles, endpoints, paths, collision masks, mutations, OCR boxes, actor positions, and authored handles all share it.
+- `dpiScale` records how the source/display was captured. It is metadata for reconstruction and physical-size reasoning; it must not silently multiply or divide saved coordinates.
+- Runtime window fitting, monitor placement, zoom, camera movement, letterboxing, and editor magnification are view transforms only. They never rewrite canonical level coordinates.
+- Input is converted from display coordinates through the inverse view transform before selection, dragging, collision editing, or placement.
+- Imported sprite-local coordinates remain local to their asset/card. The placed actor or object supplies the transform into `snapshot-pixels`.
+- If a capture is intentionally resampled, it becomes a new Snapshot with a new `pixelSize`, ID, and explicit transform/rebinding record. DACK must not label a stretched image as the original Snapshot.
+
+This 1:1 rule protects the central visual promise: document text stays at native clarity while gameplay, collision, OCR, and mutation agree on exactly where every pixel lives.
+
 ## Snapshot vs. Source
 
 A Snapshot is not the original file. It is DACK's frozen, playable representation of the source at a specific time, resolution, capture rectangle, and detection state.
@@ -29,13 +68,13 @@ For sharing, DACK should support three source policies:
 - **Scrubbed source clone:** optionally includes a copy of an approved open or supported source file after metadata scrubbing and preview. This is useful for editable remix packs, but it is never required for play.
 - **External source reference:** stores provenance only, such as "captured from Word window" or a creator note. This may help the author rebuild locally, but shared play still uses the Snapshot image.
 
-Hub publishing should scrub metadata 100% by default. If a source clone is included, it must be a DACK-created clone, never the original, and the export UI must make clear exactly what is being shared.
+Hub publishing scrubs supported metadata 100% as a mandatory policy, with no creator override. If a source clone is included, it must be a DACK-created clone, never the original, and the export UI must make clear exactly what is being shared.
 
 ## Editable Level vs. Published Pack
 
 Use two related containers:
 
-- `.dacklevel` for an editable creator project or single level.
+- `.dacklevel` for the canonical editable creator project or single level.
 - `.dackpack` for a distributable playset/campaign bundle.
 
 Both can be folders during development and zip-like packages later.
@@ -90,6 +129,57 @@ MyPlayset.dackpack/
 ```
 
 The package should be playable from the frozen Snapshot data alone. Included source clones are an optional remix/editing feature.
+
+## Level Cards and Multi-Level Design
+
+The card model should extend all the way up.
+
+In DACK, a card is any reusable authored unit. That includes tiny ingredients like sprites and sounds, mid-sized composites like enemies and spawners, and large structures like levels, worlds, and campaigns.
+
+Useful hierarchy:
+
+```text
+Ingredient Cards
+  sprite, animation labels, sound, effect, projectile, AI, physics, text rule
+
+Object Cards
+  player, enemy, pickup, obstacle, flipper, tower, semantic word-object
+
+Logic Cards
+  checkpoint, hidden switch, enemy spawn point, route, wave, win/loss rule
+
+Level Card
+  snapshot, detected geometry, placed objects, actors, rules, mutations, music/soundscape, scoring
+
+World / Chapter Card
+  ordered or mapped set of level cards, shared theme, shared enemy pool, shared progression rules
+
+Playset / Campaign Card
+  title, mode family, world map, level order, shared assets, unlocks, scoring, publishing policy
+```
+
+This means the creator can build upward naturally:
+
+1. Build a `Blue Guard Enemy Card`.
+2. Drop it onto an `Enemy Spawn Point Card`.
+3. Use that spawner inside a `Memo Climber Level Card`.
+4. Put several level cards into an `Office Tower World Card`.
+5. Publish the whole thing as a `Corporate Dungeon Playset Card`.
+
+Level Cards should be draggable/selectable in the same spirit as smaller cards. A multi-level builder can present them as a shelf, flowchart, map, list, or board depending on game type:
+
+- Side-view platformers: linear route, branching map, vertical tower, elevator bank.
+- Brickbat: sequence of document boards, challenge pack, puzzle set.
+- Pinball: table set, missions, wizard-mode board, score attack ladder.
+- Overhead/RPG: rooms, floors, overworld nodes, dungeon levels.
+- Racing: track list, cup, route variants.
+- Tower Defense / Escort: wave stages, convoy routes, escalation schedule.
+
+The creator-facing rule is the same as for enemies:
+
+> Build something from cards; when it works, save the result as a bigger card.
+
+For implementation, `.dacklevel` becomes the saved Level Card format, while `.dackpack` becomes the Playset/Campaign Card format. A later `.dackworld` or world section inside `.dackpack` can group levels without forcing every project to become a campaign.
 
 ## Manifest Fields
 
@@ -203,9 +293,10 @@ Design rule: OCR can add meaning, but the level must still play without it.
     {
       "id": "ladder-001",
       "kind": "ladder",
-      "start": [420, 710],
-      "end": [540, 430],
+      "start": [480, 710],
+      "end": [480, 430],
       "thickness": 18,
+      "orientationConstraint": "vertical",
       "presentation": "hybrid",
       "collisionProfile": "climbable",
       "sourceBinding": {
@@ -312,9 +403,9 @@ Once this round-trips, DACK has a real level format instead of a demo screenshot
 Current RAD `dacklevel` pass:
 
 - The prototype writes `dack/levels/rad-test.dacklevel.json`.
-- This is a deliberately small local test slot, not the final package directory structure.
+- This is a deliberately small local test slot and migration fixture, not a competing format or the final package directory structure.
 - It saves placed world objects, Start/Checkpoint/Goal markers, object attributes, visible actors/enemies, actor names, coarse animation source IDs, text scale, actor scale, playset mode, platformer mode, and gameplay toggles.
 - Loading a level returns to Editor Mode by default. Entering Play Mode is an explicit test action that honors the Start Point, hides editor-only markers, clears transient shots, resets the player, and allows enemy collision/projectile rules to run.
 - It does not yet package the frozen Snapshot image, OCR cache, detected text geometry, or mutated playfield pixels. Those remain the next layer after live/snapshot source handling stabilizes.
-- Actor animation source IDs are currently pragmatic (`stickman-v0.1`, `tgc-player`, `sunny-dragon-fly`) and should become stable library asset IDs before hub publishing.
+- Actor animation source IDs are currently pragmatic (`stickman-v0.1`, `tgc-player`, `sunny-dragon-fly`) and must become stable, versioned library asset IDs before hub publishing.
 - Projectile/explosion assignments should also become stable IDs. The RAD catalog lives at `dack/assets/project/effects/projectile-effect-profiles.json`; future `.dacklevel` actor/weapon records should reference profile IDs such as `explosion-b-fireball-impact` rather than hardcoded textures.

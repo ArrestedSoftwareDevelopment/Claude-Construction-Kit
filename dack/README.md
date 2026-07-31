@@ -1,422 +1,186 @@
-# DACK RAD 01 — Live Sprite Lab
+# DACK RAD — Godot Prototype
 
-This is the first Desktop Arena Construction Kit proof of concept. It targets
-Godot 4.7.1 Mono and .NET 10.
+DACK turns a safe clone of an ordinary Windows screen or document into a construction-kit playfield. This Godot/.NET project is the active proof and stabilization workspace.
 
-RAD status: the static screenshot proof has done its job. It proved text-as-terrain,
-text-as-target, clone-only erasure, cross-playset deformation, platformer
-projectiles as text mutation, reusable effects, and the live-linked sprite pad.
-The next major work should move from "floating game toolbar over screenshot" to
-the real editor shell: Live Desktop capture, asset shelf, draggable toolkit
-parts, direct manipulation handles, and property inspectors.
+**Prototype baseline:** July 2026. Platformer, Brickbat, Pinball, Overhead, the Cockpit, actor/object shelves, animation editing, OCR-assisted word effects, combat, sound, direct handles, and RAD level save/load are present at proof depth. The next engineering milestone is consolidation and optimization, not a larger pile of one-off controls.
 
-GUI direction is organized in `../docs/DACK-GUI-Architecture.md`: a collapsible
-construction cockpit with Play / Build / Understand moods, toolkit shelves,
-direct handles, Word Sense status, and an Understanding Overlay for engine
-detections, invisible logic, and clone mutations.
+## Documentation
 
-Asset and animation direction is organized in
-`../docs/DACK-Asset-Audit-and-Sprite-Animator.md`: current approved assets,
-raw-vault candidates, provenance rules, and the split between the live-linked
-sprite pad and the future sprite animator/catalog module.
+- Product design: [`../Desktop-Arena-Design-Doc.md`](../Desktop-Arena-Design-Doc.md)
+- Documentation map: [`../docs/README.md`](../docs/README.md)
+- Active engineering sequence: [`../docs/DACK-Optimization-and-Refactoring-Plan.md`](../docs/DACK-Optimization-and-Refactoring-Plan.md)
+- GUI architecture: [`../docs/DACK-GUI-Architecture.md`](../docs/DACK-GUI-Architecture.md)
+- Sprite Studio: [`../docs/DACK-Sprite-Studio-Mini-App.md`](../docs/DACK-Sprite-Studio-Mini-App.md)
+- Brickbat rules/builder: [`../docs/DACK-Brickbat-Builder.md`](../docs/DACK-Brickbat-Builder.md)
+- Snapshot/level format: [`../docs/DACK-Level-Snapshot-Format.md`](../docs/DACK-Level-Snapshot-Format.md)
+- Object/card attributes: [`../docs/DACK-Object-Attribute-Model.md`](../docs/DACK-Object-Attribute-Model.md)
+- Asset provenance: [`assets/ASSET_PROVENANCE.md`](assets/ASSET_PROVENANCE.md)
 
-Level storage and sharing direction is organized in
-`../docs/DACK-Level-Snapshot-Format.md`: the Snapshot workflow, `.dacklevel`
-and `.dackpack` layouts, source-clone privacy policy, cached Word Sense/OCR
-labels, placed toolkit objects, and mutation variants.
-
-Object attributes are organized in
-`../docs/DACK-Object-Attribute-Model.md`: shared presentation, opacity/color,
-collision, motion, role, source-binding, player, enemy/NPC, obstacle, and
-per-actor text-capability attributes.
+The README is the run/test handoff for the current build. Future design and sequencing belong in the linked documents.
 
 ## Development Environment
 
-- Godot: 4.7.1 stable Mono, expected at `../Godot_v4.7.1-stable_mono_win64/`.
-- .NET SDK: 10.0.302 or newer compatible .NET 10 SDK.
-- C# target: `net10.0`.
-- Godot SDK: `Godot.NET.Sdk/4.7.1`.
-- Project: `dack/project.godot`.
-- Local package source: `../Godot_v4.7.1-stable_mono_win64/GodotSharp/Tools/nupkgs`.
-- Runtime style: direct PNG loading for curated assets and captured-page backgrounds, so smoke tests do not depend on Godot import-cache state.
+- Windows-first.
+- Godot 4.7.1 stable Mono at `../Godot_v4.7.1-stable_mono_win64/`.
+- .NET SDK 10.0.302, targeting `net10.0`.
+- Godot C# SDK `Godot.NET.Sdk/4.7.1`.
+- Project: `project.godot`.
+- C# project: `DACK.csproj`.
+- Local Godot package source: `../Godot_v4.7.1-stable_mono_win64/GodotSharp/Tools/nupkgs`.
 
-## Run it
+Visual Studio is the preferred IDE, but the project builds without depending on an IDE.
 
-1. Start the Godot 4.7.1 Mono editor in the repository's
-   `Godot_v4.7.1-stable_mono_win64` folder.
-2. Import or open `dack/project.godot`.
-3. Press **F5** or the project play button.
+## Build and Run
 
-The project can also be built from the `dack` directory with:
+From the `dack` directory:
 
 ```powershell
-dotnet build DACK.csproj
+dotnet build .\DACK.csproj
 ```
 
-## Prototype controls
+To run:
 
-- Press **Esc** to toggle the first DACK Cockpit overlay. This is the beginning
-  of the product UI shell: Play / Build / Understand, platformer shelf,
-  inspector notes, Word Sense status, and pinball asset curation notes.
-- The always-on strip is intentionally shrinking into global controls only:
-  Platformer, Brickbat, Reset, Cockpit, Boss. Toolkit-specific controls now
-  move into contextual Cockpit pages; Brickbat owns its paddle orientation,
-  letter/word grain, and reset controls there.
-- The Cockpit now folds away toolkit pages that do not apply to the selected
-  game type. Inspector and Understand stay available; Platformer/Brickbat/
-  Pinball/Overhead shelves appear contextually to save screen real estate.
-- Use left/right arrows or A/D to move the playable scout.
-- Press Space, W, or Up to jump.
-- Press J or X to shoot in Platformer mode. Shots travel in the scout's facing direction and erase captured-page text on impact. This started as a platformer projectile, but it is already behaving like a reusable text-mutation verb: shots can remove letters/words and alter the shared cloned terrain for later playsets. Shots also queue lazy OCR for word-shaped regions ahead of their path, making projectile targeting a natural way to prioritize which words the engine should read next.
-- Choose **Pitfall** for horizontal platforming or **Climber** for vertical ladder play.
-- In Climber mode, dense captured text can act as a crawl surface prototype: hold Up/Down while touching single-spaced text to crawl through the text row. Dedicated crawl art is still needed.
-- Adjust the character scale slider to match the apparent text size of the playfield; the demo defaults to a small but visible roughly 32 px-tall office-platformer character.
-- During gameplay, the Windows pointer is hidden. It reappears for the sprite pad and Boss Key screen.
-- Press **F1** to collapse or restore the floating toolbar. The pointer is visible while the toolbar is expanded and hidden when it is collapsed for play.
-- If the root screenshot test image is present, it is cloned into the playfield as a captured-page background and dark text bands become basic platforms.
-- Captured documents are displayed at native 1:1 pixel resolution. Extra fullscreen space is non-play toolkit/status margin, not scaled document terrain.
-- Endpoint-built ramps, conveyors, elevators, and ladders are live world objects for editor-authored additions; screenshot mode currently focuses on text-only terrain.
-- Platformer markers now include Start Point, Checkpoint/Midpoint, and Goal, giving the first complete test level a clear route spine.
-- The Platformer shelf has first-pass `Save Level` / `Load Level` buttons. They round-trip to `dack/levels/rad-test.dacklevel.json` and currently store placed toolkit objects, route markers, visible actors/enemies, text scale, actor scale, playset/mode, and key gameplay toggles. Snapshot image packaging and mutated playfield pixels remain the next layer.
-- Platformer now has an explicit Editor/Play split. `Enter Play Mode` hides editor-only objects, honors the Start Point, clears shots, resets the player, and lets enemy AI/projectiles/collisions count. `Return to Editor` pauses player controls and enemy rules so markers, enemies, and toolkit objects can be safely adjusted.
-- The prototype opens as playfield-only real estate; use the floating toolbar to restore the sprite pad or switch playsets.
-- The playable scout uses Stickman Pack idle, run, and jump animation frames.
-- The right-side prototype now includes a tiny Character Picker: `STICKMAN` loads the admitted stick figure frames into the same editor as imported strips, while `TGC PLAYER` tests a raw-vault strip from The Game Creator's Pack. The animation frame editor displays frames in renumberable rows of eight, supports editable action labels, preset labels, editable start/end frame numbers, per-label ping-pong toggles, strobe toggles/counts, and add-label highlighting, proving the picker/edit/fork/label workflow for actions like idle, run, fall, run-shoot, jump-shoot, climb-up/down, dig-up/down, shoot-up/down, bounce/stomp, turn, jump, land, hurt, and death.
-- The selected actor can now be renamed in the sidebar. This is deliberately simple but important: imported characters need creator-owned names before they become reusable library entries.
-- `SUNNY DRAGON` adds the first animated enemy/import test from `raw base assets/Legacy Collection/.../sunny-dragon-fly.png`. It is treated as a 9-frame grid strip, appears as a visible animated enemy, and uses the same label/save/load editor path as player characters.
-- Enemy actors are now draggable directly on the playfield. Once dragged, they keep manual placement instead of snapping back to prototype anchor/bob positions. The existing `ACTOR 1/2x`, `ACTOR 1x`, and `ACTOR 2x` buttons scale the selected enemy when an enemy is selected, and tune the player/text ratio when the player is selected.
-- Enemy design now splits into locomotion, behavior, attack, and text-interaction choices. Sunny Dragon's default role is a flying guard: useful for platformer, side-view shooter, Brickbat hazards/bonuses, pinball toys, and overhead modes.
-- Platformer combat has a first playable slice: enemies patrol around their authored home position, contact with an enemy kills the player, projectile hits can use partial health damage or instant death, and player shots reduce enemy shot toughness until the enemy is defeated. The Platformer shelf includes `Enemy AI`, `Enemy Shots`, range, and damage toggles so creators can build safely.
-- Enemy projectile ability is now explicit per enemy. Sunny Dragon, Shooter Boss, and Shooter Fleet can fire in this RAD pass; ground/crawler TGC enemies are contact-only until designers assign weapons.
-- Enemy toughness is measured as regular shots to defeat, currently clamped from 1-9. Player gun power is a matching multiplier: a 2x gun removes two toughness points per hit. This should become a normal character-builder/Inspector field beside projectile, explosion, health, and behavior cards.
-- Player death now uses the word/effects system as debug: causes such as `DRAGON SHOT`, `BLUE GUARD CONTACT`, or `FALL DEATH` explode as visible text near the player.
-- Platformer combat has a basic `Enemy Track` toggle. When enabled, enemies bias their patrol toward the player, face the player, and face the player when firing; when disabled, they keep patrol/guard behavior and fire along their current facing.
-- Platformer now has a small draggable HUD overlay showing score, lives, deaths, enemy count, enemy shots, and recent status. This should eventually share the movable/white-space-aware HUD system planned for Brickbat and other playsets. The RAD level file persists HUD position.
-- Projectile/effect import has started. The first wired enemy projectile profile uses `fireball-impact-explosion.png`: frame 0 is the projectile, frame 1 is the impact, and later frames animate the explosion. Explosion impacts can randomly erase nearby letter regions inside the blast radius without OCR, giving low-cost document deformation and +5-per-letter scoring.
-- Explosion text damage now calls the reusable letter-shard routine: the number of randomly thrown letters matches the number of destroyed letter regions.
-- `dack/assets/project/effects/projectile-effect-profiles.json` catalogs eight cleared Itch-derived profiles from the explosion pack so designers can eventually assign projectile/explosion visuals to either player or enemy weapons.
-- First sound hooks are wired from a tiny CC0-labeled RAD subset: player shot, enemy hit, enemy defeat, and player hurt/death. `power-up.ogg` is staged for the first pickup/power-up pass. Exact public source URLs/creator names should be recorded before hub packaging.
-- The Game Creator's Pack graphic sheets are now copied into `dack/assets/project/game-creators-pack/` with `tgc-graphic-pack-catalog.json`. Initial named character profiles are Orange Worker, Red Runner, Blue Guard, Green Crawler, Shooter Boss, and Shooter Fleet; initial level-object profiles include Red Girder, Gray Blocks, Orange Bricks, and Retro Puzzle Blocks.
-- The Character Picker now shelves those TGC character profiles as enemies: Orange Worker, Red Runner, Blue Guard, Green Crawler, Shooter Boss, and Shooter Fleet. For this pass they all spawn as draggable/scalable enemies, not player replacements.
-- Enemy shelf spawns use the next hidden actor slot and stagger new enemies across the playfield with an explicit default size, making multi-enemy level setup visible and predictable.
-- Conveyor defaults are faster: new conveyors start at 14 units, and the speed inspector now ranges from -24 to 24.
-- Stickman v0.1 is hairline art: the 64 px sheets use very thin one-pixel strokes that can collapse into dotted limbs when scaled down to document-creature size. The runtime now gives Stickman imports a tiny one-pixel ink/dilation pass after white-to-transparent cleanup so the lines survive scaling more reliably.
-- `SAVE ANIM LABELS` and `LOAD ANIM LABELS` round-trip source-aware local `.dackanim.json` manifests. TGC saves under `dack/assets/quarantine/game-creators-pack-graphics-prep/`; Stickman saves under `dack/assets/quarantine/stickman-pack-v0.1/`. These files include displayed frame numbers, internal detected indices, labels, ping-pong flags, and strobe settings so numbering mistakes can be inspected and reapplied.
-- The animation editor is now actor/source-aware. Selecting a player or enemy loads that actor's frame source and any saved labels for its stable `animationSourceId`. Those saved mappings are meant to become promoted defaults once tested, so the next creator starts with working frame ranges instead of inventing them again.
-- Animation labels are range-based, not fixed-length. A label can point at one frame, many frames, a ping-ponged range, or `- / -` for unavailable. Typing `-` in either endpoint marks both endpoints dashed and tells the engine that character does not supply that action; fallback labels then carry the motion instead of forcing bogus frames.
-- Animation labels now include strobe/count fields for effects such as death flashes, damage flashes, invincibility, and power-ups. `TEST DEATH` plays the Death label with its strobe settings.
-- Platformer creator rules now include **Gun: On/Off**. Gun On enables projectiles plus Run Shoot / Jump Shoot animation labels; Gun Off shifts the game feel toward Mario-like jumping, climbing, digging, and stomping.
-- Platformer jump is now Space-only. Up remains reserved for climbing/crawling/upward movement so ladders, digging, and vertical games do not fight the jump binding.
-- Actor size is now an explicit multiplier with 1/2x, 1x, and 2x buttons, separate from text-unit scaling. The current default is 2x so the TGC player is readable while we tune the text:character ratio.
-- Floor-hole behavior has a minimum landing-support field: the actor only lands if enough of its width overlaps a surface. This gives us a concrete answer to "how small a gap can you fall through?" and can become a per-character/per-level rule later.
-- Swinging vines/ropes belong with the upcoming spline/Bezier tool family so they can use graceful visible arcs and draggable curve handles rather than stiff line placeholders.
-- A parabola/path editor belongs on the roadmap. Parabolas are the cheap first version: start/end/apex handles for jumps, tossed objects, arcing shots, enemy hops, bounce rebounds, and power-up travel. Bezier/spline paths come after for vines, patrols, racing curves, pinball ramps, and prettier motion.
-- Power-up animations can start as idle/current animation plus reusable DACK visual effects: glow, rings, sparks, color cycling, outline pulses, rotating symbols, and other ridiculous neon blessings.
-- Use the floating playset toolbar to switch between **Platformer** and **Brickbat**.
-- Playsets intentionally share the same cloned page state until you press **Reset** or start a new configured game. Brickbat can erase/deform text, then Platformer can inherit those holes as changed terrain.
-- Use **Floor On/Off** to toggle the platformer safety floor. Floor On keeps a bottom catch surface; Floor Off allows death-plunge levels.
-- In the Cockpit's Platformer Shelf, add overlay parts to the current playfield:
-  ladder, ramp, slide, conveyor, elevator, checkpoint, start point, and hidden
-  switch. These are DACK
-  construction objects layered over the cloned page; they do not edit the
-  source document or screenshot pixels. Click a placed object to select it,
-  drag the center grip/body to move it, or drag its **A/B endpoint handles** to
-  scale or angle it; the inspector updates live and collision follows the edited
-  geometry.
-- Selected toolkit objects now expose first-pass attributes in the inspector:
-  speed/force, thickness/collision pad, reverse direction, and a
-  **Ramp Up / Slide Down** normalization button. Elevators also expose a
-  range-of-motion slider and draw their travel rail/limits in the editor.
-  Objects also expose a color picker, custom-color checkbox, and opacity
-  slider. Conveyors can be reversed by flipping speed direction. Slides have
-  their own downhill push instead of piggybacking on generic ramp detection.
-- Platformer world rules now expose separate toggles for captured text behavior:
-  **Text Terrain**, **Text Crawl**, and **Shot Text Damage**. These are currently
-  player/global rules; the intended product model is per-actor capabilities so
-  enemies, projectiles, and the player can each decide whether text is solid,
-  climbable, destructible, ignored, or semantically meaningful.
-- Start points and hidden switches are the first editor-only logic objects:
-  visible while the Cockpit is open, hidden during play. The latest start point
-  controls the scout spawn.
-- In the Cockpit's Brickbat Page, switch paddle orientation and target grain.
-  This is the first contextual toolkit page, replacing the old crowded toolbar
-  buttons.
-- In Brickbat mode, the score/word HUD starts with automatic whitespace
-  placement, but becomes draggable while the Cockpit is open. Drag the panel to
-  pin it somewhere better for the level; use **Auto-Place Score** to return it
-  to automatic placement.
-- In Brickbat mode, detected letters or words become invisible collision objects; when struck, the cloned page visually erases that text object. The mouse controls the paddle.
-- Brickbat starts with three balls, tracks score, hits, remaining targets, and balls, and now treats bonus effects as big analog arcade typography: colorful, fading, rotating, strobing text. Laser bonuses pick a random 10-100% strength, fire after a short arming delay, and delete/score the intersected column of text.
-- Click one of the three actors to select it.
-- Paint on the 32 x 32 pad; every actor sharing that sprite changes instantly.
-- Right-click or choose **Erase** to make pixels transparent.
-- Choose **Fork Selected** to give the selected actor an independent sprite.
-- Choose **Reset Figure** to restore the simple procedural stick figure.
-- Press **Ctrl+Alt+B** for the Boss Key.
+1. Open `dack/project.godot` in the Mono build of Godot.
+2. Press **F5** or use the project Play button.
 
-## Brickbat literary power-up sketch
+The RAD looks for the current captured-page test source in:
 
-These are first-pass mechanics for text-native Brickbat variants. They should read like document magic rather than arcade pickups pasted on top.
+- `../Screenshot 2026-07-26 174658.png`
+- `assets/captured/current-page.png`
 
-- **Footnote**: widens the paddle and adds a small trailing citation mark. Useful, readable, and forgiving.
-- **Plot Twist**: sharply changes the ball's angle after the next paddle hit. Good for breaking stale rallies.
-- **Second Draft**: cancels one missed ball and rewrites it back into play from the paddle.
-- **Red Pen**: temporarily lets the ball erase every text object it grazes without bouncing off the first one.
-- **Bookmark**: drops a temporary checkpoint; if the ball is missed, it relaunches from that marked page position.
-- **Alliteration**: chains hits across nearby objects that start with the same detected letter once OCR/text identity exists.
-- **Marginalia**: creates a temporary side paddle in the margin for weird two-axis saves.
+If neither exists, procedural fallback terrain is used.
 
-Approach:
+## Global Controls
 
-1. Geometry bonuses work without OCR: hit count, word length, paragraph region, punctuation density, or target grain can trigger Multiball, Laser, Red Pen, Bookmark, etc.
-2. OCR bonuses layer on later: words such as `draft`, `quote`, `footnote`, `bookmark`, `edit`, `revise`, or `chapter` can become named targets once the slow-reveal OCR pass labels them.
-3. Literary bonuses should visibly alter the cloned document: underlines, marginal notes, strike-throughs, citation marks, bookmarks, red-pen beams, or shrapnel letters.
-4. Every bonus should have a quiet document-world explanation, not just arcade fireworks.
-
-Word-shrapnel algorithm sketch:
-
-1. When a word target is destroyed, retrieve its child letter rectangles from the text-object map.
-2. For each letter, copy its current pixels from the cloned page into a small particle image.
-3. Erase the original word using the connected-ink eraser.
-4. Spawn each letter particle from the word center with velocity based on:
-   - distance from impact point
-   - letter order in the word
-   - a small random angular spread
-5. Simulate letter particles briefly as shrapnel:
-   - collide with nearby text targets
-   - fade or settle into the margin
-   - optionally count as secondary hits for Red Pen / Plot Twist variants
-6. Cleanup tiny leftover ink specks after the explosion pass.
-
-## Brickbat builder direction
-
-Brickbat should graduate from "a Breakout-like proof of concept" into a document-native game builder. The default mode can stay simple, but the toolkit should expose enough knobs that a creator can turn any page into a different kind of target-clearing game.
-
-- **Game rules**: ball count, launch randomness, ball speed tiers, miss behavior, win condition, score multipliers, time pressure, target grain, and whether destroyed text persists when switching playsets.
-- **Text collision rules**: text targets can bounce the ball, let the ball pierce through while still scoring/erasing, or switch modes inside conditional zones. In Brickbat this becomes both a creator setting and a power-up vocabulary item: ghost ball, piercing shot, hard-copy bounce, semantic pass-through, or only-bounce-on-keywords.
-- **Target recipes**: letters, words, lines, headings, icons, pillboxes, selected colors, OCR-discovered words, punctuation clusters, margin notes, or manually painted regions.
-- **Paddle tools**: bottom/side/top orientation, width/height, curved deflection, sticky paddle, moving/AI paddle, split paddle, or document-edge paddles.
-- **Bonus deck**: choose which literary/arcade bonuses can appear, their frequency, their visual style, and whether they are geometry-triggered, OCR-triggered, score-triggered, or manually placed.
-- **Laser/beam editor**: strength range, width, delay, direction, scoring, color cycling, target snapping, and whether the beam cuts text, only scores it, or temporarily reveals semantic labels. Higher laser strength should mean more reliable deletion: longer reach, wider hit band, and better snapping toward nearby text.
-- **Bonus pacing**: multiball is capped at three balls and should have a visible cooldown, roughly 30 seconds in the starter rule set, so lasers and other bonuses keep rotating into play.
-- **Persistence policy**: keep the damaged clone for cross-playset terrain, reset on new game, or save the deformed clone as a new level variant.
-- **Visual personality**: quiet office mode, red-pen markup mode, neon/Jeff-Minter mode, monochrome terminal mode, or custom palettes.
-- **Sound hooks**: simple event slots first — paddle hit, text hit, word destroyed, laser arm/fire, bonus spawn, ball lost, round won — before building a deeper audio system.
-
-## Pinball construction kit note
-
-Pinball belongs beside Brickbat, Racing, Platformer, and Overhead as a future construction-kit mode. The creator places flippers, a plunger lane, bumpers, rollovers, drop targets, ramps, gates, drains, nudges, bonus inserts, jackpot/multiball rules, and score logic directly onto the cloned page. Document gutters can become lanes, headings/icons/pillboxes can become bumpers or lit inserts, bullet lists can become drop targets, and semantic words can become missions or jackpots. It should reuse the same effects deck heavily: flashing inserts, analog score text, word explosions, jackpot banners, and big ridiculous neon.
-
-Pinball should also use the textmode/BBS layer as actual table art, not just UI. Starter board skin ideas: office memo table, dungeon terminal table, neon BBS jackpot board, sci-fi system-console table, and literary word-processor table. These can be generated from open FIGlet-style banners, box drawing, CP437-like glyphs, DACK procedural borders, and carefully licensed curated art.
-
-For the VerzatileDev starter pack, the preferred path is a batch prep/scaler, not a full importer yet. Keep the purchased originals untouched in `raw base assets/`, generate local-only scaled candidates under `dack/assets/quarantine/`, then curate a small admitted subset into `dack/assets/third_party/` only after we pick the parts, confirm provenance, and decide how each piece behaves. The helper script is:
-
-```powershell
-python tools/prep_pinball_assets.py
-```
-
-It creates two tiers for large sheets/backgrounds (`preview-1024`, `thumb-256`) and two tiers for individual pieces (`candidate-512`, `thumb-128`), plus a manifest. This gives the shelf/editor useful thumbnails and working candidates without committing huge raw art or pretending we understand pivots, collision shapes, flipper arcs, bumper radii, insert states, or table metadata yet.
-
-Builder rules to design:
-
-- **Table geometry**: document/page bounds, gutters, detected text blocks, manually painted rails, one-way gates, ramps, holes, kickers, lanes, outlanes, drain zones, and safe launch lanes.
-- **Ball rules**: ball count, launch force, gravity/table tilt, elasticity, friction, spin/english, max speed, stuck-ball rescue, multiball cap, and whether pinball deforms the shared clone.
-- **Flipper rules**: left/right/custom flippers, strength, return speed, angle limits, cooldown, keyboard/mouse binding, and visible sweep preview handles.
-- **Target rules**: bumpers, rollovers, drop targets, word targets, letter banks, headings, icons, pillboxes, tables/cells, and manually painted targets.
-- **Text collision rules**: textual table art can either behave as solid pins/targets, pass-through scoring ink, or conditional stateful geometry. A pinball table might make headings solid rails, body copy pass-through scoring texture, and lit jackpot words temporarily solid.
-- **Scoring rules**: target value, combos, lit/unlit state, lane completion, word completion, multipliers, jackpots, hurry-up timers, and bonus count-up.
-- **Mission rules**: semantic words can become modes such as `JACKPOT`, `LOCK`, `MULTIBALL`, `BONUS`, `DRAIN`, `SAVE`, `RAMP`, or `TILT`.
-- **Effects/sound hooks**: bumper hit, rollover lit, ramp made, drain, ball save, tilt warning, jackpot, multiball, word completed, and table clear.
-- **Construction UI**: drag handles for flipper arcs, bumper radii, ramp splines, gate direction, plunger lane strength, drain width, and insert/target lighting.
-
-## Overhead toolkit note
-
-Overhead is a camera/control family, not a single game type. Combat is the first preset, but the same foundation should support driving, planes/spaceships, RPG/adventure actors, animals, insects, office creatures, workers, swarms, hordes, and Robotron-like arena pressure.
-
-Movement presets:
-
-- **Combat/tank**: rotate, drive, shoot, ricochet, hide behind cover.
-- **Driving**: steer, accelerate, brake/reverse, drift, follow roads/tracks.
-- **Plane/space**: rotate, thrust, coast/inertia, wrap/bounce at boundaries, shoot.
-- **Lunar Lander**: rotate, main/side thrust, fuel, gravity, safe descent/tilt thresholds, landing pads, terrain collision, crash explosions.
-- **RPG/adventure**: 8-way or click-to-move, interact, pick up, open, talk/fight.
-- **Animals/insects**: crawl, wander, forage, flee, follow scent/trails, swarm, climb text/UI shapes.
-- **Flock/Horde**: group chase, separation/cohesion, follow-leader, scatter/charge states, bullet-pattern emitters, rescue/escort variants, and panic-room survival.
-
-First proof: one overhead actor on the cloned playfield with tank-style rotate/drive/fire controls, ricochet projectiles, cover/solid regions, and one simple enemy behavior.
-
-Flock/Horde should become a drag-on behavior card for enemies rather than a separate genre button. The same card can support Robotron-like mobs, bullet-hell enemy groups, insect swarms, office gremlins, tower-defense waves, escort panic rooms, and ambient desktop creatures. Useful knobs: group size, spawn budget, cohesion, separation, target attraction, range in text units, contact damage, projectile pattern, cooldown, and rescue/hostile/team identity.
-
-`Defend` should be another drag-on behavior card. A defender protects a point, area, route node, object, NPC, marker, or word-object rather than merely chasing the player. Good targets include Goal, Checkpoint, Hidden Switch, door, tower-defense base, escort target, jackpot insert, or a semantic word such as `SAFE`, `VAULT`, `BOSS`, or `EXIT`. Useful knobs: defend radius, pursuit radius, return speed, alert radius, line-of-sight requirement, stance, team filter, and failure policy.
-
-Lunar Lander is a natural early thrust-space preset because the authoring grammar is tiny and very DACK-friendly: one craft, gravity, fuel, landing pads, descent-rate safety, tilt tolerance, crash explosions, and document/text terrain as jagged moonscape. A word such as `PAD`, `SAFE`, `FUEL`, `BASE`, or `CRATER` can become a semantic landing or hazard anchor later.
-
-## Reusable visual effects library
-
-`PsychedelicEffects` is the first modular effects layer. Brickbat uses it now, but the intent is engine-wide reuse across platformer combat, tower defense, RPG spells, racing crashes, document events, and boss/round transitions.
-
-Current effect vocabulary:
-
-- **TextHit**: score text plus rings, sparks, and impact burst.
-- **ImpactBurst**: reusable explosion core for text, bullets, enemies, and bonus pickups.
-- **PaddleSpark**: quick contact flash for paddle/actor collisions.
-- **Multiball**: big neon caption, double expanding rings, and radial starburst.
-- **LaserArmed**: warning caption and charging burst.
-- **LaserColumn**: full beam render plus score/miss caption.
-- **RoundBanner**: oversized end-state typography with shockwaves.
-- **ExplodeWord**: breaks a known word into oversized glowing letter shards, each flying along a randomized arcing/spline-like path with independent scale, spin, palette, and fade. Rectangle-only hits can use generic text shrapnel; true struck-word shards require OCR/UIA/native labels.
-
-Style target: deliberately excessive analog/neon energy — strobing color, fading glow, rotating text, shock rings, particle sparks, and radial bursts. Each burst chooses one strong solid event color so it reads clearly, while consecutive bursts vary wildly across the arcade palette. Effects render at reduced opacity and gameplay-critical objects can redraw above them with high-contrast/inverted treatments so spectacle never hides the ball, player, or cursor-equivalent object. This is the seed of a skinnable effects deck, not a one-off Brickbat flourish.
-
-## Textmode / BBS opaque art layer
-
-The next visual vocabulary layer should be an opaque ASCII/ANSI/BBS-style display layer. It can cover regions of the cloned page as an intentional skin, not merely sit transparently over it. Use cases:
-
-- RPG/Roguelike: terminal dungeon maps, monster glyphs, inventory panels, fog of war.
-- Snake/Maze chase: pellet fields, maze walls, tunnel labels, power-state banners, enemy glyphs, route overlays.
-- Pinball: full table-board art, backglass, score reels, lit inserts, jackpot banners, attract mode.
-- Brickbat: bonus typography, title cards, target-wall skins, score panels.
-- Platformer: BBS ladders, ramps, checkpoint signs, enemy glyphs, level title cards.
-- Racing/Tower Defense/Action: route boards, warning signs, wave banners, squad command panels.
-
-Source policy: generated/open textmode first. Good candidate directions include FIGlet/FIGfont-style generated banners, DACK-created CP437-like borders and glyphs, and curated ASCII/ANSI art only when license/provenance is explicit. Avoid random web ASCII art unless it has a clear redistributable license.
-
-## Source family → toolkit affinity
-
-The editor should recommend toolkits based on the captured source's visual grammar, not a fixed list of blessed apps. "Supported" means DACK understands useful source families and app archetypes. If Windows can render it, the capture path can usually clone it; the source-family presets simply help DACK choose a sensible first toolkit, shelf, detector, and onboarding path.
-
-Examples matter because they reveal visual grammar: GIMP and Krita behave like raster/image editors; OpenOffice Writer behaves like a rich text document; OpenOffice Calc behaves like a spreadsheet; TextPad behaves like a plain text editor; Windows itself behaves like a desktop/icon/window playfield.
-
-| Source family / examples | Best-fit starting toolkits |
+| Action | Current RAD control |
 | --- | --- |
-| Windows desktop / OS shell: desktop, taskbar, dialogs, File Explorer, icons, windows | Action, RPG/adventure, Tower Defense, Collection/casual, Pinball toybox, Snake/Maze chase, Boss Key scenarios |
-| Rich text / office documents: Word, OpenOffice/LibreOffice Writer, WordPad, Markdown previews | Platformer, Brickbat, RPG/Roguelike, Tower Defense, Action/Word War, Snake/Maze chase, BBS/textmode |
-| Plain text / code editors: TextPad, Notepad, VS Code, terminal editors | RPG/Roguelike, Snake/Maze chase, Platformer, Brickbat, BBS/textmode, hacking/casual, Tower Defense |
-| Spreadsheets / grid apps: Excel, OpenOffice/LibreOffice Calc, CSV/table viewers | Brickbat, Tower Defense, Puzzle, Snake/Maze chase, Racing routes, grid shooters, RPG tile maps |
-| Slides / presentation canvases: PowerPoint, OpenOffice/LibreOffice Impress, diagram slides | Racing, Pinball, Brickbat, Action arena, Tower Defense |
-| Raster/image editors: Photoshop, Krita, GIMP, Paint.NET, MS Paint | Pinball, Racing, Platformer, Space Shooter backdrop, art-board action arena |
-| Vector/diagram/CAD-like apps: Illustrator, Inkscape, LibreOffice Draw, CAD canvases | Racing, Pinball, Platformer ramps, Tower Defense routes |
-| Browser dashboards/web apps | Casual, Brickbat, Tower Defense, Action arena, Puzzle |
-| Email/chat/task apps | Catch/Kaboom, Tower Defense, Action defense, Casual sorting, Brickbat |
-| Calendar/timelines/project boards | Racing, Tower Defense, Route planning, Casual scheduling |
-| PDF/document viewers | Platformer, Brickbat, RPG/BBS, Puzzle, Tower Defense |
-| Paint/whiteboards | Pinball, Racing, Platformer, Action sandbox, Puzzle |
-| Terminal/console/logs | RPG/Roguelike, BBS mode, Tower Defense/log defense, Brickbat |
+| Open/close ordinary Cockpit or return from Sprite Studio | **Esc** |
+| Toggle the thin RAD quick strip | **F1** |
+| Boss Key | **Ctrl+Alt+B** |
 
-Pinball feels most native to visual/layered/canvas sources — Photoshop, Illustrator, PowerPoint, Paint/whiteboards, and desktop/icon layouts. Word can host a pinball table, especially a BBS/text-themed one, but Word's strongest native games are text traversal, text destruction, semantic word-objects, and writing-reactive play.
+`Ctrl+Alt+B` is the current test binding, not yet the settled production default. Esc is ordinary navigation; the Boss Key is the safety/privacy escape and should hide/neutralize all DACK surfaces.
 
-## Snake / Maze chase kit note
+## Play Controls
 
-Snake/Maze chase belongs beside RPG/Roguelike and Brickbat as a text/grid-native arcade toolkit. The generic family covers snake growth games, maze chase games, pellet collection, route planning, pursuit/evasion, tunnels, doors, power states, and grid hazards without depending on any single named classic.
+### Platformer
 
-Builder rules to design:
+| Action | Control |
+| --- | --- |
+| Move | **A/D** or **Left/Right** |
+| Jump | **Space** |
+| Climb/crawl | **W/S** or **Up/Down** when touching an eligible surface |
+| Shoot | **J** or **X**, when Gun is enabled |
 
-- **Maze sources**: text lines, spreadsheet cells, desktop icons, window boundaries, margins/gutters, manually painted walls, semantic words, and BBS/ASCII opaque art.
-- **Collectibles**: letters, punctuation, OCR-discovered words, icons, cells, colored chips, manually placed pellets, and bonus anchors.
-- **Word-goal play**: seek target words, avoid forbidden words, collect words by category, grow from approved words, shrink or poison on taboo words, and form odd phrase chains from the route taken through a document.
-- **Paragraph tunneling**: the snake can carve through paragraph text as mutable terrain, eating letters before OCR is ready and then using Word Sense labels to steer toward or away from known words.
-- **Actor rules**: snake length/growth, head/body collision, wrap tunnels, player speed, turn buffering, chase enemies, flee enemies, patrol enemies, and Inky/Pinky/Blinky/Clyde-like behavior presets expressed generically.
-- **Power states**: temporary invulnerability, reverse chase, slow/freeze enemies, double score, text magnet, tunnel reveal, wall-eating, and clone-only terrain deformation.
-- **Construction UI**: paint maze walls, mark pellets, drag tunnel endpoints, place enemy homes/spawns, define patrol/chase zones, set wrap edges, and preview route heatmaps.
-- **Cross-playset mutation**: Brickbat or platformer projectiles can punch holes into a page, then Snake/Maze can inherit those holes as altered corridors, blocked lanes, or dangerous gaps until the clone is reset.
+Up is intentionally reserved for climbing/crawling rather than jumping.
 
-## Life / Snake / Minefield mashup note
+### Brickbat
 
-A throwback Grid/Text preset can combine cellular automata, snake movement, and minefield reveal rules:
+- Move the active paddle with the mouse.
+- The standard run has three total served balls.
+- Multiball may create up to three active balls and does not consume reserves.
+- Letter and Word modes clear detected document targets from the working clone.
+- The score/word HUD is draggable while Build/Cockpit editing is active.
 
-- **Life layer**: text cells, spreadsheet cells, or glyph tiles are born/survive/die by simple neighbor rules.
-- **Snake layer**: a player or enemy chain eats, grows, tunnels, sheds, poisons, or carries cells/letters/words.
-- **Minefield layer**: hidden cells contain traps, bonuses, glyph mines, or chain-reaction explosives; adjacent danger can be shown as numbers, colors, or cloned-page annotations.
-- **DACK twist**: OCR/Word Sense can seed rules from words such as `BOMB`, `FOOD`, `WALL`, `LIFE`, `TARPIT`, `EXIT`, `SAFE`, or `POISON`, while fallback generic glyphs keep the mode playable without OCR.
+### Pinball
 
-This belongs under Grid/Text first, but its components are reusable: Life-style propagation can drive enemy infection, Snake-style chains can become worms/trains/convoys, and Minefield reveal can power hidden-switch and trap systems in platformer, overhead, and RPG modes.
+| Action | Control |
+| --- | --- |
+| Charge/release plunger | Hold/release **Space** |
+| Left flipper | **A** or **Left** |
+| Right flipper | **D** or **Right** |
 
-## Semantic word-object concept
+Pinball plows through document letters by default. Bounce remains an authored object/zone option.
 
-The recurring DACK mechanic is that text can remain readable while also becoming gameplay.
+### Overhead
 
-- Fast image analysis finds letters, words, lines, background regions, gutters, and margins without waiting for OCR.
-- Lazy OCR is a background service over those regions, not a blocking import step. Brickbat queues word targets near balls/paddles; Platformer queues words along projectile rays; later Pinball and Snake/Maze can queue lit targets, lanes, pellets, doors, and power words.
-- End-user packaging should call this **Word Sense** or **Page Reading**. Gameplay never requires it: generic `TEXT` labels, score text, glyph shards, and toolkit-specific fallback effects stay available when OCR is missing or late.
-- Provider plan: the RAD build uses command-line Tesseract because it was the fastest proof. Product builds should prefer an embedded Tesseract/libtesseract provider behind the same service boundary, with external `tesseract.exe` discovery as a fallback. Heavier PaddleOCR-style providers stay research-only for now; commercial OCR libraries are not a good core dependency for an open-source/community tool.
-- The detector should find light/colored sub-headers as text when they contrast with the page, not only dark body text.
-- Non-text UI/document objects such as icons, pillboxes, badges, buttons, and colored labels are bonus anchors: ideal places to attach power-ups, targets, or semantic behaviors.
-- Optional OCR can run later as a slow-reveal layer, highlighting meaningful words after play begins.
-- Words can become semantic objects:
-  - `TARPIT` becomes a sticky hazard.
-  - `LADDER` becomes a climbable tool.
-  - `BRIDGE` spans whitespace.
-  - `KEY` and `DOOR` become lock/unlock objects.
-  - `FOOTNOTE`, `BOOKMARK`, `DRAFT`, and `RED PEN` become literary power-ups.
-- OCR also enables word-goal versions of existing games: seek, avoid, collect, erase, protect, quarantine, or tunnel toward words by category. A Snake/Maze ruleset might tunnel through paragraphs looking for `KEY` or food words while avoiding `TARPIT`, `POISON`, or deadlines.
-- Every semantic object should support text, graphic, or hybrid presentation.
-- A word can summon an editor tool without trapping the creator in the word's typography. For example, `LADDER` may start on the word, then expose draggable endpoints so it can be stretched, angled, offset, or detached while remaining linked to the source word.
+- Move with **WASD** or the arrow keys.
+- The current pass is a movement/actor-library seed, not yet a complete combat builder.
 
-## Digging / terrain mutation note
+## Build/Edit Interaction
 
-Digging should become a shared action beside shooting, cutting, erasing, painting, and exploding. In a document clone, digging means removing or transforming collision-bearing pixels/letters/regions in the working clone only. It can serve several kits:
+- Open the Cockpit with Esc.
+- Select the relevant contextual page.
+- Drag cards or use shelf actions to place players, enemies, objects, and toolkit parts.
+- Drag actors directly on the playfield.
+- For endpoint objects, drag the body to move it and the A/B handles to resize it.
+- Ladders remain vertical; ramps, slides, and conveyors may angle.
+- Start points, hidden switches, spawn markers, and other invisible logic are visible while building and hidden during play.
+- The Inspector edits the selected object’s applicable attributes.
+- Enter Play to hide anchors/editor-only objects and honor the configured Start Point.
+- Return to Build without restoring the source; clone deformation should remain until an explicit restore/new-game action.
 
-- Platformer: dig through text floors, gutters, walls, or manually painted dirt.
-- RPG/Roguelike: tunnel through glyph caves, secret walls, or destructible map regions.
-- Action/Tower Defense: create trenches, choke points, or breach routes.
-- Brickbat/Pinball: turn repeated hits into crumbled lanes, pits, or scoreable holes.
+## Sprite and Animation Editing
 
-Design questions: tool range, dig speed, cooldown, material hardness, whether text erases visually or toggles into a dug graphic, whether debris becomes particles/letters, and whether the mutation persists across playsets.
+The current prototype contains two related surfaces:
 
-## Toolkit overlay note
+- **Live sprite pad:** quick, constrained pixel editing bound to the selected actor.
+- **Sprite Studio:** larger actor/animation workspace for choosing a source, previewing a selected action, editing frame ranges/sequences, ping-pong/reverse behavior, strobe count, names, defaults, and future behavior/projectile/effect/sound/box cards.
 
-The floating toolbar is only the RAD quick switcher. The product UI needs a real construction shell:
+Current animation behavior:
 
-- **Esc main menu**: Esc should toggle the normal DACK game/editor menu on and off. It is not the Boss Key. Boss Key hides/neutralizes DACK; Esc reveals ordinary controls. The menu can fade after N unattended seconds and return instantly on Esc, mouse movement, or interaction.
-- **Source/live-capture panel**: choose desktop, monitor, window, region, image, or text grid; freeze/resample the live source; show a visible Live Desktop indicator.
-- **Asset shelf / parts palette**: draggable assets with thumbnails, categories, license/source badges, and live placement previews.
-- **Toolkit shelf categories**: Platformer gets text ramps, paragraph slanting, crawl surfaces, ladders, checkpoints, elevators, slides, diggable terrain, projectiles, and enemy tools; Brickbat gets scoring, target grain, power-ups, multiball/laser tuning, paddles, target recipes, and persistence; Racing gets track drawing, start/finish/checkpoints, laps, boosts, hazards, and route tools; Pinball gets flippers, balls, plunger lanes, bumpers, rollovers, ramps, gates, drains, nudges, inserts, jackpots, and multiball logic; Snake/Maze gets maze walls, pellets, tunnels, enemy homes, chase/flee presets, wrap edges, power states, growth rules, and route heatmaps.
-- **Direct handles + inspector**: drag an asset onto the playfield, release to place, then immediately edit flipper arcs, ramp splines, ladder endpoints, bumper radii, patrol paths, trigger bounds, and numeric properties.
-- **Gameplay-aware HUD**: score/stat panels should find whitespace, fade or slide when a ball/player/projectile approaches, and never obscure gameplay-critical objects.
-- **Preflight cleanup**: Brickbat should blank letters too close to the paddle/drain/launch zone before the game starts, recorded as a reversible clone-only preflight mutation.
-- **One-click play collapse**: authoring UI can collapse away for fullscreen testing, then return without resetting the cloned/deformed playfield.
+- labels may use any number of frames;
+- `-` in either endpoint makes an action unavailable;
+- ping-pong can turn a short sequence into a forward/reverse motion;
+- Strobe and count support death/damage/power-up previews;
+- Save/Load animation labels uses source-aware `.dackanim.json` manifests;
+- creator-tested mappings are intended to become curated source defaults.
 
-## Refactor plan: RAD toolbar to product shell
+The full Sprite Studio is transitional UI. The product target is a responsive, high-contrast owned page with a neutral preview stage, side-by-side animated/edit frames, label-click preview, frame arrows, and scrollable strips/labels.
 
-Suggested build order:
+## Implemented RAD Status
 
-1. Add an input router: Esc toggles main menu, Boss Key remains privacy escape, F1 becomes debug/RAD-only.
-2. Add a UI shell controller: main menu, editor shell, toolkit overlay, HUD, fade timers, play/edit/menu state.
-3. Add a HUD manager: whitespace placement, approach-radius fade, gameplay-critical redraw above effects/HUD.
-4. Add Brickbat preflight cleanup: blank text near paddle/drain/launch zone before ball launch.
-5. Add minimum viable asset shelf: draggable items, placement preview, source/license badge, direct handles.
-6. Add source provider interface: SnapshotImageSource first, then LiveDesktopSource.
-7. Move screenshot import/detection behind SnapshotImageSource so Live Desktop can share the same environmental map.
-8. Start Pinball only after the shelf/handles/source-provider shell exists.
+| Area | Current state |
+| --- | --- |
+| Captured source | Native 1:1 page pixels; spare display area is nonphysical |
+| Text geometry | Letter, word, line/platform, background/whitespace, and bonus-anchor proofs |
+| Mutation | Clone-only erasure, regional background replacement, letter shrapnel, cross-playset persistence |
+| Platformer | Gravity, text terrain, climb/crawl, ladders, ramps/slides, conveyors, elevators, start/goal, combat, enemies, radar, projectiles, score/lives |
+| Brickbat | Letter/word targets, reserve balls, multiball cooldown, laser, found-word ticker, HUD placement/drag, effects/sound, destructible actors |
+| Pinball | Plunger, ball, flippers, bumpers/parts seed, drain, destructive text plow |
+| Overhead | Movement family and categorized actor-library seed |
+| Editor | Cockpit tabs, contextual pages, shelves, cards, Inspector, Understand seed, handles, edit/play split |
+| Actors | Stickmen, Dungeon Runner, Sunny Dragon, TGC characters including Green Snake, shooter/fleet seeds |
+| Animation | Source-aware import proofs, editable labels/sequences, preview, strobe, ping-pong, save/load |
+| OCR/Word Sense | Optional lazy local command-line Tesseract proof with geometry-only fallbacks |
+| Persistence | RAD JSON level and animation-manifest save/load |
+| Audio/effects | Shared sound hooks, projectile/explosion profiles, comic text and psychedelic effects |
+| Multi-monitor | Monitor enumeration and move-window primitive |
 
-## Racing kit note
+“Implemented” here means present in the RAD, not fully generalized, optimized, or cleared for public distribution.
 
-Racing is a natural future toolkit because the minimum authoring model is small: draw or derive a track, place a starting point, and optionally add finish/checkpoints/laps. Tracks can come from creator splines, document margins, process diagrams, spreadsheet paths, presentation arrows, or semantic words such as `START`, `FINISH`, `CHECKPOINT`, `BOOST`, `OIL`, `TARPIT`, and `SHORTCUT`.
+## Current Smoke Test
 
-Snake/Maze can share some of the same route-preview tools, but its play language is collect/grow/chase/evade rather than lap/checkpoint/time-trial.
+1. Build the C# project successfully.
+2. Launch and confirm the source page is sharp at native resolution.
+3. Open/close the Cockpit and Sprite Studio with Esc; verify the pointer returns for editing.
+4. In Platformer, enter Play, move/jump, fall through a real gap, climb a ladder/text surface, ride a conveyor/elevator, shoot text/enemies, die with a named cause, and reach a Goal.
+5. Save the RAD level, move/delete something, load it, and verify actors/objects/markers/settings return.
+6. In Brickbat, verify letter and word clearing, three-ball reserve behavior, multiball cap/cooldown, laser deletion, word ticker, HUD dragging, and persistent deformation.
+7. Switch to Platformer and confirm Brickbat-created gaps remain until an explicit restore.
+8. In Pinball, charge/release the plunger, operate both flippers, and confirm the ball plows through letters.
+9. Select several actors in Sprite Studio, preview/edit labels, save/load an animation manifest, and confirm no blank/extra/wrapped frames appear.
+10. Trigger the Boss Key from play and editor surfaces; verify the game layer neutralizes and audio/input are released.
 
-## Crossing / Escort note
+## Known RAD Limitations
 
-Frogger-like games fit under **Route / Flow** as Crossing / Escort presets. The construction grammar is lanes, traffic bands, moving hazards, carried platforms, safe islands, start/end markers, and timing windows. On desktop/document sources this could map cleanly to calendar rows, inbox lists, kanban lanes, spreadsheet bands, scrolling feeds, or paragraph gutters.
+- Play/Edit navigation currently contains a known coupling where entering Play can force Platformer. The documented invariant is that navigation must preserve the active playset; this is a P0 stabilization item.
+- Dense pages can become slow because active text regions are repeatedly remapped/pixel-checked and some mutations update the full texture multiple times.
+- UI, simulation, persistence, and Sprite Studio logic are still concentrated in the root controller.
+- Cockpit/Studio pages need systematic responsive layout, scrolling, contrast, keyboard focus, and state restoration.
+- Several current UI strings contain visible encoding artifacts in place of bullets, multiplication signs, degrees, ellipses, and close gadgets.
+- Save Level currently targets a fixed RAD path and does not yet provide Save As, autosave/recovery, or a full Snapshot package.
+- OCR currently discovers an external Tesseract executable; embedded LibTesseract is the preferred optional product provider.
+- Live Desktop capture and coordinated editor/playfield windows are not implemented yet.
+- Source-specific sprite detectors are still authoring experiments. Runtime content must move to reviewed compiled manifests before the asset library is stable.
 
-It is almost a self-escort mission: the player is the vulnerable object being escorted across hostile flows. Later variants can escort NPCs, files/icons, words, little workers, animals, or semantic objects across the cloned screen.
+The active correction plan and measurable exit criteria are in [`../docs/DACK-Optimization-and-Refactoring-Plan.md`](../docs/DACK-Optimization-and-Refactoring-Plan.md).
 
-Escort and Tower Defense share a deeper **Route Conflict** model. Route actors try to traverse a path while placed tools help, hinder, protect, delay, destroy, heal, shield, or redirect them. The same module can express:
+## Asset Boundary
 
-- **Tower Defense**: stop hostile waves from reaching a protected objective.
-- **Tower Offense**: help friendly waves/convoys breach or reach an enemy objective.
-- **Escort / Convoy**: protect one or more vulnerable travelers along a route.
-- **Crossing**: time movement through hostile lanes to reach safe endpoints.
-- **Process Defense**: protect a document/diagram/project flow from disruption.
+- `raw base assets/` is a local ignored vault, not a shipping folder.
+- `assets/quarantine/` is ignored and local-only.
+- `assets/third_party/` is for assets with recorded redistribution evidence.
+- `assets/project/` currently includes developer-test material; repository presence does not automatically make it public-build or hub-export safe.
+- Public builds and playset export must filter by the distribution state recorded in [`assets/ASSET_PROVENANCE.md`](assets/ASSET_PROVENANCE.md).
 
-The key shared setting is route polarity: defend, offend, escort, race, cross, or sort.
-
-## Sprite scale note
-
-The current platformer target should favor a 32 px-tall gameplay sprite tier. A 64 px source is still useful for richer future art and zoomed/detail views, but thin one-pixel stick limbs do not scale down cleanly to text-sized play without aliasing into broken dots. For the RAD prototype, 32 px is the better “office document creature” size; complexity can move into letters, enemies, power-ups, and higher-detail sprites once the camera/scale tiers are stable.
-
-## Asset boundary
-
-Only assets listed in `assets/ASSET_PROVENANCE.md` may be shipped. The large
-`raw base assets` vault is local and ignored by Git. License-pending experiments
-belong under `assets/quarantine`, which is also ignored.
+Never infer a license from a folder name alone. Exact source, creator, license evidence, admitted files, attribution, and export state must be recorded before public packaging.

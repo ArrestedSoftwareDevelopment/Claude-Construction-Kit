@@ -1,12 +1,15 @@
 # DACK GUI Architecture: Collapsible Construction Cockpit
 
-Related: [DACK Sprite Studio Mini-App](DACK-Sprite-Studio-Mini-App.md).
+- **Status:** Active product architecture
+- **Baseline:** RAD prototype, July 2026
+- **Authority:** Shell state, workspace ownership, compositing layers, responsive behavior, and shared UI rules
+- **Related:** [DACK Sprite Studio Mini-App](DACK-Sprite-Studio-Mini-App.md), [DACK Top-Level Menu Plan](DACK-Top-Level-Menu-Plan.md), [DACK Optimization and Refactoring Plan](DACK-Optimization-and-Refactoring-Plan.md), and [ADR-0010](adr/ADR-0010-session-preserving-ui-navigation.md)
 
 ## Purpose
 
 DACK is not one game with menus. It is a desktop/world transformer with multiple construction kits. The GUI therefore needs to scale from a nearly invisible play overlay to a serious editor without burying the playfield under chrome.
 
-Top-level game-type/menu planning now lives in [`DACK-Top-Level-Menu-Plan.md`](DACK-Top-Level-Menu-Plan.md). The key decision there is to organize primary game menus by view/control family—Side View, Overhead, Ball/Table, Paddle/Clearing, Grid/Text, Route/Flow, Ambient/Desktop Toybox—then place named presets underneath.
+Top-level game-type/menu planning lives in [`DACK-Top-Level-Menu-Plan.md`](DACK-Top-Level-Menu-Plan.md). The key decision there is to organize primary game menus by view/control family—Side View, Overhead, Ball/Table, Paddle/Clearing, Grid/Text, Route/Flow, Ambient/Desktop Toybox—then place named presets underneath.
 
 The guiding metaphor is:
 
@@ -24,7 +27,38 @@ Every editable object should answer three questions:
 
 Detection proposes. The editor disposes.
 
-## Three Working Moods
+## Current Baseline
+
+The RAD already proves the basic product shape: fullscreen play, an Esc-toggleable Cockpit, contextual game-family pages, Player/Enemy/Projectile/Object shelves, a persistent Inspector, draggable cards and objects, editor/play separation, a large Sprite Studio proof, and a two-monitor probe. These are the baseline to preserve while the shell is made more legible and efficient.
+
+The remaining UI debt is structural rather than conceptual:
+
+- some pages can still overflow or place controls beyond the usable monitor area;
+- the root controller still constructs and refreshes too much UI imperatively;
+- mode, window, selection, cursor, and input ownership need one authoritative session model;
+- repeated button/panel construction needs shared descriptors and components;
+- tabs, shelves, Inspector sections, and long animation lists need predictable independent scrolling;
+- low-contrast labels and controls must be treated as defects;
+- transitions must preserve the source, working clone, mutations, active playset, selection, and editor location.
+
+The implementation and optimization sequence is owned by the [DACK Optimization and Refactoring Plan](DACK-Optimization-and-Refactoring-Plan.md). This document defines how the resulting UI must behave.
+
+## State and Ownership Invariants
+
+These rules are normative. No toolkit or editor page may invent a competing version of them.
+
+1. **One session owns durable working state.** The active source/Snapshot, working clone, mutation history, active view family and preset, level, selection, and editor navigation state belong to one DACK session. Panels render that state and issue commands; they do not own private copies.
+2. **Play, Build, and Understand are mutually exclusive primary modes.** Build and Understand may pause or preview the simulation, but they do not run as hidden second modes underneath Play.
+3. **Esc navigates workspace ownership; it never changes content.** Esc dismisses the topmost transient editor, then closes Sprite Studio to its owning Cockpit location, then closes the Cockpit, or opens the Cockpit when pure Play owns the screen. Esc never resets, re-snapshots, changes playset, discards mutations, or silently starts a new game.
+4. **Closing restores the prior authority.** If the Cockpit was opened from Play, closing it resumes Play. If it was opened during a Build or Understand session, closing a sub-workspace returns to that session and does not auto-play.
+5. **Boss is a separate global safety path.** The Boss Key immediately hides or neutralizes every DACK window, releases input, and mutes DACK without waiting for save, OCR, import, or layout work. It does not reset or discard the session. Returning restores the same source, clone, mutations, playset, mode, and selection.
+6. **Sprite Studio is an owned workspace.** Opening Studio hides the ordinary Cockpit surface and transfers editor focus to the full-screen Studio workspace. Studio's close gadget or Esc returns to the exact calling tab/card/selection. Closing the main editor also closes or safely returns from Studio; no orphan editor window remains.
+7. **Cursor policy follows the owner.** Build, Understand, Cockpit, and Sprite Studio show the pointer. Active Play uses the toolkit's pointer policy and hides it by default. Boss always releases the pointer to Windows. Text entry suppresses gameplay bindings while keeping the Boss Key available.
+8. **Mode and playset changes preserve work.** Switching modes, Cockpit tabs, view families, presets, monitors, or Studio does not replace the source or clear the mutated clone. Only explicit commands such as Reset Clone, Re-snapshot, Load Level, or New Source may do that, with an appropriate dirty-work confirmation.
+9. **One surface owns input at a time.** Safety/Boss outranks Studio; Studio outranks Cockpit; transient dialogs outrank their owner; pure Play owns input only when no editor surface is active. Pointer and keyboard events must not leak through an active editor into the simulation.
+10. **Selection survives context changes when valid.** Returning from test play, Understand, Studio, or another tab restores the prior selection, active tab, Inspector section, and scroll position. If the selected object no longer exists, the UI says so and falls back predictably.
+
+## Three Working Modes
 
 ### 1. Play
 
@@ -52,7 +86,7 @@ The cockpit is semi-transparent, collapsible, and organized around the live play
 - **Bottom tray:** event log, mutation history, word ticker, OCR/Word Sense discoveries, test-play notes.
 - **Center:** the playfield remains visible and interactive, with handles and overlays.
 
-The cockpit should appear with Esc and collapse back to pure play with Esc or a single "Test/Play" action.
+The cockpit should appear with Esc and collapse back to pure play with Esc or a single "Test/Play" action. Test/Play preserves the current selection, active tab, scroll positions, source, and mutation state for the return trip.
 
 ### 3. Understand
 
@@ -80,7 +114,70 @@ The Understanding Overlay should be toggleable like layers:
 
 If creators can see the engine's interpretation, they can correct it.
 
+## Layer Ownership and Compositing Order
+
+Logical data layers and visual draw layers must be explicit. A toolkit can contribute content to a layer, but it cannot silently reorder or take ownership of the shell.
+
+From back to front:
+
+1. **Immutable source:** original capture/import reference, never edited.
+2. **Working clone:** the native-resolution playable image plus clone-only pixel mutations.
+3. **Environment interpretation:** text, word, line, icon, background, collision, and semantic records. Normally not drawn; Understand visualizes them.
+4. **Underlays and grounded decoration:** optional ANSI/table art, paper shadows, trails, and non-interactive atmosphere.
+5. **World objects:** platforms, ladders, conveyors, flippers, bumpers, triggers, pickups, and other placed construction parts.
+6. **Transient effects:** explosions, letter shrapnel, particles, ribbons, and score bursts.
+7. **Gameplay-critical actors:** players, enemies, balls, projectiles, objectives, and critical indicators remain legible above spectacle.
+8. **HUD:** score, lives, word ticker, missions, and status; it uses whitespace and approach fading rather than becoming collision.
+9. **Build overlays:** selection, handles, invisible objects, guides, paths, and drag previews.
+10. **Understand overlays:** engine interpretation, confidence, authority, collision, routes, mutations, and diagnostics.
+11. **Cockpit or Sprite Studio:** the editor workspace that currently owns interaction.
+12. **Safety:** Boss/clone-only/privacy state, always topmost and independent.
+
+The renderer may batch adjacent layers for speed, but their ownership and visible ordering must remain equivalent. Effects quality may degrade under load; gameplay-critical actors, input feedback, collision, and safety UI may not.
+
 ## The Cockpit Layout
+
+### Tabbed Switchboard
+
+The main Cockpit uses a contextual, scalable tabbed switchboard instead of showing every construction column at once.
+
+Intent:
+
+- One active tab displays its full shelf/page; inactive pages reduce to compact tab names.
+- Player is a top-level tab because every game family inherits the protagonist/control card.
+- The active game-family tab follows: Side View/Platformer, Paddle/Brickbat, Ball/Pinball, Overhead, and later Grid/Text, Route/Flow, Ambient.
+- Shared creation tabs follow: Assets, Enemies, Projectiles, Objects, Builder, Understand.
+- Inspector is the exception: it stays docked beside the active tab so selected-object details remain visible while the creator changes toolsets.
+- Switching the active playset selects its matching family tab without resetting the source, clone, mutations, or placed objects.
+- Each family page exposes the same session spine—Play/Test, Save/Load, Markers & Logic, rules/status, and family shelf—then supplies only its contextual differences.
+- Tabs, groups, cards, and actions should come from descriptors/registries so labels, capitalization, visibility, tooltips, shortcuts, and enabled states remain consistent.
+- Inapplicable controls collapse or disappear with a discoverable explanation; they do not occupy permanent dead columns.
+- Each tab remembers selection, expanded groups, and scroll position.
+- Long tab bodies, shelves, Inspectors, animation lists, and logs scroll inside their own bounds. The whole editor must not grow past the usable viewport.
+
+This preserves the "big cockpit" feeling while keeping screen real estate under control. The user should feel like they are flipping pages in one instrument panel, not hunting through separate popups.
+
+### Responsive, Readability, and Keyboard Rules
+
+- Fit full-screen workspaces to the active monitor's usable rectangle and DPI. Never assume 1920×1080, one monitor, or one scale factor.
+- Keep the title/mode/selection/close row reachable. Clamp popovers, menus, and the Inspector inside the viewport.
+- Wide layout: shelf, playfield/preview, and Inspector may sit side by side. Medium layout: keep the active page plus Inspector drawer/tab. Narrow layout: show one content pane at a time with persistent workspace tabs and a clear Inspector toggle.
+- Preserve document pixels at native resolution. Use unused screen space for tools; scroll or pan the editor rather than scaling the source clone into illegibility.
+- Buttons size to content unless explicitly designated as a primary full-width action. Hit targets remain comfortably clickable even when labels are short.
+- Body text and control labels must meet strong light/dark contrast; faint gray-on-gray labels are defects. Selected, focused, disabled, warning, and error states must differ by more than color alone.
+- `Tab`/`Shift+Tab` traverse controls in reading order; arrow keys change tabs, lists, frame selections, and numeric steps where expected; `Enter`/`Space` activate the focused control.
+- Every mouse action that changes durable state needs a keyboard path. Visible focus rings are mandatory, and focus returns to the invoking control when a transient surface closes.
+- Tooltips supplement concise labels; they do not carry essential instructions that keyboard users cannot reach.
+
+### UI Efficiency Rules
+
+- Update controls from session events/signals. Do not rebuild panels, refit full-screen pages, or rewrite unchanged labels every frame.
+- Create expensive family pages and catalogs lazily, then reuse them. Hidden tabs pause previews, thumbnail animation, diagnostics, and polling.
+- Virtualize or page very large asset/card lists and cache thumbnails, text measurements, imported previews, and Inspector schemas.
+- Refit layout only on workspace open, resize, monitor/DPI change, theme change, or meaningful content change.
+- OCR, sprite compilation, source analysis, save, and thumbnail generation must not block input. Their status appears asynchronously in the owning page and stale results are discarded by session/source identity.
+- Under load, reduce decorative preview rate, effects, glow, shadows, and distant animation before reducing pointer feedback, input, collision, or safety responsiveness.
+- Instrument page-open time, idle Cockpit cost, layout passes, active preview count, and list/card counts so efficiency work follows evidence.
 
 ### Top Strip
 
@@ -96,6 +193,13 @@ Suggested controls:
 - Word Sense: Off / Lazy Local / Full Page Prep, plus status.
 - Safety: Boss Key hint and clone-only indicator.
 - Close gadget: visible `×` to hide the ordinary Cockpit; separate from Boss Key.
+
+Button sizing rule:
+
+- Buttons should not stretch to fill the available width by default.
+- Buttons should size to their label/content and sit in compact rows.
+- Cards, shelves, panels, text fields, previews, and sliders may expand when their job benefits from it.
+- A full-width button should be an explicit exception for a large primary action, not the normal control style.
 
 ### Left Shelf
 
@@ -190,6 +294,10 @@ The live sprite sidebar remains the quick in-context pad: select an actor, tweak
 As actor setup grows, DACK needs a larger Character page. That page should collect the heavier work: imported frame source, animation labels, timing, origins/baselines, attachment points, AI/rule cards, projectile slots, sounds, effects, and text-interaction options. `Idle` and `Climb` should be treated as core labels alongside run, jump, shoot, hurt, and death.
 
 This prevents the sidebar from becoming a cramped Aseprite clone and gives creators a natural place to tune enemies, players, guards, climbers, flyers, projectiles, and future RPG/overhead actors.
+
+The Builder should think in cards. Small cards are ingredients; composed cards are finished reusable objects. A creator should be able to assemble sprite, animation, behavior, projectile, sound, effect, and text-rule cards into a richer Enemy/Player/Spawner/Object card, then drag that finished card back into levels or other cards.
+
+Player deserves its own top-level tab rather than living inside the general Builder. The Player tab owns protagonist selection, player-card dragging, control/movement defaults, gun/no-gun, size/text ratio, and player-specific animation hooks. Builder remains the more general composition workbench for wiring selected actors and objects into reusable cards.
 
 Placed toolkit objects should follow the same principle: the playfield gives direct manipulation with A/B handles, while the Inspector gives precise nudges. Ramps, slides, conveyors, elevators, pinball parts, gates, and future line objects should be rotatable; line tools rotate by their endpoints and by Inspector rotate nudges. Ladders are the exception: they should remain vertical climb volumes, with width tuned against the player character rather than treated as angled ropes.
 
@@ -303,7 +411,7 @@ Examples:
 - Drag a Brickbat target recipe, then choose letter/word/heading/icon/color.
 - Drag a Tower Defense route, then show enemy path heatmap.
 
-## Phased Refactor Path
+## Cross-Cutting Editor Tools and Visual Services
 
 ### Cross-Cutting Editor Tools
 
@@ -313,13 +421,6 @@ DACK should grow a visible motion/path editor family:
 - **Bezier/spline editor next:** richer handles for patrol paths, flying enemies, swinging vines/ropes, racing curves, pinball ramps/wireforms, camera moves, particle ribbons, and authored enemy entrances.
 
 The parabola editor should be near-term because it is simple, legible, and directly connected to the platformer/projectile work already underway. Beziers should wait until the UI can support curve handles cleanly.
-
-### Phase A: Replace RAD Toolbar with Shell Skeleton
-
-- Input Router: Esc menu toggle, Boss Key separation, cursor policy.
-- UI Shell Controller: Play / Build / Understand states.
-- Layer Manager: playfield, actors, effects, HUD, overlay, cockpit, safety.
-- HUD Manager: whitespace placement and fade-on-approach.
 
 ### Shared shadow rendering
 
@@ -334,42 +435,14 @@ First rule:
 Second rule:
 
 - Vector/toolkit objects use the same concept with shape-specific helpers: line shadows for ramps/conveyors/flippers, ellipse shadows for bumpers/balls, soft rect shadows for panels and icons.
-- A later Renderer/Theme service should expose shadow parameters: `shadowEnabled`, `shadowOpacity`, `shadowOffset`, `shadowSquash`, `shadowBlurStyle`, and `shadowFollowsTheme`.
+- A Renderer/Theme service should expose shadow parameters: `shadowEnabled`, `shadowOpacity`, `shadowOffset`, `shadowSquash`, `shadowBlurStyle`, and `shadowFollowsTheme`.
 - Dark mode and Boss Key can reduce or disable shadows if they harm legibility or office-safe presentation.
 
-### Phase B: Add Shelf and Inspector
+### Implementation sequencing
 
-- Global shelf categories.
-- Toolkit shelf registry.
-- Drag preview.
-- Direct handles.
-- Selection model.
-- Property inspector.
+This architecture no longer carries a competing phase list. Extraction of the session, input router, UI shell, selection, HUD, environment layers, toolkit descriptors, and performance work is sequenced and measured in the [DACK Optimization and Refactoring Plan](DACK-Optimization-and-Refactoring-Plan.md).
 
-### Phase C: Add Understanding Overlay
-
-- Text/word/line overlays.
-- Collision overlays.
-- Word Sense overlays.
-- Mutation overlays.
-- Invisible logic overlays.
-- Source/manual/runtime authority coloring.
-
-### Phase D: Toolkit-Specific Cockpits
-
-- Brickbat builder overlay.
-- Platformer movement/terrain overlay.
-- Pinball shelf/handles.
-- Snake/Maze word-goal and route overlay.
-- RPG glyph map overlay.
-
-### Phase E: Polish and User Trust
-
-- Named UI presets: Quiet Office, Arcade Neon, Terminal/BBS, Debug.
-- First-run tutorial.
-- Performance toggles.
-- Word Sense install/status helper.
-- Clone-only warnings and metadata-scrub status.
+UI work is considered complete only when it preserves the invariants above, keeps every control reachable, avoids idle per-frame reconstruction, restores context across Play/Build/Understand/Studio transitions, and passes the shell smoke tests defined by that plan.
 
 ## System theme and dark mode
 

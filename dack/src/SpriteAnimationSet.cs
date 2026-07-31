@@ -10,7 +10,9 @@ public readonly record struct AnimationFrameRange(int Start, int End);
 
 public sealed class SpriteAnimationSet
 {
-    private const string AssetRoot = "res://assets/third_party/stickman-pack-v0.1";
+    private const string StickmanV1Root = "res://assets/third_party/stickman-pack-v0.1";
+    private const string StickmanV2Root = "res://assets/third_party/stickman-pack-v0.2";
+    private const string DungeonRoot = "res://assets/third_party/8-bit-dungeon";
     private const string SunnyDragonRelativePath = "raw base assets/Legacy Collection/Legacy Collection/Assets/Misc/Characters/sunny-dragon/spritesheets/sunny-dragon-fly.png";
     private const string TgcPlatformerRuntimePath = "res://assets/project/game-creators-pack/platformer-spritesheet.png";
     private const string TgcShooterBossRuntimePath = "res://assets/project/game-creators-pack/shooter-boss-sprite.png";
@@ -57,6 +59,76 @@ public sealed class SpriteAnimationSet
             false,
             false
         );
+    }
+
+    public static SpriteAnimationSet? TryLoadStickmanV2()
+    {
+        Dictionary<ActorMotionState, SpriteFrame[]> frames = [];
+        AddGridFrames(frames, ActorMotionState.Idle, $"{StickmanV2Root}/thin-idle.png", 64);
+        AddGridFrames(frames, ActorMotionState.Run, $"{StickmanV2Root}/run.png", 64);
+        AddGridFrames(frames, ActorMotionState.JumpUp, $"{StickmanV2Root}/jump-up.png", 64);
+        AddGridFrames(frames, ActorMotionState.JumpDown, $"{StickmanV2Root}/jump-down.png", 64);
+        AddGridFrames(frames, ActorMotionState.Fall, $"{StickmanV2Root}/jump-down.png", 64);
+        AddGridFrames(frames, ActorMotionState.RunShoot, $"{StickmanV2Root}/punch.png", 64);
+        AddGridFrames(frames, ActorMotionState.JumpShoot, $"{StickmanV2Root}/punch.png", 64);
+        AddGridFrames(frames, ActorMotionState.Punch, $"{StickmanV2Root}/punch.png", 64);
+        AddGridFrames(frames, ActorMotionState.Death, $"{StickmanV2Root}/death.png", 64);
+
+        if (!frames.ContainsKey(ActorMotionState.Idle))
+            return null;
+
+        foreach (ActorMotionState state in Enum.GetValues<ActorMotionState>())
+        {
+            if (!frames.ContainsKey(state))
+                frames[state] = frames[ActorMotionState.Idle];
+        }
+
+        frames[ActorMotionState.Crawl] = frames.TryGetValue(ActorMotionState.Run, out SpriteFrame[]? run)
+            ? run
+            : frames[ActorMotionState.Idle];
+
+        return new SpriteAnimationSet(frames);
+    }
+
+    public static SpriteAnimationSet? TryLoadDungeonRunner()
+    {
+        Dictionary<ActorMotionState, SpriteFrame[]> frames = [];
+        AddSingleFileFrames(frames, ActorMotionState.Idle, new FrameImportOptions(RecolorNearWhite: true), $"{DungeonRoot}/player-idle.png");
+        AddSingleFileFrames(frames, ActorMotionState.Run,
+            new FrameImportOptions(RecolorNearWhite: true),
+            $"{DungeonRoot}/player-run-01.png",
+            $"{DungeonRoot}/player-run-02.png",
+            $"{DungeonRoot}/player-run-03.png",
+            $"{DungeonRoot}/player-run-04.png"
+        );
+        AddSingleFileFrames(frames, ActorMotionState.Crawl,
+            new FrameImportOptions(RecolorNearWhite: true),
+            $"{DungeonRoot}/player-climb-01.png",
+            $"{DungeonRoot}/player-climb-02.png"
+        );
+        AddSingleFileFrames(frames, ActorMotionState.JumpUp, new FrameImportOptions(RecolorNearWhite: true), $"{DungeonRoot}/player-fall.png");
+        AddSingleFileFrames(frames, ActorMotionState.JumpDown, new FrameImportOptions(RecolorNearWhite: true), $"{DungeonRoot}/player-fall.png");
+        AddSingleFileFrames(frames, ActorMotionState.Fall, new FrameImportOptions(RecolorNearWhite: true), $"{DungeonRoot}/player-fall.png");
+        AddSingleFileFrames(frames, ActorMotionState.Punch, new FrameImportOptions(RecolorNearWhite: true), $"{DungeonRoot}/player-rope-01.png");
+        AddSingleFileFrames(frames, ActorMotionState.RunShoot,
+            new FrameImportOptions(RecolorNearWhite: true),
+            $"{DungeonRoot}/player-rope-01.png",
+            $"{DungeonRoot}/player-rope-02.png",
+            $"{DungeonRoot}/player-rope-03.png"
+        );
+        AddSingleFileFrames(frames, ActorMotionState.JumpShoot, new FrameImportOptions(RecolorNearWhite: true), $"{DungeonRoot}/player-rope-02.png");
+        AddSingleFileFrames(frames, ActorMotionState.Death, new FrameImportOptions(RecolorNearWhite: true), $"{DungeonRoot}/player-fall.png");
+
+        if (!frames.ContainsKey(ActorMotionState.Idle))
+            return null;
+
+        foreach (ActorMotionState state in Enum.GetValues<ActorMotionState>())
+        {
+            if (!frames.ContainsKey(state))
+                frames[state] = frames[ActorMotionState.Idle];
+        }
+
+        return new SpriteAnimationSet(frames);
     }
 
     public static SpriteAnimationSet? TryLoadStickman(
@@ -226,6 +298,29 @@ public sealed class SpriteAnimationSet
     {
         return TryLoadTgcFixedPlatformerEnemy(
             TryLoadTgcGreenCrawlerFrames,
+            new AnimationFrameRange(0, 5),
+            new AnimationFrameRange(0, 5),
+            new AnimationFrameRange(0, 5),
+            new AnimationFrameRange(0, 5),
+            new AnimationFrameRange(0, 5),
+            new AnimationFrameRange(0, 5),
+            new AnimationFrameRange(0, 5),
+            new AnimationFrameRange(0, 5),
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false
+        );
+    }
+
+    public static SpriteAnimationSet? TryLoadTgcGreenSnake()
+    {
+        return TryLoadTgcFixedPlatformerEnemy(
+            TryLoadTgcGreenSnakeFrames,
             new AnimationFrameRange(0, 5),
             new AnimationFrameRange(0, 5),
             new AnimationFrameRange(0, 5),
@@ -494,31 +589,17 @@ public sealed class SpriteAnimationSet
 
     public static bool TryLoadTgcBlueGuardFrames(out SpriteFrame[] frames)
     {
-        Vector2I[] seeds =
-        [
-            new Vector2I(118, 38),
-            new Vector2I(132, 38),
-            new Vector2I(147, 38),
-            new Vector2I(162, 38),
-            new Vector2I(173, 38)
-        ];
-
-        return TryLoadComponentSourceFrames(TgcPlatformerRuntimePath, seeds, out frames);
+        return TryLoadBlobIndexFrames(TgcPlatformerRuntimePath, [28, 29, 30, 31, 32, 33, 34, 40, 41, 42, 43, 44, 51], out frames);
     }
 
     public static bool TryLoadTgcGreenCrawlerFrames(out SpriteFrame[] frames)
     {
-        Rect2[] rects =
-        [
-            new Rect2(0, 88, 12, 32),
-            new Rect2(13, 88, 13, 32),
-            new Rect2(27, 88, 12, 32),
-            new Rect2(40, 88, 15, 32),
-            new Rect2(56, 88, 16, 32),
-            new Rect2(73, 88, 16, 32)
-        ];
+        return TryLoadBlobIndexFrames(TgcPlatformerRuntimePath, [54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66], out frames);
+    }
 
-        return TryLoadFixedSourceFrames(TgcPlatformerRuntimePath, rects, out frames);
+    public static bool TryLoadTgcGreenSnakeFrames(out SpriteFrame[] frames)
+    {
+        return TryLoadBlobIndexFrames(TgcPlatformerRuntimePath, [61, 62, 63, 64, 65, 66], out frames);
     }
 
     public static SpriteAnimationSet? TryLoadTgcPlatformerEnemy(
@@ -809,6 +890,7 @@ public sealed class SpriteAnimationSet
         frames[ActorMotionState.Fall] = SliceFrames(all, fall, fallPingPong);
         frames[ActorMotionState.RunShoot] = SliceFrames(all, runShoot, runShootPingPong);
         frames[ActorMotionState.JumpShoot] = SliceFrames(all, jumpShoot, jumpShootPingPong);
+        frames[ActorMotionState.Punch] = frames[ActorMotionState.RunShoot];
         frames[ActorMotionState.Death] = SliceFrames(all, death, deathPingPong);
 
         return new SpriteAnimationSet(frames);
@@ -905,10 +987,51 @@ public sealed class SpriteAnimationSet
     public static bool TryLoadStickmanFrames(out SpriteFrame[] frames)
     {
         List<SpriteFrame> loaded = [];
-        AppendFrames(loaded, $"{AssetRoot}/thin-idle-sheet.png");
-        AppendFrames(loaded, $"{AssetRoot}/thin-run-sheet.png");
-        AppendFrames(loaded, $"{AssetRoot}/thin-jump-up.png");
-        AppendFrames(loaded, $"{AssetRoot}/thin-jump-down.png");
+        AppendFrames(loaded, $"{StickmanV1Root}/thin-idle-sheet.png");
+        AppendFrames(loaded, $"{StickmanV1Root}/thin-run-sheet.png");
+        AppendFrames(loaded, $"{StickmanV1Root}/thin-jump-up.png");
+        AppendFrames(loaded, $"{StickmanV1Root}/thin-jump-down.png");
+        frames = loaded.ToArray();
+        return frames.Length > 0;
+    }
+
+    public static bool TryLoadStickmanV2Frames(out SpriteFrame[] frames)
+    {
+        List<SpriteFrame> loaded = [];
+        AppendGridFrames(loaded, $"{StickmanV2Root}/thin-idle.png", 64);
+        AppendGridFrames(loaded, $"{StickmanV2Root}/run.png", 64);
+        AppendGridFrames(loaded, $"{StickmanV2Root}/jump-up.png", 64);
+        AppendGridFrames(loaded, $"{StickmanV2Root}/jump-down.png", 64);
+        AppendGridFrames(loaded, $"{StickmanV2Root}/punch.png", 64);
+        AppendGridFrames(loaded, $"{StickmanV2Root}/death.png", 64);
+        frames = loaded.ToArray();
+        return frames.Length > 0;
+    }
+
+    public static bool TryLoadDungeonRunnerFrames(out SpriteFrame[] frames)
+    {
+        List<SpriteFrame> loaded = [];
+        FrameImportOptions dungeonOptions = new(RecolorNearWhite: true);
+        AppendSingleFileFrames(loaded, dungeonOptions, $"{DungeonRoot}/player-idle.png");
+        AppendSingleFileFrames(loaded,
+            dungeonOptions,
+            $"{DungeonRoot}/player-run-01.png",
+            $"{DungeonRoot}/player-run-02.png",
+            $"{DungeonRoot}/player-run-03.png",
+            $"{DungeonRoot}/player-run-04.png"
+        );
+        AppendSingleFileFrames(loaded,
+            dungeonOptions,
+            $"{DungeonRoot}/player-climb-01.png",
+            $"{DungeonRoot}/player-climb-02.png"
+        );
+        AppendSingleFileFrames(loaded, dungeonOptions, $"{DungeonRoot}/player-fall.png");
+        AppendSingleFileFrames(loaded,
+            dungeonOptions,
+            $"{DungeonRoot}/player-rope-01.png",
+            $"{DungeonRoot}/player-rope-02.png",
+            $"{DungeonRoot}/player-rope-03.png"
+        );
         frames = loaded.ToArray();
         return frames.Length > 0;
     }
@@ -1046,6 +1169,23 @@ public sealed class SpriteAnimationSet
             frames[i] = new SpriteFrame(texture, rects[i], displaySize);
 
         return true;
+    }
+
+    private static bool TryLoadBlobIndexFrames(string resourcePath, int[] indices, out SpriteFrame[] frames)
+    {
+        frames = [];
+        if (!TryLoadBlobFrames(resourcePath, out SpriteFrame[] all) || all.Length == 0)
+            return false;
+
+        List<SpriteFrame> selected = [];
+        foreach (int index in indices)
+        {
+            if (index >= 0 && index < all.Length)
+                selected.Add(all[index]);
+        }
+
+        frames = selected.ToArray();
+        return frames.Length > 0;
     }
 
     private static bool TryLoadFixedSourceFrames(string resourcePath, Rect2[] rects, out SpriteFrame[] frames)
@@ -1249,6 +1389,32 @@ public sealed class SpriteAnimationSet
         frames[state] = loaded;
     }
 
+    private static void AddGridFrames(
+        Dictionary<ActorMotionState, SpriteFrame[]> frames,
+        ActorMotionState state,
+        string resourcePath,
+        int frameSize
+    )
+    {
+        List<SpriteFrame> loaded = [];
+        AppendGridFrames(loaded, resourcePath, frameSize);
+        if (loaded.Count > 0)
+            frames[state] = loaded.ToArray();
+    }
+
+    private static void AddSingleFileFrames(
+        Dictionary<ActorMotionState, SpriteFrame[]> frames,
+        ActorMotionState state,
+        FrameImportOptions options,
+        params string[] resourcePaths
+    )
+    {
+        List<SpriteFrame> loaded = [];
+        AppendSingleFileFrames(loaded, options, resourcePaths);
+        if (loaded.Count > 0)
+            frames[state] = loaded.ToArray();
+    }
+
     private static void AppendFrames(List<SpriteFrame> frames, string resourcePath)
     {
         string filePath = ProjectSettings.GlobalizePath(resourcePath);
@@ -1269,6 +1435,76 @@ public sealed class SpriteAnimationSet
 
         for (int i = 0; i < frameCount; i++)
             frames.Add(new SpriteFrame(texture, new Rect2(i * frameSize, 0, frameSize, frameSize), new Vector2(frameSize, frameSize)));
+    }
+
+    private static void AppendSingleFileFrames(List<SpriteFrame> frames, FrameImportOptions options, params string[] resourcePaths)
+    {
+        foreach (string resourcePath in resourcePaths)
+        {
+            string filePath = ProjectSettings.GlobalizePath(resourcePath);
+            if (!File.Exists(filePath))
+                continue;
+
+            Image image = Image.LoadFromFile(filePath);
+            if (image.IsEmpty())
+                continue;
+
+            image.Convert(Image.Format.Rgba8);
+            if (options.RemoveNearWhite)
+                MakeNearWhiteTransparent(image);
+            if (options.RecolorNearWhite)
+                RecolorNearWhite(image, Colors.Black);
+            ImageTexture texture = ImageTexture.CreateFromImage(image);
+            frames.Add(new SpriteFrame(texture, new Rect2(0, 0, image.GetWidth(), image.GetHeight()), new Vector2(image.GetWidth(), image.GetHeight())));
+        }
+    }
+
+    private static void AppendGridFrames(List<SpriteFrame> frames, string resourcePath, int frameSize)
+    {
+        string filePath = ProjectSettings.GlobalizePath(resourcePath);
+        if (!File.Exists(filePath))
+            return;
+
+        Image sheet = Image.LoadFromFile(filePath);
+        if (sheet.IsEmpty())
+            return;
+
+        sheet.Convert(Image.Format.Rgba8);
+        MakeNearWhiteTransparent(sheet);
+        ThickenOpaquePixels(sheet, 1);
+
+        int columns = Mathf.Max(1, sheet.GetWidth() / frameSize);
+        int rows = Mathf.Max(1, sheet.GetHeight() / frameSize);
+        ImageTexture texture = ImageTexture.CreateFromImage(sheet);
+        Vector2 displaySize = new(frameSize, frameSize);
+
+        for (int row = 0; row < rows; row++)
+        {
+            for (int column = 0; column < columns; column++)
+            {
+                Rect2I source = new(column * frameSize, row * frameSize, frameSize, frameSize);
+                if (IsTransparentFrame(sheet, source))
+                    continue;
+
+                frames.Add(new SpriteFrame(texture, new Rect2(source.Position, source.Size), displaySize));
+            }
+        }
+    }
+
+    private static bool IsTransparentFrame(Image image, Rect2I source)
+    {
+        int xMax = Mathf.Min(image.GetWidth(), source.End.X);
+        int yMax = Mathf.Min(image.GetHeight(), source.End.Y);
+        for (int y = source.Position.Y; y < yMax; y++)
+        {
+            for (int x = source.Position.X; x < xMax; x++)
+            {
+                if (image.GetPixel(x, y).A > 0.03f)
+                    return false;
+            }
+        }
+
+        return true;
     }
 
     private static string GameCreatorPlayerPath()
@@ -1437,6 +1673,19 @@ public sealed class SpriteAnimationSet
         }
     }
 
+    private static void RecolorNearWhite(Image image, Color replacement)
+    {
+        for (int y = 0; y < image.GetHeight(); y++)
+        {
+            for (int x = 0; x < image.GetWidth(); x++)
+            {
+                Color pixel = image.GetPixel(x, y);
+                if (pixel.A > 0.03f && pixel.R > 0.92f && pixel.G > 0.92f && pixel.B > 0.92f)
+                    image.SetPixel(x, y, new Color(replacement.R, replacement.G, replacement.B, pixel.A));
+            }
+        }
+    }
+
     private static void ThickenOpaquePixels(Image image, int radius)
     {
         if (radius <= 0)
@@ -1473,6 +1722,7 @@ public sealed class SpriteAnimationSet
     }
 
     private readonly record struct ComponentFrame(Rect2I Bounds, List<Vector2I> Points);
+    private readonly record struct FrameImportOptions(bool RemoveNearWhite = false, bool RecolorNearWhite = false);
 
     private readonly record struct DetectedFrame(int X, int Y, int Width, int Height, int OpaquePixels)
     {

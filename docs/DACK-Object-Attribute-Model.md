@@ -1,5 +1,9 @@
 # DACK Object Attribute Model
 
+- **Status:** Normative schema direction; RAD coverage is partial
+- **Coordinate authority:** [DACK Level Snapshot and Package Format](DACK-Level-Snapshot-Format.md)
+- **Related engineering plan:** [DACK Optimization and Refactoring Plan](DACK-Optimization-and-Refactoring-Plan.md)
+
 ## Purpose
 
 DACK objects need a shared attribute vocabulary before the editor grows too many one-off controls.
@@ -9,6 +13,110 @@ The principle:
 > Every object has common presentation, collision, behavior, and source-binding attributes. Specific game families add specialized attributes on top.
 
 This lets a ladder, flipper, tank, ant, checkpoint, hidden switch, tower, bumper, word target, and RPG monster all live in one editor/inspector model without becoming one giant hardcoded form.
+
+## Cards as the reusable unit
+
+DACK should expose this model through cards rather than raw object schemas.
+
+Cards can be small ingredients:
+
+- sprite card;
+- animation card;
+- behavior / AI card;
+- radar / awareness range;
+- physics card;
+- projectile / weapon card;
+- explosion / effect card;
+- sound card;
+- text rule card;
+- spawn rule card;
+- source-binding card.
+
+Cards can also be finished composites:
+
+- player card;
+- enemy card;
+- spawn point card;
+- pinball part card;
+- tower card;
+- pickup card;
+- word-object card;
+- complete playset preset card.
+
+The useful recursion is: composed objects become cards too. A creator can build a `Flying Fireball Dragon` from sprite, animation, AI, projectile, effect, sound, and text-rule cards; then that finished enemy becomes a single card that can be placed in a level, dropped onto a spawn point, used in a wave, forked, or shared.
+
+This keeps the inspector precise while keeping the builder playful. The raw attributes below still matter, but the creator should usually encounter them as editable fields inside cards.
+
+## Units and Coordinate Rules
+
+Saved attributes must be self-describing and must follow the level coordinate contract.
+
+- World position, endpoints, rectangles, radii, thickness, collision padding, ranges of motion, and authored paths use native `snapshot-pixels`.
+- Position is measured from the Snapshot's top-left; positive X points right and positive Y points down.
+- Runtime zoom, window fit, monitor placement, and camera transforms do not alter saved values.
+- Asset frame rectangles and pivots use asset-local pixels. A placed card/instance owns the transform from asset-local space into `snapshot-pixels`.
+- Time uses seconds. Rates should say what they are per second, such as `speedPixelsPerSecond` or `turnDegreesPerSecond`.
+- Saved angles use degrees, clockwise in screen space, with `0` pointing right. Runtime systems may convert to radians internally.
+- Opacity, normalized phase, confidence, and weight values use the closed range `0.0-1.0`.
+- Text-relative perception may use `textUnits`, but every Snapshot must record the reference text metrics used to convert those values to pixels. A generic field named only `range` is transitional and must become a typed/suffixed property.
+- Whole-number creator caps, such as shot toughness and spawner counts, remain integers in serialized data.
+
+Names in the current RAD such as `speed`, `range`, and `rotation` are accepted migration aliases only. The versioned schema should prefer explicit unit suffixes so Inspector labels, validation, save files, and runtime code cannot silently disagree.
+
+## Defaults and Safe Ranges
+
+Defaults belong to the most specific applicable preset/card, but the schema supplies safe fallbacks and hard validation bounds. A field may use a narrower range for a particular object family.
+
+| Attribute | Schema fallback | Initial creator range | Notes |
+| --- | ---: | ---: | --- |
+| `opacity` | `1.0` | `0.0-1.0` | Editor-only handles can remain visible independently. |
+| `scaleMultiplier` | `1.0` | `0.25-4.0` | Quick UI emphasizes `0.5x`, `1x`, and `2x`. |
+| `rotationDegrees` | `0` | normalized to `-180..180` | Continuous rotors store angular speed separately. |
+| `gravityScale` | `1.0` | `-4.0-4.0` | Zero means unaffected; negative is an explicit inverted-gravity choice. |
+| `health` / `shotToughness` | `1` | `1-9` | Matches the simple regular-shot vocabulary. |
+| `weaponPower` | `1` | `1-9` | Removes that many toughness points per hit. |
+| `radarRangeTextUnits` | `28` | `1-100` | Converted through Snapshot text metrics; `0` may explicitly disable perception. |
+| `spawnIntervalSeconds` | `5` | `1-10` | Small whole numbers in the simple Inspector. |
+| `burstCount` | `1` | `1-10` | Subject to active-actor budget. |
+| `maxActive` | `3` | `1-10` | Hard cap per spawn rule in the first builder. |
+| `cooldownSeconds` | `0` | `0-600` | Specialized presets should present a useful narrower slider. |
+
+Movement speed, impulse, elasticity, friction, damping, damage radius, and similar physics values do not have one meaningful universal default. Their card or toolkit preset must define a default, creator-facing range, and safety ceiling. Missing specialized values fall back to that preset—not to an unrelated game's numbers.
+
+## Card Inheritance and Instance Overrides
+
+A reusable card is a definition; an object placed in a level is an instance of that definition.
+
+Resolution order is deterministic:
+
+1. schema fallback;
+2. game-family/toolkit defaults;
+3. referenced card values, including its composed ingredient cards;
+4. placed-instance overrides;
+5. temporary runtime state, which is saved only when the level's persistence policy asks for it.
+
+Rules:
+
+- A placed instance stores `cardId` and `cardVersion` plus only the fields it overrides.
+- Renaming or moving a card does not break instances because identity is ID-based.
+- Editing a shared card updates inheriting instances; an overridden field keeps its instance value.
+- The Inspector must distinguish inherited values from overrides and offer **Reset to Card** per field or group.
+- Nested ingredient-card overrides are namespaced by component/card ID so a projectile's `speedPixelsPerSecond` cannot accidentally overwrite its owner's movement speed.
+- Replacing a card preserves compatible instance overrides, reports incompatible ones, and never silently discards authored values.
+- Publishing may pin exact card/asset versions or embed them so a shared level cannot change underneath the player.
+- A fully detached/forked card receives a new stable ID and may retain `derivedFromId` for provenance.
+
+## Schema and Validation Contract
+
+- Each `.dacklevel` format version has a machine-readable JSON Schema covering discriminators, required fields, types, units, ranges, stable-ID references, and object-family extensions.
+- Common attributes live in one base schema; specialized attributes are selected by explicit `kind`/component discriminators rather than accepted as an unvalidated property bag.
+- Save validates before replacing the last good file. Load validates before creating runtime objects.
+- Invalid required data blocks load/save with a readable path and suggested repair. Unsafe numeric values (`NaN`, infinity, negative sizes, out-of-range counts) are never admitted.
+- Creator-entered values may be clamped only when the Inspector shows the applied limit immediately. File loading must report a repair/migration; it must not silently change authored data.
+- Unknown optional fields from a newer minor version should be retained when practical during a load/save round-trip. Unknown required kinds/components remain disabled and visible as repairable placeholders rather than disappearing.
+- Cross-reference validation checks that card, actor, asset, route, trigger, source-region, and effect IDs exist and are of a compatible type.
+- Defaults are materialized by resolution, not duplicated into every instance. Export may flatten resolved values for a self-contained published pack while retaining provenance and version pins.
+- Schema migrations are explicit, version-to-version, testable transformations. Current RAD aliases are imported once and written back using canonical names.
 
 ## Common attribute groups
 
@@ -97,6 +205,16 @@ These must not collapse into one checkbox.
 - conveyor force
 - elevator timing
 - platform carry behavior
+
+Enemy / NPC additions:
+
+- radar / awareness range, measured in text units
+- tracking enabled
+- patrol range
+- edge/gap reversal
+- platform/elevator/conveyor/slide awareness
+- ladder/route usage capability
+- intelligence tier, which can simply map to larger radar and better path choices at first
 
 Ball / Table Physics additions:
 
@@ -296,6 +414,23 @@ Suggested attributes:
 
 Defend should bind naturally to DACK's marker vocabulary. A Start Point, Checkpoint, Goal, Hidden Switch, word-object, route node, door, NPC, pinball insert, or tower-defense base can all become defendable anchors.
 
+Enemy Spawn Point is a dedicated editor-only flag for generating enemies from authored locations. It should be treated as a marker/flag variant rather than a freeform script object.
+
+Suggested starter attributes:
+
+- `spawnGraphic`: optional visible editor graphic for the flag itself; hidden during play unless the creator explicitly exposes it.
+- `enemyPool`: one or more assignable enemy types/sprites the point can spawn.
+- `spawnIntervalSeconds`: small whole number, 1-10.
+- `burstCount`: small whole number, 1-10, usually defaulting much lower.
+- `maxActive`: small whole number, hard capped at 10 per sprite/enemy type.
+- `spawnSpeedMultiplier`: small whole number or constrained multiplier applied to the spawned actors.
+- `spawnDirection`: left, right, up, down, toward player, away from player, random, or along route.
+- `aiPreset`: optional behavior card applied to spawned enemies.
+- `activeOnlyInRegion`: optional camera/playfield/proximity gate so dormant spawners cost little.
+- `cooldownAfterClear`: optional pause after the last spawned enemy is defeated.
+
+Design guardrail: spawn points are intentionally bounded. DACK should feel like a construction kit, not a hidden performance trap. The creator-facing controls should prefer little integer choices, clear caps, and obvious defaults such as "one enemy every five seconds, max three active."
+
 First enemy slice:
 
 - Sunny Dragon is the first imported animated enemy.
@@ -310,6 +445,7 @@ First enemy slice:
 - Grounded enemies need terrain-following, gap handling, ladders/slopes permissions, and jump/drop rules.
 - Flying enemies need altitude bands, patrol bounds, obstacle avoidance, and optional swoop/projectile behavior.
 - Projectile-firing enemies need shot cadence, aim style, range, projectile collision profile, and whether their shots affect text/terrain.
+- Enemy Spawn Point exists as a first-pass editor-only placeable marker. In the current inspector, `Speed/force` is temporarily reused as spawn interval, `Thickness` as burst count, and `Range` as max active; all are clamped to 1-10 until the bigger enemy/spawner editor page exists.
 
 First complete test level recipe:
 
@@ -344,6 +480,7 @@ Examples:
 - conveyor
 - elevator
 - checkpoint/marker/flag
+- enemy spawn point flag
 - hidden switch
 - door/gate
 - bumper
@@ -370,6 +507,7 @@ Implemented first-pass object attributes:
 - custom tint/color
 - opacity
 - editor-only start/switch/checkpoint-style markers
+- editor-only enemy spawn point marker with small-number interval / burst / max-active attributes
 
 Next useful inspector controls:
 

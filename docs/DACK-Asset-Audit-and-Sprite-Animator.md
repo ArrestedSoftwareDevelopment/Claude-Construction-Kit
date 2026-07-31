@@ -1,43 +1,73 @@
 # DACK Asset Audit and Sprite Editor / Animator Plan
 
+> Document status: Active architecture and optimization plan
+>
+> Last reviewed: 2026-07-30
+>
+> Implementation status: RAD features exist; release packaging and compiled
+> importer manifests are planned
+>
+> Authority: `dack/assets/ASSET_PROVENANCE.md` is the source of truth for
+> distribution eligibility
+
 ## Purpose
 
 This note audits the current asset folders and turns the findings into a practical plan for DACK's sprite editor, animation module, and asset shelf.
 
-The core distinction:
+The core distinction is a distribution tier, not merely a directory:
 
-- `raw base assets/` is a local, ignored asset vault for evaluation.
-- `dack/assets/quarantine/` is ignored license-pending material.
-- `dack/assets/third_party/` is the curated runtime area for assets with recorded provenance.
-- DACK-created procedural/editor assets are the safest redistributable defaults.
+- **RAW-LOCAL:** ignored originals and license-pending reference material.
+- **REPO/DEV-TEST:** assets deliberately available to the RAD and private
+  development builds but excluded from public builds and hub exports.
+- **PUBLIC-BUILD:** reviewed, allowlisted assets that may ship with DACK.
+- **HUB-EXPORT:** PUBLIC-BUILD assets also cleared for inclusion in a creator's
+  scrubbed, cloned level/game package.
+
+`raw base assets/` and `dack/assets/quarantine/` normally hold RAW-LOCAL
+material. `dack/assets/project/` currently contains both DACK-created material
+and REPO/DEV-TEST third-party copies. `dack/assets/third_party/` is intended for
+reviewed assets, but directory placement never overrides the provenance record.
+DACK-created procedural/editor assets remain the safest redistributable
+defaults.
 
 ## Current Repository Asset State
 
-### Runtime-admitted assets
+### Distribution classification
 
-These are present under `dack/assets/third_party/` and recorded in `dack/assets/ASSET_PROVENANCE.md`.
+The complete decision record lives in `dack/assets/ASSET_PROVENANCE.md`.
 
-| Asset | Status | License | Current use |
+| Asset | Distribution tier | Evidence posture | Current use |
 | --- | --- | --- | --- |
-| 8-Bit Dungeon Tile Set Free | Approved subset admitted | CC0 1.0 | Brick/platform/window prototype scenery |
-| Stickman Pack thin sheets | Approved subset admitted | CC BY 4.0, paid download terms noted | Platformer idle/run/jump animation and sprite-pad seed |
+| DACK procedural fallback art | PUBLIC-BUILD / HUB-EXPORT | Project-created | Safe default and live-pad seed |
+| 8-Bit Dungeon Tile Set Free | PUBLIC-BUILD / HUB-EXPORT | CC0 record and curated subset recorded | Dungeon Runner, scenery, and starter playset |
+| Stickman Pack thin sheets | PUBLIC-BUILD / HUB-EXPORT | CC BY 4.0 source and credit recorded | Platformer animation and sprite-pad seed |
+| Creative Commons Sounds test deck | REPO/DEV-TEST | `CC0` inferred from local folder names; exact file sources missing | Combat and Brickbat sound wiring |
+| The Game Creator's Pack runtime copies | REPO/DEV-TEST | Owner reports rights; exact redistribution record missing | Importer, actors, and shelf tests |
+| Legacy Collection runtime copies | REPO/DEV-TEST | Local license PDFs exist; subset review incomplete | Actors and effects tests |
+| Explosion Pack runtime copies | REPO/DEV-TEST | Local material exists; exact source/license/file mapping incomplete | Projectile and explosion profiles |
+| VerzatileDev Pinball pack | RAW-LOCAL | Local license record present; no curated promotion | Pinball taxonomy and scaling research |
 
 ### Quarantine
 
-`dack/assets/quarantine/` contains local-only material. It is ignored by Git and must not be included in exports, builds, hub packages, or commits unless promoted through provenance review.
+`dack/assets/quarantine/` contains RAW-LOCAL material and generated draft
+catalogs. It is ignored by Git and must not be included in a repository commit,
+build, level package, or hub export unless a specific subset is promoted through
+provenance review.
 
 ### Raw asset vault
 
-`raw base assets/` is ignored by Git and contains a large evaluation collection. It is useful for design, taxonomy, and workflow testing, but not automatically usable in the runtime.
+`raw base assets/` is ignored by Git and contains a large evaluation
+collection. It is useful for design, taxonomy, and workflow testing, but is
+never an input to release packaging.
 
 Top-level raw packs observed:
 
 | Pack | Files | Approx size | Dominant types | Immediate value |
 | --- | ---: | ---: | --- | --- |
-| 8-Bit-Dungeon-Tiles | 278 | 18 MB | EPS, PNG, SVG | Already partially admitted; useful RPG/platformer/toolkit icons |
+| 8-Bit-Dungeon-Tiles | 278 | 18 MB | EPS, PNG, SVG | PNG subset admitted; useful RPG/platformer/toolkit icons, Lode Runner-style climb player, and dungeon playset shelf |
 | all_64c | 615 | <1 MB | `.64c` | Retro/source research; needs format understanding |
 | all_spr | 47 | <1 MB | `.spr` | Retro sprite research; needs format understanding |
-| explosion pack 1 | 263 | 1.6 MB | PNG, GIF, PDF | Candidate effects reference, license present |
+| explosion pack 1 | 263 | 1.6 MB | PNG, GIF, PDF | REPO/DEV-TEST effects source; exact public provenance and file map pending |
 | explosion tutorial files | 16 | tiny | PNG, GIF, ASE | Candidate effect animation learning set, license present |
 | Knight | 14 | tiny | PNG | Candidate character/motion reference; license unknown from local audit |
 | Legacy Collection | 5,055 | 33 MB | PNG, GIF, PSD, ASE | Huge animation/effects/reference trove; license PDFs present |
@@ -46,8 +76,8 @@ Top-level raw packs observed:
 | Props | 4 | tiny | PNG | Candidate shelf props; license unknown from local audit |
 | Sprites | 231 | 1.8 MB | PNG, PSD | Candidate character animation reference; license unknown from local audit |
 | StickmanPack-V0.1 | 12 | tiny | PNG, GIF | Approved source for current stickman subset |
-| StickmanPack-V0.2 | 8 | tiny | PNG | Better current stickman animation source; should be promoted after provenance update |
-| The Game Creator's Pack | 44 | 161 MB | WAV, MP3, PNG | Rights confirmed by project owner; good first sprite importer/animation-editor use case |
+| StickmanPack-V0.2 | 8 | tiny | PNG | Admitted Stickman animation source with melee/death coverage |
+| The Game Creator's Pack | 44 | 161 MB | WAV, MP3, PNG | Owner reports usage rights; REPO/DEV-TEST importer/animation use pending exact redistribution record |
 | Warped shooting fx files | 276 | 16 MB | PNG, ASEPRITE, GIF, PDF, MP3 | Candidate projectile/effects animation source, license present |
 
 ## Important Observations
@@ -87,7 +117,7 @@ StickmanPack V0.2 adds useful fuller coverage:
 | `Death/Death.png` | 192×192 | death animation sheet |
 | `Punch/Punch.png` | 256×192 | punch animation sheet |
 
-Recommendation: promote the V0.2 stickman files into `third_party/stickman-pack-v0.2/` after updating provenance. They are small, legible, and directly useful for idle/run/jump/punch/death animation states.
+Recommendation: promote the V0.2 stickman files into `third_party/stickman-pack-v0.2/` after updating provenance. They are small, legible, and directly useful for idle/run/jump/melee/death animation states. `Punch` remains the source-sheet label, but the builder vocabulary should treat it as the general close-action slot: punch, sword, bite, club, wand, tool swing, etc.
 
 ### 3. Pinball assets are too large for naive runtime admission
 
@@ -117,7 +147,10 @@ Do not admit broadly until license/provenance is written pack-by-pack.
 
 ### 5. The Game Creator's Pack is a useful importer proving ground
 
-The project owner has confirmed rights for The Game Creator's Pack. Its `Graphic Pack` folder is a small, useful stress test rather than a huge runtime burden:
+The project owner reports rights to use The Game Creator's Pack. Until the exact
+redistribution grant, creator/source, credit language, and admitted-file map are
+recorded, all copies remain REPO/DEV-TEST. Its `Graphic Pack` folder is a small,
+useful stress test rather than a huge runtime burden:
 
 | File | Dimensions | Importer implication |
 | --- | ---: | --- |
@@ -139,7 +172,11 @@ This argues that the first importer should not assume square frames or perfect g
 - manual frame rectangles for anything the detector gets wrong;
 - clip grouping after detection, because detection finds pictures, not meaning.
 
-`tools/prep_game_creator_graphics.py` is the local prototype for this path. It writes frame candidates and a manifest to ignored quarantine, giving us real data for the future animation editor without admitting the pack into runtime assets yet.
+`tools/prep_game_creator_graphics.py` is the local prototype for this path. It
+writes frame candidates and a draft manifest to ignored quarantine, giving us
+real data for the future animation editor. Selected images currently copied
+under `dack/assets/project/game-creators-pack/` are development fixtures, not
+publicly admitted assets.
 
 ### 6. Unknown-license packs stay design-only
 
@@ -179,13 +216,16 @@ Importer implications:
 - Prefer bundle-level import over file-level import. The editor should show "Bridge Heroine" or "Warped tank unit," then expose detected sheets/sequences inside that bundle.
 - The bundle manifest is a better source for shelves than the raw tree because it groups animation intent, common dimensions, preview GIFs, and spritesheets.
 - The first promotion pass should be effects/projectiles, then Warped overhead/tank/ship actors, then TinyRPG monsters, then fuller Gothicvania side-view actors.
-- Do not ship the raw collection. Promote only curated DACK presets into `dack/assets/project/` or `dack/assets/third_party/` with explicit provenance.
+- Do not ship the raw collection. Runtime copies under `dack/assets/project/`
+  are REPO/DEV-TEST fixtures. Promote only curated DACK presets after explicit
+  provenance review; changing directories alone is not promotion.
 
 Current import process decision:
 
 - Import one category at a time.
 - Start with **Effects / Projectiles**, because those are reusable across every game family.
-- First runtime test import: `Legacy Enemy Death`, an 8-frame 48x48 spritesheet from `Explosions and Magic/EnemyDeath`.
+- First development-runtime test import: `Legacy Enemy Death`, an 8-frame
+  48x48 spritesheet from `Explosions and Magic/EnemyDeath`.
 - Use imported effects for clear gameplay jobs first. In the RAD, this sheet is bound to enemy defeat bursts while ordinary projectile hits keep the existing fireball impact.
 - After the effect shelf feels right, repeat the same process for one actor category: likely Warped overhead/space/tank actors before larger Gothicvania side-view actors.
 
@@ -193,11 +233,41 @@ Current import process decision:
 
 1. **Raw is not runtime.** Nothing in `raw base assets/` ships or enters hub packages by default.
 2. **Quarantine is never distributable.** Quarantined files are local-only until promoted.
-3. **Promotion requires provenance.** Every promoted asset needs source, creator, license, admitted file list, intended use, and attribution string where applicable.
-4. **Prefer curated subsets.** Admit the smallest useful runtime slice, not whole packs.
-5. **Separate source files from runtime files.** PSD/ASE/ASEPRITE can be local source references; runtime should prefer PNG sheets/atlases plus DACK metadata.
-6. **Preserve transform history.** If DACK slices/downsamples/recolors an asset, record the source and transformation.
-7. **No standalone redistribution traps.** Packs with no-standalone-resale terms should be embedded only as functional game/editor assets, not exposed as raw downloadable asset libraries.
+3. **Repository presence is not release approval.** `project/` may contain
+   REPO/DEV-TEST fixtures needed by the RAD.
+4. **Promotion requires provenance.** Every promoted asset needs exact source,
+   creator, license, retained license record, admitted file list, intended use,
+   transformation history, and attribution string where applicable.
+5. **Promotion requires an explicit tier.** PUBLIC-BUILD and HUB-EXPORT are
+   separate decisions.
+6. **Prefer curated subsets.** Admit the smallest useful runtime slice, not whole packs.
+7. **Separate source files from runtime files.** PSD/ASE/ASEPRITE can be local source references; runtime should prefer PNG sheets/atlases plus DACK metadata.
+8. **Preserve transform history.** If DACK slices/downsamples/recolors an asset, record the source and transformation.
+9. **No standalone redistribution traps.** Packs with no-standalone-resale terms should be embedded only as functional game/editor assets, not exposed as raw downloadable asset libraries.
+10. **Generated files inherit their source tier.** An atlas, thumbnail, Godot
+    import, or cache generated from a REPO/DEV-TEST asset is also
+    REPO/DEV-TEST.
+11. **Package from an allowlist.** Public and hub packaging must fail on an
+    unclassified file rather than silently including it.
+
+### Public release gate
+
+Before the first public build, add a packaging check that:
+
+- compiles an allowlist from reviewed provenance manifests;
+- excludes RAW-LOCAL, quarantine, and REPO/DEV-TEST assets plus all derived
+  caches;
+- verifies source, creator, license, admitted-file map, transformations, and
+  required credit for every packaged third-party file;
+- produces credits from the same data instead of a separately maintained list;
+- audits the final package and fails if any asset is unclassified; and
+- retains the packaged-file report with the release.
+
+Hub export runs the same gate at the stricter HUB-EXPORT tier. It exports a
+clone, scrubs supported source-document/image metadata from that clone as a
+mandatory non-overridable policy, warns
+the creator that shared material is cloned and scrubbed, and never edits the
+original.
 
 ## Sprite Editor / Animator Boundary
 
@@ -229,7 +299,7 @@ Scope:
 
 - Import sprite sheet.
 - Slice by grid, manual rectangles, or metadata.
-- Define animation clips: idle, run, jump, crawl, shoot, punch, climb, slide, hurt, death, custom.
+- Define animation clips: idle, run, jump, crawl, shoot, melee/punch, climb, slide, hurt, death, custom.
 - Treat `Idle` and `Climb` as first-class baseline labels. They are not optional extras: almost every actor needs an idle/rest pose, and side-view/vertical games need climb labels as soon as ladders, vines, ropes, walls, or text-crawl surfaces exist.
 - Set frames-per-second and loop mode.
 - Set per-frame duration overrides.
@@ -329,15 +399,31 @@ The animator belongs in the right inspector / bottom tray, not as a permanent la
 
 Recommended panes:
 
-- **Asset browser:** approved, quarantined, project-created, recently used.
+- **Asset browser:** filterable by Player, Enemy, Object, Projectile, Effect,
+  Sound, and Playset, with tier badges for RAW-LOCAL, DEV-TEST, PUBLIC, and HUB.
 - **Clip list:** idle/run/jump/etc. with small loop previews.
 - **Frame strip:** reorder, duplicate, delete, adjust duration.
 - **Preview stage:** selected actor at current playfield scale, with onion-skin and checkerboard options.
 - **Binding panel:** motion state, behavior state, projectile/effect hook.
 - **Geometry panel:** origin, bounds, collision profile, hitboxes, attachment points.
-- **Source/provenance panel:** creator, license, source pack, attribution, runtime-admitted status.
+- **Source/provenance panel:** creator, license, source pack, attribution,
+  distribution tier, missing release fields, compile status, cache status, and
+  source/profile hashes.
 
 The live pixel pad should appear as an edit mode for an individual frame or small sprite profile.
+
+The UI should prevent status ambiguity:
+
+- use both text and color for tier badges;
+- show a persistent `DEVELOPMENT ASSET` ribbon when previewing REPO/DEV-TEST
+  material;
+- disable `Include in public build` and `Include in hub export` until their
+  respective gates pass, with a plain-language list of missing records;
+- group importer warnings beside the affected source and frame rather than in a
+  distant log;
+- show draft versus compiled state and whether the preview is stale; and
+- keep rebuild, relink, fork, and provenance actions in the inspector so they
+  do not add more permanent top-level buttons.
 
 ## Character Picker / Action Label Flow
 
@@ -409,12 +495,24 @@ Labels themselves must be editable and expandable. The creator should not be tra
 Current RAD test:
 
 - `STICKMAN` uses the admitted OctoPyte stick figure clips and now enters the same frame editor as imported strips: idle, run, jump-up, jump-down, fall, run-shoot, jump-shoot, and death labels can be edited, ping-ponged, strobed, saved, loaded, and reapplied.
-- `TGC PLAYER` uses The Game Creator's Pack `Player_DarkOutline.png` strip through local blob-detected frame loading.
-- `SUNNY DRAGON` uses `raw base assets/Legacy Collection/Legacy Collection/Assets/Misc/Characters/sunny-dragon/spritesheets/sunny-dragon-fly.png` as the first animated enemy import. It exercises a third path: a non-square 9-frame grid strip rather than curated Stickman sheets or TGC blob detection.
+- `TGC PLAYER` uses The Game Creator's Pack `Player_DarkOutline.png` strip
+  through local blob-detected frame loading. It is a REPO/DEV-TEST actor.
+- `SUNNY DRAGON` uses
+  `raw base assets/Legacy Collection/Legacy Collection/Assets/Misc/Characters/sunny-dragon/spritesheets/sunny-dragon-fly.png`
+  as the first animated enemy import. It exercises a third path: a non-square
+  9-frame grid strip rather than curated Stickman sheets or TGC blob detection.
+  It remains REPO/DEV-TEST pending subset-level provenance review.
 - The selected actor can be renamed in the sidebar. Names should be saved as creator metadata, not inferred permanently from filenames; this is how imported assets become reusable characters.
 - The current mapping starts rough, but the prototype exposes a visual 8-column frame strip plus editable label names, numeric endpoints, ping-pong toggles, strobe toggles, and strobe counts. Recognized labels like idle/run/jump-up/jump-down drive the current player animation; extra labels such as run-shoot, jump-shoot, climb-up/down, dig-up/down, shoot-up/down, bounce, and death can be added and highlighted ahead of full engine binding.
 - `SAVE ANIM LABELS` writes a source-aware local-only manifest: TGC currently saves to `dack/assets/quarantine/game-creators-pack-graphics-prep/tgc-player.dackanim.json`; Stickman currently saves to `dack/assets/quarantine/stickman-pack-v0.1/stickman-thin.dackanim.json`. `LOAD ANIM LABELS` reads the current source's manifest back into the editor. This is the debugging lens for numbering/range mistakes and the seed of the eventual character picker format.
-- Saved working labels should graduate into curated per-character defaults once the mappings are good. The intended flow is: tune frames locally, save `.dackanim.json`, test in play, then promote the approved manifest into a runtime/defaults area keyed by stable `animationSourceId` such as `tgc-orange-worker` or `sunny-dragon-fly`. Future creators should inherit those defaults automatically and only adjust them when they want a variant.
+- Saved working labels should graduate into curated per-character defaults once
+  the mappings are good. The intended flow is: tune frames locally, save
+  `.dackanim.json`, test in play, then compile the confirmed manifest into a
+  runtime/defaults area keyed by a stable `animationSourceId` such as
+  `tgc-orange-worker` or `sunny-dragon-fly`. This improves import correctness
+  but does not promote the source asset's distribution tier; provenance review
+  remains a separate gate. Future creators should inherit those defaults
+  automatically and only adjust them when they want a variant.
 - The schema is intentionally variable-length. `Run` can be 12 frames, `Fall` can be one frame, `Death` can be dashed unavailable, and future effects such as `Power Up` can use arbitrarily long ranges. Engine bindings should consume labels by meaning and range, never by assuming a fixed frame count.
 - The first saved manifest exposed an important detector bug: horizontal strips must sort detected frames left-to-right before row/top ordering. Sorting by Y first can pull far-right death frames into indices 0/1 and make idle/run labels appear to include the wrong action.
 - Cropped frames must retain a stable display box. If every detected crop is stretched to fill the actor rectangle, narrow or short frames appear to change character size during playback. DACK should draw each crop inside a common per-animation frame box, centered and baseline/bottom aligned, while keeping collision size separate.
@@ -425,7 +523,20 @@ Swinging vines/ropes should wait for the visible spline/Bezier tool family. A st
 
 Power-up animations can often be effect composites rather than separate sprite sheets. The cheap useful version is: play the actor's idle or current-state animation, then layer reusable DACK effects over it—rings, glows, color cycling, sparks, outline pulses, rotating text sigils, or Jeff-Minter-style neon bursts. This lets a creator define `Power Up`, `Shielded`, `Hasted`, `Poisoned`, `Charged`, or `Invincible` without requiring new hand-drawn frames for every character.
 
-Projectile/explosion profiles are their own import category. The first RAD profile uses `raw base assets/explosion pack 1/explosion pack 1/Bonus/From explosions pack 2/explosion-b/explosion-b.png`, copied for runtime as `dack/assets/project/effects/fireball-impact-explosion.png`. The sheet is 1040x48, interpreted as 13 frames of 80x48: frame 0 projectile, frame 1 impact, frames 2-12 explosion. Seven additional cleared profiles from `raw base assets/explosion pack 1/explosion pack 1/Explosions pack` are copied into `dack/assets/project/effects/` as `explosion-1-a.png` through `explosion-1-g.png`. The catalog file `projectile-effect-profiles.json` records frame sizes, frame counts, source paths, and default blast radii. Designers should eventually assign these profiles per enemy/player weapon, with credit/provenance stored alongside the profile.
+Projectile/explosion profiles are their own import category. The first RAD
+profile uses
+`raw base assets/explosion pack 1/explosion pack 1/Bonus/From explosions pack 2/explosion-b/explosion-b.png`,
+copied for development runtime as
+`dack/assets/project/effects/fireball-impact-explosion.png`. The sheet is
+1040x48, interpreted as 13 frames of 80x48: frame 0 projectile, frame 1 impact,
+frames 2-12 explosion. Seven additional profiles are copied into
+`dack/assets/project/effects/` as `explosion-1-a.png` through
+`explosion-1-g.png`. These copies and their generated data are REPO/DEV-TEST,
+not public-release assets, until exact pack provenance and original-to-runtime
+file mappings are reviewed. The catalog file `projectile-effect-profiles.json`
+records frame sizes, frame counts, source paths, and default blast radii.
+Designers should eventually assign these profiles per enemy/player weapon, with
+credit/provenance stored alongside the profile.
 
 Sound assignment should follow the same card/slot model rather than being hardcoded by game mode. A weapon/projectile profile should be able to carry:
 
@@ -437,7 +548,12 @@ Sound assignment should follow the same card/slot model rather than being hardco
 - damage amount, range, speed, cooldown, and text-destruction rules;
 - provenance/credit for every admitted sound.
 
-Characters should separately expose actor sounds: hurt, defeat/death, jump/land, climb, pickup, power-up, alert, attack voice, and ambient/idle barks. The first RAD wiring hardcodes a tiny CC0-labeled starter deck, but the intended editor model is assignable sound slots beside animation, projectile, and effect slots.
+Characters should separately expose actor sounds: hurt, defeat/death,
+jump/land, climb, pickup, power-up, alert, attack voice, and ambient/idle
+barks. The first RAD wiring hardcodes a tiny locally `CC0`-labeled starter
+deck. It remains REPO/DEV-TEST because folder naming is not sufficient release
+evidence. The intended editor model is assignable sound slots beside animation,
+projectile, and effect slots.
 
 Projectile assignment should scale in complexity:
 
@@ -447,44 +563,99 @@ Projectile assignment should scale in complexity:
 
 This keeps the character editor friendly while still letting the same system grow into Contra-style guns, dragon fireballs, Brickbat laser columns, pinball bumpers, tower-defense shots, Lunar Lander thrusters, and Robotron/bullet-hell emitters.
 
-The Game Creator's Pack graphic sheets are also now staged as runtime project assets under `dack/assets/project/game-creators-pack/`. `tgc-graphic-pack-catalog.json` names the first useful profiles: Orange Worker, Red Runner, Blue Guard, Green Crawler, Shooter Boss, Shooter Fleet, Red Girder, Gray Blocks, Orange Bricks, and Retro Puzzle Blocks. The platformer characters are currently indexed as blob-range profiles from `Platformer_SpriteSheet.png`; the girders/blocks are atlas-region hints for future level-object shelf import.
+The Game Creator's Pack graphic sheets are staged as REPO/DEV-TEST fixtures
+under `dack/assets/project/game-creators-pack/`.
+`tgc-graphic-pack-catalog.json` names the first useful profiles: Orange Worker,
+Red Runner, Blue Guard, Green Crawler, Shooter Boss, Shooter Fleet, Red Girder,
+Gray Blocks, Orange Bricks, and Retro Puzzle Blocks. The RAD has also separated
+Green Snake at code/profile-test level; the catalog needs to gain its formal
+entry during manifest compilation. The current RAD mixes import experiments:
+Orange/Red retain earlier range mappings, while Blue Guard, Green Crawler, and
+Green Snake use explicit accepted component-index selections from the
+platformer atlas. That fixed the wrapped-feet/half-frame class of errors, but
+the reviewed compiled manifest must replace detector indices before these
+become stable runtime profiles. The girders/blocks are atlas-region hints for
+future level-object shelf import. None of these files belongs in a public build
+or hub export until its release record is complete.
 
 ## Import Pipeline
 
-### Stage 1: Current RAD path
+### Architecture decision: source profiles compile to runtime manifests
 
-- Hardcoded stickman sheets.
-- Near-white transparency.
-- Uniform square frame slicing.
-- Idle/run/jump states.
-- 32×32 live pad seed from first frame.
+Importer behavior must be source-specific and deterministic. Grid slicing,
+near-white cleanup, connected-component detection, hairline preservation, and
+frame ordering are valid operations, but no single combination is safe for
+every pack. Automatic detection is an import-time assistant, not a runtime
+source of truth.
 
-### Stage 2: Sheet manifest path
+The pipeline is:
 
-Add `.dackanim.json` beside curated sheets:
+```text
+source asset
+  -> source-specific import profile
+  -> draft detection/preview
+  -> creator confirmation and clip labeling
+  -> compiled runtime manifest + atlas/frames
+  -> disposable runtime cache
+```
+
+The source-specific profile records:
+
+- stable asset and provenance IDs plus distribution tier;
+- source path and content hash;
+- importer/profile schema version;
+- slicing mode: fixed grid, regular strip, explicit rectangles, metadata, or
+  draft component detection;
+- exact cell size or confirmed frame rectangles and deterministic frame order;
+- transparent-color/background policy and optional hairline-preservation pass;
+- common display box, baseline/origin, pivots, and per-frame visual bounds;
+- clip labels, frame order, timing, loop/ping-pong/strobe behavior;
+- transformations such as cropping, recoloring, dilation, or downsampling; and
+- source-specific exceptions needed to make the import correct.
+
+Once a draft is confirmed, runtime code reads compiled rectangles and clip
+data. It does not rerun blob detection, guess transparency, inspect the whole
+sheet, or reorder components on every load.
+
+### Compiled runtime manifest
+
+Compile `.dackanim.json` from the reviewed source profile and place it beside
+curated runtime output, not beside ignored originals:
 
 ```json
 {
+  "schemaVersion": 1,
   "id": "stickman-thin",
+  "provenanceId": "octopyte-stickman-pack",
+  "distributionTier": "PUBLIC-BUILD",
   "texture": "thin-run-sheet.png",
+  "sourceHash": "sha256:...",
+  "profileVersion": 1,
+  "slicing": "fixed-grid",
   "frameSize": [64, 64],
   "transparentColor": "#FFFFFF",
+  "commonFrameBox": [64, 64],
+  "baseline": 63,
   "clips": {
     "run": { "frames": [0,1,2,3,4,5,6,7,8], "fps": 12, "loop": true }
   }
 }
 ```
 
-This gets rid of hardcoded assumptions in `SpriteAnimationSet`.
+This removes hardcoded per-pack assumptions from `SpriteAnimationSet` while
+preserving them in a visible, testable profile.
 
-### Stage 2A: Blob-detected draft manifest
+### Draft detection for irregular sheets
 
 For irregular strips and mixed sheets, DACK should create a draft import manifest before the creator does any manual cleanup:
 
 ```json
 {
   "source": "Player_DarkOutline.png",
+  "sourceHash": "sha256:...",
+  "profile": "tgc-player-dark-outline-v1",
   "slicing": "blob-detect",
+  "status": "draft-needs-confirmation",
   "frames": [
     { "rect": [0, 2, 28, 40], "origin": [14, 39], "tags": [] }
   ],
@@ -494,33 +665,101 @@ For irregular strips and mixed sheets, DACK should create a draft import manifes
 }
 ```
 
-The animation editor then lets the creator rename clips, reorder frames, set FPS, define origins, and bind clips to actor states. This gives us a safe import runway for packs that are visually obvious to a human but not machine-regular.
+The animation editor then lets the creator reject noise, split or merge
+rectangles, reorder frames, normalize the display box and baseline, name clips,
+set timing, and bind states. Saving confirmation converts detector output to
+explicit rectangles. Component indices may help during exploration, but
+compiled manifests must not depend on detector indices whose meaning could
+change when the detector changes.
 
-### Stage 3: External editor refresh
+### Cache and invalidation policy
+
+Compiled atlases, thumbnails, recolored frames, and Godot imports are caches,
+not authoring truth. A cache key includes:
+
+```text
+source content hash
++ source-profile hash/version
++ importer/compiler version
++ target render profile
+```
+
+Any changed input invalidates the cache. Cache output inherits the source
+asset's distribution tier and must be excluded by the public packager when its
+source is REPO/DEV-TEST. Caches can be deleted and rebuilt without losing clip
+labels, origins, collision references, attachment points, or provenance.
+
+Efficiency rules:
+
+- compile and validate in the background when an asset is imported or changed;
+- lazy-load shelf thumbnails and full frame textures only when their card,
+  character, or clip is visible;
+- use packed atlases or texture arrays where that reduces texture churn;
+- retain decoded textures while referenced and release unused preview data;
+- never scan the full raw vault at application startup;
+- avoid per-frame image conversion, blob detection, recoloring, or frame
+  extraction during gameplay;
+- cap preview animation work when an editor panel is hidden; and
+- expose cache size, compile status, warnings, and a safe `Rebuild Preview
+  Cache` action in the asset inspector.
+
+### Source-profile test matrix
+
+Each admitted importer profile needs golden tests for:
+
+- frame count, exact rectangle order, and stable IDs;
+- no blank, partial, wrapped, or neighboring-frame contamination;
+- common display box and baseline, preventing size jumps and feet-over-head
+  wraparound;
+- transparency/recolor policy;
+- clip endpoints and unavailable labels;
+- source/profile hash invalidation;
+- deterministic recompile; and
+- distribution-tier inheritance into every generated output.
+
+### External editor refresh
 
 - Aseprite bridge imports PNG + JSON exported by Aseprite.
 - DACK does not embed or redistribute Aseprite.
-- Refresh preserves DACK bindings, origins, hitboxes, and behavior assignments where possible.
+- Refresh reruns the source-profile compiler and preserves stable clip IDs,
+  bindings, origins, hitboxes, attachment points, and behavior assignments
+  where possible.
 
-### Stage 4: Source-format research
+### Source-format research
 
 - `.ase`/`.aseprite` direct reading is a research item only if licensing and implementation are clean.
 - PSD import remains out of scope until the broader importer sandbox exists.
 - GIF import can be useful for simple effect previews but should normalize to sprite clips.
 
-## Immediate Recommendations
+## Asset Pipeline Backlog and Release Gates
 
-1. Keep the current admitted runtime set small.
-2. Promote StickmanPack V0.2 as the next curated animation source after provenance update.
-3. Create a `dack/assets/project/` or `dack/assets/dack_builtin/` area for DACK-created sprites/effects.
-4. Add `.dackanim.json` manifests for stickman v0.1/v0.2.
-5. Replace hardcoded `SpriteAnimationSet.TryLoadStickman()` sheet assumptions with manifest loading.
-6. Add an Asset Catalog service that separates approved / quarantined / raw-local / project-created assets.
-7. Add a minimal Animator inspector: clip list, frame strip, FPS, loop, origin, preview.
-8. Keep the live pad as the in-context frame/sprite editor, not a full animation suite.
-9. Curate only small pinball parts from the huge VerzatileDev sheets when the pinball shelf begins.
-10. Use The Game Creator's Pack Graphic Pack as the first irregular-sheet importer test: blob-detect frames, generate a manifest, then hand-group clips.
-11. Do not admit unknown-license packs until provenance is explicit.
+This is the domain backlog, ordered by release risk. It does not replace the cross-project sequence in [`DACK-Optimization-and-Refactoring-Plan.md`](DACK-Optimization-and-Refactoring-Plan.md).
+
+1. Keep the PUBLIC-BUILD/HUB-EXPORT allowlist small and make development builds
+   visibly identify themselves as containing REPO/DEV-TEST assets.
+2. Add machine-readable provenance entries and a fail-closed public packaging
+   audit before any public release.
+3. Record exact provenance or replace the current sound, TGC, Legacy, and
+   Explosion Pack fixtures before they are allowed into public builds.
+4. Separate clearly DACK-created built-ins from third-party development
+   fixtures in the Asset Catalog; do not infer tier from either directory.
+5. Compile source-specific `.dackanim.json` manifests for Stickman v0.1/v0.2,
+   Dungeon Runner, and each working TGC/Legacy test actor.
+6. Replace hardcoded `SpriteAnimationSet` sheet assumptions and runtime blob
+   detection with compiled manifests and deterministic caches.
+7. Add golden importer tests for every source profile, starting with the sheets
+   that previously produced extra frames, half-height frames, feet wrapping,
+   size changes, or unstable order.
+8. Add an Asset Catalog service that displays tier, provenance completeness,
+   compile/cache status, and warnings alongside each card.
+9. Add a minimal Animator inspector: clip list, frame strip, FPS, loop, origin,
+   preview, and `Rebuild Preview Cache`.
+10. Keep the live pad as the in-context frame/sprite editor, not a full
+    animation suite.
+11. Curate only small pinball parts from the large VerzatileDev sheets after
+    confirming release and hub-export treatment.
+12. Continue using The Game Creator's Pack as an irregular-sheet development
+    test: detect a draft once, hand-confirm it, and compile explicit rectangles.
 
 ## Product Feeling
 

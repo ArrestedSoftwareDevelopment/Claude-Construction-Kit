@@ -1,11 +1,13 @@
 # ADR-0007: Live-Linked Constrained Sprite Pad
 
-- **Status:** Accepted
+- **Status:** Accepted, amended 2026-07-30
 - **Date:** 2026-07-26
 - **Decision owners:** DACK project
-- **Related:** Desktop Arena Design Document §§10.4, 11.1–11.3, 15, 18
+- **Related:** Desktop Arena Design Document §§10.4, 11.1–11.4, 15, 18
 
-- **Follow-up:** `docs/DACK-Asset-Audit-and-Sprite-Animator.md`
+- **Follow-up:** `docs/DACK-Asset-Audit-and-Sprite-Animator.md`, `docs/DACK-Sprite-Studio-Mini-App.md`
+
+**2026-07-30 amendment:** the live-linked pad remains the primary *quick pixel-authoring interaction*, but it is no longer expected to carry the whole actor workflow. Sprite Studio is the larger DACK-native workspace for importing/slicing frames, animation labels/sequences, previews, origins/boxes, behavior/projectile/effect/sound binding, and reusable actor profiles. The pad lives within or beside that workspace for fast in-context edits. Aseprite remains the optional advanced external production path.
 
 ## Context
 
@@ -17,7 +19,7 @@ Aseprite remains valuable for serious animation and asset production, but its ex
 
 ## Decision
 
-DACK will make a **live-linked constrained sprite pad** the primary in-app sprite-authoring tool.
+DACK will make a **live-linked constrained sprite pad** the primary quick in-app pixel-authoring tool, embedded in a broader Sprite Studio actor/animation workflow.
 
 1. The pad lives in the editor sidebar and binds to the currently selected entity.
 2. Every pixel edit updates the editor/playtest sprite on the next render update.

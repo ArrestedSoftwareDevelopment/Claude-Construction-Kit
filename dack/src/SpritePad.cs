@@ -4,10 +4,10 @@ namespace Dack;
 
 public partial class SpritePad : Control
 {
-    private const float PadSize = 320f;
     private EditableSpriteModel? _model;
     private Vector2I _lastCell = new(-1, -1);
 
+    public float DisplaySize { get; set; } = 320f;
     public Color PaintColor { get; set; } = new("#181A1F");
     public bool Erasing { get; set; }
 
@@ -30,7 +30,7 @@ public partial class SpritePad : Control
 
     public override void _Ready()
     {
-        CustomMinimumSize = new Vector2(PadSize, PadSize);
+        CustomMinimumSize = new Vector2(DisplaySize, DisplaySize);
         MouseDefaultCursorShape = CursorShape.Cross;
     }
 
@@ -73,7 +73,8 @@ public partial class SpritePad : Control
         if (_model is null)
             return;
 
-        float cellSize = PadSize / EditableSpriteModel.CanvasSize;
+        float padSize = Mathf.Min(Size.X, Size.Y);
+        float cellSize = padSize / EditableSpriteModel.CanvasSize;
         Color checkerA = new("#F6F3EC");
         Color checkerB = new("#E5E1D8");
 
@@ -97,20 +98,21 @@ public partial class SpritePad : Control
         for (int i = 0; i <= EditableSpriteModel.CanvasSize; i++)
         {
             float offset = i * cellSize;
-            DrawLine(new Vector2(offset, 0), new Vector2(offset, PadSize), grid);
-            DrawLine(new Vector2(0, offset), new Vector2(PadSize, offset), grid);
+            DrawLine(new Vector2(offset, 0), new Vector2(offset, padSize), grid);
+            DrawLine(new Vector2(0, offset), new Vector2(padSize, offset), grid);
         }
 
-        DrawRect(new Rect2(Vector2.Zero, new Vector2(PadSize, PadSize)), new Color("#30343B"), false, 2f);
+        DrawRect(new Rect2(Vector2.Zero, new Vector2(padSize, padSize)), new Color("#30343B"), false, 2f);
     }
 
     private void ApplyAt(Vector2 localPosition, bool forceErase)
     {
+        float padSize = Mathf.Min(Size.X, Size.Y);
         if (_model is null || localPosition.X < 0 || localPosition.Y < 0
-            || localPosition.X >= PadSize || localPosition.Y >= PadSize)
+            || localPosition.X >= padSize || localPosition.Y >= padSize)
             return;
 
-        float cellSize = PadSize / EditableSpriteModel.CanvasSize;
+        float cellSize = padSize / EditableSpriteModel.CanvasSize;
         Vector2I cell = new(
             Mathf.FloorToInt(localPosition.X / cellSize),
             Mathf.FloorToInt(localPosition.Y / cellSize)

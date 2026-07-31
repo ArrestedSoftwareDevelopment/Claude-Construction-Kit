@@ -1,5 +1,10 @@
 # DACK Top-Level Menu Plan: Game Types by View and Control Family
 
+- **Status:** Active menu taxonomy and Cockpit navigation specification
+- **Baseline:** Contextual RAD Cockpit, July 2026
+- **Authority:** View-family/preset taxonomy, top-strip responsibilities, and family-page structure
+- **Related:** [DACK GUI Architecture](DACK-GUI-Architecture.md), [DACK Sprite Studio Mini-App](DACK-Sprite-Studio-Mini-App.md), and [DACK Optimization and Refactoring Plan](DACK-Optimization-and-Refactoring-Plan.md)
+
 ## Core decision
 
 DACK should not put every named genre in one flat top-level list.
@@ -23,6 +28,19 @@ For example:
 
 Named game references remain extremely useful, but they belong one level down as presets and examples, not as the spine of the whole UI.
 
+## Normative Navigation Contract
+
+The [GUI Architecture](DACK-GUI-Architecture.md) owns the full state/ownership model. The menu must uphold these visible rules:
+
+- `Play`, `Build`, and `Understand` are one primary mode choice, always named plainly in the status area.
+- Esc operates one return stack: dismiss transient editor, close Sprite Studio to its caller, close Cockpit, or open Cockpit from pure Play. It never resets the clone, changes the playset, or discards work.
+- The visible close gadget closes the current ordinary workspace and returns to its owner. It is not the Boss Key.
+- Boss is global, immediate, and independent; it hides/neutralizes all DACK surfaces, releases input, and preserves the session for restoration.
+- Build, Understand, Cockpit, and Studio show the pointer. Play uses the active toolkit's pointer policy and hides it by default.
+- Opening Studio transfers ownership away from the Cockpit; closing Studio restores the same tab, card, selection, and scroll position.
+- Switching family, preset, tab, mode, monitor, or Studio preserves the selected source, native-resolution working clone, mutation history, placed objects, and valid selection. Reset, Re-snapshot, Load Level, and New Source are explicit content-changing commands.
+- Only the frontmost owned workspace consumes editor input. No menu click or text entry leaks through to a running game.
+
 ## Proposed top strip
 
 When the Cockpit is open, the compact top strip should eventually read like this:
@@ -31,7 +49,7 @@ When the Cockpit is open, the compact top strip should eventually read like this
 Source  |  Snapshot  |  Play / Build / Understand  |  View Family  |  Preset  |  Word Sense  |  Boss  |  ×
 ```
 
-### Current implementation note
+### Current implementation baseline
 
 The proof-of-concept top strip should stay deliberately small while the contextual shelves absorb the growing tool vocabulary.
 
@@ -56,6 +74,30 @@ Mode-specific tools should move into the relevant page/shelf instead of accumula
 - **Reset:** Clear Placed Parts.
 
 This same pattern should be reused for Brickbat, Pinball, Overhead, and future families: the top strip answers "where am I and how do I hide/reset it?", while the contextual shelf answers "what can I build or tune here?"
+
+Brickbat and Platformer are the deepest current playsets. Pinball has a working starter loop with launch, flippers, and document-text clearing. Overhead has an early actor/movement workspace and asset-library seed. Their pages are foundations to deepen through the same family contract, not empty placeholders.
+
+### Contextual scalable tabs
+
+The Cockpit must scale by swapping context rather than growing another permanent column:
+
+- Persistent shared tabs: Player, Assets, Enemies, Projectiles, Objects, Builder, Understand.
+- One active family tab: Side View, Overhead, Ball/Table, Paddle/Clearing, Grid/Text, Route/Flow, or Ambient.
+- Inspector remains available beside the active page because selection properties cross every family.
+- Each family page uses the same session spine: `Test/Play`, `Save`, `Load`, `Markers & Logic`, family rules/status, and contextual shelf groups.
+- Selecting a family or preset activates its page without clearing the current clone or mutations. Inapplicable shelf groups collapse; applicable groups remember expansion and scroll state.
+- Tabs and shelf actions should be descriptor-driven so capitalization, labels, tooltips, keyboard access, visibility, and enabled states are consistent.
+- Long pages, shelves, Inspector content, card pickers, and logs scroll inside their own bounds. Tabs may become a compact rail or scrollable tab row; controls may never escape the usable viewport.
+- Buttons size to their content by default. Full-width controls are reserved for a deliberate primary action.
+
+Responsive rules:
+
+- Wide screens may show tabs/shelf, playfield preview, and Inspector together.
+- Medium screens keep the active page and expose Inspector as a persistent drawer or adjacent tab.
+- Narrow screens show one content pane at a time with the mode, selection, return path, and close gadget always reachable.
+- The source clone remains at native resolution. Extra space may hold tools; the UI scrolls or pans rather than blurring document text by scaling it.
+- Text and controls require strong contrast in light, dark, and high-contrast themes. Faint gray labels, invisible focus, and color-only state changes are defects.
+- `Tab`/`Shift+Tab`, arrow keys, `Enter`, and `Space` provide predictable navigation and activation. Focus returns to the invoking tab/card after a transient page closes.
 
 ### Source
 
@@ -114,8 +156,8 @@ The menu/Cockpit needs a visible close gadget in the upper-right, even though Es
 
 Recommended behavior:
 
-- `×` closes/hides the Cockpit.
-- `Esc` toggles the Cockpit.
+- `×` closes/hides the current ordinary Cockpit workspace and restores its prior owner.
+- `Esc` follows the shared return stack; from pure Play it opens the Cockpit.
 - `Ctrl+Alt+B` remains the stronger Boss Key.
 - Mouse pointer becomes visible while the Cockpit is open and returns to gameplay policy when it closes.
 
@@ -187,6 +229,14 @@ Important rules:
 - Safety floor
 - Fall/death policy
 
+#### First complete Side View level spine
+
+- `Start Point`: editor-visible spawn marker, hidden during play unless the creator chooses otherwise.
+- `Checkpoint`: visible midpoint or recovery marker.
+- `Goal`: visible end objective; useful immediately for platformers and later for racing, escort, maze, and tower-offense modes.
+- `Enemy/NPC`: actor placed as blocker, guard, hazard, or moving puzzle piece.
+- `Enemy Spawn Point`: editor-only flag placed in the level, then configured through the Builder page by assigning enemy cards, spawn cadence, burst count, max-active budget, direction, speed, and behavior. It appears in Markers & Logic for placement but opens into the same Builder workflow as enemies/projectiles when edited.
+
 ### 2. Overhead
 
 Overhead is a camera/control family, not one game.
@@ -240,14 +290,7 @@ Flying/space physics need their own movement libraries:
 - **Localized gravity:** point/region gravity wells, inverse-square-ish or constant pull, safe orbit radius, slingshot strength, black-hole/star hazards, per-actor gravity sensitivity.
 - **Arena rules:** screen wrap, edge bounce, kill boundary, asteroid/word debris, ricochet shots, local sun/planet/source-word gravity.
 
-First complete side-view level spine:
-
-- `Start Point`: editor-visible spawn marker, hidden during play unless the creator chooses otherwise.
-- `Checkpoint`: visible midpoint or recovery marker.
-- `Goal`: visible end objective; useful immediately for platformers and later for racing, escort, maze, and tower-offense modes.
-- `Enemy/NPC`: actor placed as blocker, guard, hazard, or moving puzzle piece.
-
-Enemy setup should be a small set of composable choices rather than one giant AI page:
+Shared Side View/Overhead enemy setup should be a small set of composable choices rather than one giant AI page:
 
 - Locomotion: grounded, flying, climbing, crawling, swimming, turret/static.
 - Behavior: patrol, guard, chase, flee, wander, ambush, swarm, flock/horde, escort target, defend goal.
@@ -577,7 +620,13 @@ DACK
       Garden / Aquarium
 
   Layers
+    Immutable Source Reference
     Source Clone
+    Underlays / Shadows
+    World Objects
+    Effects
+    Actors / Balls / Projectiles
+    HUD
     Collision
     Text Boxes
     Word Sense Labels
@@ -586,6 +635,8 @@ DACK
     AI Heatmaps
     Mutations
     HUD Avoidance
+    Build Handles
+    Understand Overlay
 
   Safety
     Boss Key
@@ -606,11 +657,11 @@ For the current prototype mappings:
 
 - `SIDE` opens Platformer.
 - `PADDLE` opens Brickbat.
-- `BALL` opens Pinball placeholder.
-- `OVERHEAD` opens Overhead placeholder.
-- `GRID` and `ROUTE` can be next placeholders.
+- `BALL` opens the working Pinball starter page and its launch/flipper/text-clearing tools.
+- `OVERHEAD` opens the early Overhead movement/actor workspace and its category shelves.
+- `GRID` and `ROUTE` are reserved family entries until they receive the same shared session spine and a first working preset; they should not expose dead placeholder controls.
 
-Inside the Cockpit, the family page chooses the exact preset and exposes shelf parts. This lets the top strip stay comprehensible while the construction kit grows.
+Inside the Cockpit, the family page chooses the exact preset and exposes shelf parts. Every implemented family page must provide the shared Play/Test, Save/Load, Markers & Logic, status, and return controls before adding family-specific tools. This lets the top strip stay comprehensible while the construction kit grows.
 
 ## Two-monitor direction
 
@@ -655,8 +706,4 @@ Layout
 
 This reinforces the product distinction: the real work stays untouched on one side; the living game clone plays on the other.
 
-Implementation starter:
-
-- Use Godot `DisplayServer.GetScreenCount()`, `GetPrimaryScreen()`, `WindowGetCurrentScreen()`, `ScreenGetPosition()`, `ScreenGetSize()`, and `ScreenGetUsableRect()` to inspect the local monitor layout.
-- Use `WindowSetCurrentScreen()`, `WindowSetPosition()`, and `WindowSetSize()` for the first safe single-window relocation pass.
-- After that primitive is reliable, introduce a second DACK window: one window can host Cockpit/Edit/Understand, while the other remains a near-pure Playfield/Preview.
+Implementation sequencing belongs to the [DACK Optimization and Refactoring Plan](DACK-Optimization-and-Refactoring-Plan.md), particularly its UI-shell extraction and two-monitor product spike. The relevant platform primitives remain Godot's screen-count/current-screen/usable-rectangle queries and explicit window screen/position/size controls, but both windows must share one session and selection model rather than cloning menu state.

@@ -26,6 +26,7 @@ public partial class ActorView : Control
     public bool EditorMode { get; set; } = true;
     public bool CanFireProjectiles { get; set; }
     public int ShotToughness { get; set; } = 1;
+    public float RadarRangeUnits { get; set; } = 28f;
 
     public bool IsPlayable
     {

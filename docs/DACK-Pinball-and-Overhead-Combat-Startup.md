@@ -1,6 +1,10 @@
 # DACK Pinball and Overhead Toolkit Startup Plan
 
-## Why these two next
+- **Status:** Active domain blueprint; first Pinball and Overhead RAD slices exist
+- **Execution authority:** [DACK Optimization and Refactoring Plan](DACK-Optimization-and-Refactoring-Plan.md)
+- **Scope:** Toolkit behavior, physics vocabulary, editor handles, and acceptance criteria—not a competing implementation schedule
+
+## Why These Two Matter
 
 Pinball and the Overhead toolkit are good next reaches because they stress different parts of the same emerging engine.
 
@@ -8,12 +12,7 @@ Pinball proves curved/rotating handles, continuous ball physics, bouncy surfaces
 
 The Overhead toolkit is a camera/control family, not one game. Its first preset can be Combat, but the same foundation also supports driving, planes, spaceships, RPG/adventure actors, animals, insects, office creatures, and swarm systems. It proves directional actors, rotation, steering, shooting or interacting, cover, line of sight, route following, flocking/swarming, and desktop/window geometry as rooms/roads/terrain.
 
-The order should be:
-
-1. Keep Platformer and Brickbat as the shared foundation.
-2. Start Pinball with a tiny playable table.
-3. Start Overhead with a tiny Combat duel/arena.
-4. Extract shared services when both need the same thing twice.
+The first playable slices have now served their purpose: Pinball has a ball/flipper/plunger/text-clearing loop, and Overhead has begun proving its actor family. Further work follows the stabilization, profiling, and extraction gates in the optimization plan. The phases below remain capability checklists and acceptance tests, not an independent coding order.
 
 ## Shared services both need
 
@@ -78,6 +77,16 @@ These can initially draw as clean debug shapes. The VerzatileDev pinball asset p
 - only a hand-picked subset graduates into `dack/assets/third_party/` after provenance and gameplay roles are recorded.
 
 Do not write a full pinball importer until the first playable table tells us what metadata the parts actually need. The likely importer boundary later is not “scale image into Godot,” but “admit this source into the editor shelf with pivots, collision shapes, flipper arcs, bumper radii, insert states, sound/effect hooks, license/source badges, and object defaults.” Until then, batch scaling is the safer and faster route.
+
+### Pinball defaults that define the DACK feel
+
+- The document-native default is **destructive pass-through / plow**: the ball travels through detected letters and words, scores them, clears their clone pixels, and updates shared collision/mutation state.
+- Bounce is an authored exception. A table, zone, promoted text region, word, letter, icon, or placed object can override the default to `bounce`, `sensor`, or `ignore`.
+- Imported and procedural solid table parts—rails, bumpers, flippers, gates, and walls—retain their normal material collision unless explicitly configured otherwise.
+- Left and right flippers rest with their inner tips sloping downward toward the table center/drain. Their outer pivot ends sit higher; activation sweeps the tips upward and inward.
+- A flipper preset may override its rest/active angles, but a newly placed pair must already read visually as conventional opposing pinball flippers without manual correction.
+
+This default distinguishes Pinball from Brickbat: Pinball cuts a kinetic route through the document, while authored table hardware supplies the primary rebound geometry.
 
 ### First physics
 
@@ -427,7 +436,7 @@ Success test: table is a tiny playable pinball toy with score events.
 
 #### Phase PB-4: DACK document magic
 
-- Text collision toggle: bounce / sensor / destructible / ignore.
+- Text collision policy: destructive pass-through/plow by default, with bounce / sensor / ignore overrides per table, zone, or object.
 - Icons/pillboxes can be promoted to bumpers/inserts.
 - Animated enemies act as destructible table targets.
 - Word missions begin with fallback text, then lazy OCR.
@@ -495,7 +504,7 @@ This is also a good home for animated score/reel text: large, rotating, strobing
 
 - Hand-rolled pinball solver vs. Godot `RigidBody2D`: start hand-rolled, compare only after flippers exist.
 - Ball count cap: likely 3 for readability, same as Brickbat.
-- Text collision default: for Pinball, probably `bounce` in pinball zones and `sensor/pass-through` elsewhere.
+- Text collision tuning: destructive pass-through/plow is fixed as the default; test how zones and promoted objects communicate optional bounce/sensor overrides.
 - Flipper input: keyboard-only first; mouse/touch later if it proves helpful.
 - Nudge: delayed until basic ball survival works, then add light nudges with tilt warnings.
 - Raised ramp layers: later; fake it with guided paths first.
@@ -609,17 +618,13 @@ Use small behavior presets:
 
 These are the same seeds that will later serve Snake/Maze, RPG, Tower Defense, and Action kits.
 
-## What to implement first
+## Execution Status and Next Gate
 
-Recommended next coding sequence:
+The old “what to implement first” list has been retired because its initial Pinball and Overhead milestones are already partially proven and it competed with the project-wide refactoring sequence.
 
-1. Add `PinballOverlay` with one ball, launch button, table bounds, drain, and debug score.
-2. Add procedural flipper objects and flipper input.
-3. Add bumper circles and score/effect events.
-4. Add pinball placed-object kinds plus simple shelf buttons.
-5. Add `OverheadActorController` in a new Overhead/Combat mode using the current scout as the placeholder actor.
-6. Add rotate/drive/fire controls.
-7. Add ricochet projectiles against text/window/placed boundaries.
-8. Add one enemy with direct-chase behavior.
+Use the [DACK Optimization and Refactoring Plan](DACK-Optimization-and-Refactoring-Plan.md) as the single ordering authority. This document supplies domain acceptance tests to pull into that plan when their prerequisites are ready. In particular:
 
-If time is tight, Pinball step 1 is the best next visible milestone: a ball rolling and draining on the cloned document/table will immediately show whether the module has life.
+- preserve and profile the existing Pinball and Overhead smoke paths before expanding them;
+- move their shared environment, mutation, actor, effect, persistence, and UI needs through the common service boundaries;
+- resume deeper table parts, advanced handles, richer Combat AI, and asset polish only behind the relevant performance and architecture gates;
+- treat the PB phases above as capability status (`not started`, `RAD`, `stable`, `optimized`) rather than a parallel numbered backlog.

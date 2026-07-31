@@ -1,4 +1,4 @@
-using Godot;
+﻿using Godot;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -35,6 +35,7 @@ public partial class Main : Control
     private Label _selectionLabel = null!;
     private LineEdit _characterNameEdit = null!;
     private Label _bindingLabel = null!;
+    private Label _focusedClipLabel = null!;
     private Label _toolLabel = null!;
     private Label _motionLabel = null!;
     private PanelContainer _platformerHud = null!;
@@ -47,6 +48,7 @@ public partial class Main : Control
     private HBoxContainer _playsetToolbarRow = null!;
     private Button _playsetToolbarToggle = null!;
     private PanelContainer _cockpit = null!;
+    private TabContainer _cockpitTabs = null!;
     private Control _platformerPanel = null!;
     private Control _brickbatPanel = null!;
     private Control _pinballPanel = null!;
@@ -76,6 +78,9 @@ public partial class Main : Control
     private string _animationEditorFolder = "game-creators-pack-graphics-prep";
     private string _animationEditorFileName = "tgc-player.dackanim.json";
     private SpriteFrame[] _animationEditorFrames = [];
+    private SpriteFrame[] _focusedClipFrames = [];
+    private TgcClipRow? _focusedClipRow;
+    private int _focusedClipFrameIndex = -1;
     private int _animationEditorFrameCount;
     private bool _syncingClipUnavailable;
     private bool _syncingCharacterName;
@@ -97,6 +102,7 @@ public partial class Main : Control
         "Climb",
         "Dig",
         "Shoot",
+        "Punch",
         "Hurt",
         "Death",
         "Special"
@@ -129,6 +135,7 @@ public partial class Main : Control
     private bool _resumePlayWhenCockpitCloses;
     private double _deathTestSeconds;
     private double _shootAnimSeconds;
+    private double _punchPreviewSeconds;
     private double _contactInvulnerabilitySeconds;
     private double _hazardArmDelaySeconds;
     private int _platformerScore;
@@ -174,6 +181,7 @@ public partial class Main : Control
         UpdatePlayer(delta);
         UpdateOverheadPlayer(delta);
         UpdateActorPresentation((float)delta);
+        UpdatePunchPreview(delta);
 
         if (!_editorMode)
         {
@@ -248,7 +256,7 @@ public partial class Main : Control
 
         Label status = new()
         {
-            Text = "RAD 01   •   LOCAL PLAYFIELD",
+            Text = "RAD 01   â€¢   LOCAL PLAYFIELD",
             VerticalAlignment = VerticalAlignment.Center
         };
         status.AddThemeColorOverride("font_color", new Color("#AAB7C4"));
@@ -292,53 +300,164 @@ public partial class Main : Control
                 _inspectorText.Text = text;
         };
         _playfield.WorldObjectSelectionObjectChanged += UpdateAttributeControls;
+        _playfield.CardDroppedOnPlayfield += OnPlayfieldCardDropped;
         BuildAudioDeck();
         BuildPlaysetToolbar();
         BuildCockpit();
         BuildPlatformerHud();
 
         _sidebar = new PanelContainer();
+        _sidebar.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        _sidebar.SizeFlagsVertical = SizeFlags.ExpandFill;
         _sidebar.AddThemeStyleboxOverride("panel", FlatStyle("#F2EFE8", 0));
         body.AddChild(_sidebar);
 
-        MarginContainer sidebarMargin = Margins(22, 18, 22, 18);
+        MarginContainer sidebarMargin = Margins(18, 14, 18, 14);
         _sidebar.AddChild(sidebarMargin);
-        VBoxContainer side = new();
-        side.AddThemeConstantOverride("separation", 10);
-        sidebarMargin.AddChild(side);
+
+        VBoxContainer sidebarRoot = new()
+        {
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            SizeFlagsVertical = SizeFlags.ExpandFill
+        };
+        sidebarRoot.AddThemeConstantOverride("separation", 10);
+        sidebarMargin.AddChild(sidebarRoot);
 
         HBoxContainer spriteEditorTop = new();
         spriteEditorTop.AddThemeConstantOverride("separation", 8);
-        side.AddChild(spriteEditorTop);
+        sidebarRoot.AddChild(spriteEditorTop);
 
         Label spriteEditorTitle = Heading("SPRITE / ANIMATION EDITOR");
         spriteEditorTitle.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         spriteEditorTop.AddChild(spriteEditorTitle);
 
-        Button closeSpriteEditor = Button("×");
+        Button closeSpriteEditor = Button("Ã—");
         closeSpriteEditor.TooltipText = "Close Sprite / Animation Editor";
         closeSpriteEditor.CustomMinimumSize = new Vector2(42, 34);
         closeSpriteEditor.Pressed += CloseSpritePanel;
         spriteEditorTop.AddChild(closeSpriteEditor);
 
+        ScrollContainer spriteEditorScroll = new()
+        {
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            SizeFlagsVertical = SizeFlags.ExpandFill,
+            HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
+            VerticalScrollMode = ScrollContainer.ScrollMode.Auto
+        };
+        sidebarRoot.AddChild(spriteEditorScroll);
+
+        VBoxContainer side = new()
+        {
+            SizeFlagsHorizontal = SizeFlags.ExpandFill
+        };
+        side.AddThemeConstantOverride("separation", 8);
+        spriteEditorScroll.AddChild(side);
+
+        HBoxContainer spriteEditorTopBlock = new()
+        {
+            SizeFlagsHorizontal = SizeFlags.ExpandFill
+        };
+        spriteEditorTopBlock.AddThemeConstantOverride("separation", 14);
+        side.AddChild(spriteEditorTopBlock);
+
         _spriteEditorPreview = new CharacterPreviewPanel
         {
-            CustomMinimumSize = new Vector2(0, 260),
+            CustomMinimumSize = new Vector2(340, 240),
             BackgroundColor = new Color("#FFFFFF"),
             BorderColor = new Color("#D9DEE5"),
             TitleColor = new Color("#202A34"),
             TextColor = new Color("#202A34"),
             MutedTextColor = new Color("#52606D")
         };
-        side.AddChild(_spriteEditorPreview);
+        spriteEditorTopBlock.AddChild(_spriteEditorPreview);
+
+        VBoxContainer editSpriteColumn = new()
+        {
+            CustomMinimumSize = new Vector2(260, 0)
+        };
+        editSpriteColumn.AddThemeConstantOverride("separation", 6);
+        spriteEditorTopBlock.AddChild(editSpriteColumn);
+
+        editSpriteColumn.AddChild(Heading("EDIT FRAME SPRITE"));
+        _spritePad = new SpritePad
+        {
+            DisplaySize = 240f,
+            CustomMinimumSize = new Vector2(240, 240)
+        };
+        editSpriteColumn.AddChild(_spritePad);
+
+        HBoxContainer tools = new();
+        tools.AddThemeConstantOverride("separation", 6);
+        editSpriteColumn.AddChild(tools);
+
+        Button paint = Button("Paint");
+        paint.Pressed += () =>
+        {
+            _spritePad.Erasing = false;
+            _toolLabel.Text = "Tool: paint";
+        };
+        tools.AddChild(paint);
+
+        Button erase = Button("Erase");
+        erase.Pressed += () =>
+        {
+            _spritePad.Erasing = true;
+            _toolLabel.Text = "Tool: erase";
+        };
+        tools.AddChild(erase);
+
+        HBoxContainer swatches = new();
+        swatches.AddThemeConstantOverride("separation", 5);
+        editSpriteColumn.AddChild(swatches);
+        foreach (Color color in new[]
+                 {
+                     new Color("#181A1F"),
+                     new Color("#FF5C35"),
+                     new Color("#F4C95D"),
+                     new Color("#5CB8A7"),
+                     new Color("#4378B8")
+                 })
+        {
+            Button swatch = new()
+            {
+                CustomMinimumSize = new Vector2(34, 34),
+                TooltipText = $"Paint {color.ToHtml(false)}"
+            };
+            swatch.AddThemeStyleboxOverride("normal", FlatStyle(color.ToHtml(false), 3));
+            swatch.AddThemeStyleboxOverride("hover", FlatStyle(color.Lightened(0.15f).ToHtml(false), 3));
+            swatch.Pressed += () =>
+            {
+                _spritePad.PaintColor = color;
+                _spritePad.Erasing = false;
+                _toolLabel.Text = $"Tool: paint #{color.ToHtml(false)}";
+            };
+            swatches.AddChild(swatch);
+        }
+
+        _toolLabel = new Label
+        {
+            Text = "Tool: paint",
+            AutowrapMode = TextServer.AutowrapMode.WordSmart
+        };
+        _toolLabel.AddThemeColorOverride("font_color", new Color("#52606D"));
+        _toolLabel.AddThemeFontSizeOverride("font_size", 12);
+        editSpriteColumn.AddChild(_toolLabel);
+
+        VBoxContainer spriteEditorActorInfo = new()
+        {
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            SizeFlagsVertical = SizeFlags.ExpandFill
+        };
+        spriteEditorActorInfo.AddThemeConstantOverride("separation", 8);
+        spriteEditorTopBlock.AddChild(spriteEditorActorInfo);
 
         Label selectedHeading = Heading("SELECTED ACTOR");
-        side.AddChild(selectedHeading);
+        spriteEditorActorInfo.AddChild(selectedHeading);
 
         _selectionLabel = new Label();
         _selectionLabel.AddThemeFontSizeOverride("font_size", 20);
         _selectionLabel.AddThemeColorOverride("font_color", new Color("#202A34"));
-        side.AddChild(_selectionLabel);
+        spriteEditorActorInfo.AddChild(_selectionLabel);
 
         _characterNameEdit = new LineEdit
         {
@@ -347,23 +466,60 @@ public partial class Main : Control
             SelectAllOnFocus = true
         };
         _characterNameEdit.TextChanged += RenameSelectedCharacter;
-        side.AddChild(_characterNameEdit);
+        spriteEditorActorInfo.AddChild(_characterNameEdit);
 
         _bindingLabel = new Label
         {
             AutowrapMode = TextServer.AutowrapMode.WordSmart
         };
         _bindingLabel.AddThemeColorOverride("font_color", new Color("#52606D"));
-        _bindingLabel.AddThemeFontSizeOverride("font_size", 13);
-        side.AddChild(_bindingLabel);
+        _bindingLabel.AddThemeFontSizeOverride("font_size", 12);
+        spriteEditorActorInfo.AddChild(_bindingLabel);
+
+        _focusedClipLabel = new Label
+        {
+            Text = "Focused clip: click an animation row",
+            AutowrapMode = TextServer.AutowrapMode.WordSmart
+        };
+        _focusedClipLabel.AddThemeColorOverride("font_color", new Color("#202A34"));
+        _focusedClipLabel.AddThemeFontSizeOverride("font_size", 13);
+        spriteEditorActorInfo.AddChild(_focusedClipLabel);
+
+        Button previousFrame = Button("Prev Frame");
+        previousFrame.TooltipText = "Step backward through the focused animation sequence.";
+        previousFrame.Pressed += () => StepFocusedClipFrame(-1);
+
+        Button playFocusedClip = Button("Play Clip");
+        playFocusedClip.TooltipText = "Return the preview to looping the focused animation sequence.";
+        playFocusedClip.Pressed += PlayFocusedClipSequence;
+
+        Button nextFrame = Button("Next Frame");
+        nextFrame.TooltipText = "Step forward through the focused animation sequence.";
+        nextFrame.Pressed += () => StepFocusedClipFrame(1);
+        spriteEditorActorInfo.AddChild(ButtonRow(previousFrame, playFocusedClip, nextFrame));
 
         side.AddChild(Heading("CHARACTER PICKER"));
 
-        HBoxContainer characterPicker = new();
+        GridContainer characterPicker = new()
+        {
+            Columns = 3,
+            SizeFlagsHorizontal = SizeFlags.ExpandFill
+        };
+        characterPicker.AddThemeConstantOverride("h_separation", 6);
+        characterPicker.AddThemeConstantOverride("v_separation", 6);
         side.AddChild(characterPicker);
 
-        Button stickman = Button("Stickman");
-        stickman.TooltipText = "Use the current OctoPyte stick figure animation set.";
+        Button stickman2 = Button("Stickman 2.0");
+        stickman2.TooltipText = "Use the OctoPyte v0.2 stick figure set with Melee/Punch and Death sheets.";
+        stickman2.Pressed += () =>
+        {
+            LoadStickmanV2EditorDefaults();
+            ApplyTgcClipRanges();
+        };
+        characterPicker.AddChild(stickman2);
+
+        Button stickman = Button("Classic Stickman");
+        stickman.TooltipText = "Use the OctoPyte v0.1 thin stick figure animation set.";
         stickman.Pressed += () =>
         {
             LoadStickmanEditorDefaults();
@@ -379,6 +535,15 @@ public partial class Main : Control
             ApplyTgcClipRanges();
         };
         characterPicker.AddChild(gameCreatorPlayer);
+
+        Button dungeonRunner = Button("Dungeon Runner");
+        dungeonRunner.TooltipText = "Use the CC0 8-Bit Dungeon climber with Lode Runner-style ladder frames.";
+        dungeonRunner.Pressed += () =>
+        {
+            LoadDungeonRunnerEditorDefaults();
+            ApplyTgcClipRanges();
+        };
+        characterPicker.AddChild(dungeonRunner);
 
         Button sunnyDragon = Button("Sunny Dragon");
         sunnyDragon.TooltipText = "Add the Legacy Collection Sunny Dragon fly strip as the first animated enemy.";
@@ -424,6 +589,15 @@ public partial class Main : Control
             "TGC Green Crawler added as an enemy. Good for crawling/slime/insect-style hazards."
         );
         characterPicker.AddChild(tgcGreen);
+
+        Button tgcSnake = Button("Green Snake");
+        tgcSnake.TooltipText = "Add the lower TGC snake/crawler animation as its own enemy.";
+        tgcSnake.Pressed += () => AddTgcEnemy(
+            "Green Snake",
+            SpriteAnimationSet.TryLoadTgcGreenSnake(),
+            "TGC Green Snake added as an enemy. Good for snake/maze/crawler experiments."
+        );
+        characterPicker.AddChild(tgcSnake);
 
         Button tgcBoss = Button("Shooter Boss");
         tgcBoss.TooltipText = "Add the TGC Shooter Boss as a static/large enemy.";
@@ -493,7 +667,6 @@ public partial class Main : Control
             UpdateTgcStripPreview();
             _inspectorText.Text = $"{label} animation label added from the preset vocabulary. Edit its frame numbers to match the strip.";
         };
-        side.AddChild(addPreset);
 
         Button addLabel = Button("Add Label");
         addLabel.Pressed += () =>
@@ -504,82 +677,24 @@ public partial class Main : Control
             UpdateTgcStripPreview();
             _inspectorText.Text = "New animation label added. Rename it, then edit its start/end frame numbers.";
         };
-        side.AddChild(addLabel);
+        side.AddChild(ButtonRow(addPreset, addLabel));
 
         Button applyTgcClips = Button("Apply Anim Labels");
         applyTgcClips.Pressed += ApplyTgcClipRanges;
-        side.AddChild(applyTgcClips);
 
         Button reloadDefaultAnim = Button("Reload Default Anim");
         reloadDefaultAnim.Pressed += ReloadSelectedAnimationDefaults;
-        side.AddChild(reloadDefaultAnim);
+        side.AddChild(ButtonRow(applyTgcClips, reloadDefaultAnim));
 
         Button testDeath = Button("Test Death");
         testDeath.Pressed += TriggerDeathAnimation;
-        side.AddChild(testDeath);
 
         Button loadTgcClips = Button("Load Anim Labels");
         loadTgcClips.Pressed += LoadAnimationClipLabels;
-        side.AddChild(loadTgcClips);
 
         Button saveTgcClips = Button("Save Anim Labels");
         saveTgcClips.Pressed += SaveTgcClipLabels;
-        side.AddChild(saveTgcClips);
-
-        _spritePad = new SpritePad();
-        side.AddChild(_spritePad);
-
-        HBoxContainer tools = new();
-        side.AddChild(tools);
-
-        Button paint = Button("Paint");
-        paint.Pressed += () =>
-        {
-            _spritePad.Erasing = false;
-            _toolLabel.Text = "Tool: paint  •  right-click erases";
-        };
-        tools.AddChild(paint);
-
-        Button erase = Button("Erase");
-        erase.Pressed += () =>
-        {
-            _spritePad.Erasing = true;
-            _toolLabel.Text = "Tool: erase  •  choose a color to paint";
-        };
-        tools.AddChild(erase);
-
-        foreach (Color color in new[]
-                 {
-                     new Color("#181A1F"),
-                     new Color("#FF5C35"),
-                     new Color("#F4C95D"),
-                     new Color("#5CB8A7"),
-                     new Color("#4378B8")
-                 })
-        {
-            Button swatch = new()
-            {
-                CustomMinimumSize = new Vector2(38, 38),
-                TooltipText = $"Paint {color.ToHtml(false)}"
-            };
-            swatch.AddThemeStyleboxOverride("normal", FlatStyle(color.ToHtml(false), 3));
-            swatch.AddThemeStyleboxOverride("hover", FlatStyle(color.Lightened(0.15f).ToHtml(false), 3));
-            swatch.Pressed += () =>
-            {
-                _spritePad.PaintColor = color;
-                _spritePad.Erasing = false;
-                _toolLabel.Text = $"Tool: paint #{color.ToHtml(false)}  •  right-click erases";
-            };
-            tools.AddChild(swatch);
-        }
-
-        _toolLabel = new Label
-        {
-            Text = "Tool: paint  •  right-click erases"
-        };
-        _toolLabel.AddThemeColorOverride("font_color", new Color("#52606D"));
-        _toolLabel.AddThemeFontSizeOverride("font_size", 12);
-        side.AddChild(_toolLabel);
+        side.AddChild(ButtonRow(testDeath, loadTgcClips, saveTgcClips));
 
         HBoxContainer actions = new();
         side.AddChild(actions);
@@ -595,7 +710,7 @@ public partial class Main : Control
 
         Label transparentNote = new()
         {
-            Text = "32 × 32 live pad  •  white imports as transparent",
+            Text = "32 Ã— 32 live pad  â€¢  white imports as transparent",
             AutowrapMode = TextServer.AutowrapMode.WordSmart
         };
         transparentNote.AddThemeColorOverride("font_color", new Color("#737F8C"));
@@ -752,52 +867,61 @@ public partial class Main : Control
 
         _cockpitStatus = new Label
         {
-            Text = "Esc hides cockpit  •  Ctrl+Alt+B Boss Key",
+            Text = "Esc hides cockpit  â€¢  Ctrl+Alt+B Boss Key",
             VerticalAlignment = VerticalAlignment.Center
         };
         _cockpitStatus.AddThemeColorOverride("font_color", new Color("#AAB7C4"));
         _cockpitStatus.AddThemeFontSizeOverride("font_size", 12);
         top.AddChild(_cockpitStatus);
 
-        Button close = Button("×");
+        Button close = Button("Ã—");
         close.TooltipText = "Close Cockpit (Esc)";
         close.CustomMinimumSize = new Vector2(36, 34);
         close.Pressed += ToggleCockpit;
         top.AddChild(close);
 
-        ScrollContainer columnScroll = new()
-        {
-            SizeFlagsHorizontal = SizeFlags.ExpandFill,
-            SizeFlagsVertical = SizeFlags.ExpandFill,
-            HorizontalScrollMode = ScrollContainer.ScrollMode.Auto,
-            VerticalScrollMode = ScrollContainer.ScrollMode.Disabled
-        };
-        root.AddChild(columnScroll);
-
-        HBoxContainer columns = new()
+        HBoxContainer cockpitBody = new()
         {
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
             SizeFlagsVertical = SizeFlags.ExpandFill
         };
-        columns.AddThemeConstantOverride("separation", 12);
-        columnScroll.AddChild(columns);
+        cockpitBody.AddThemeConstantOverride("separation", 12);
+        root.AddChild(cockpitBody);
+
+        _cockpitTabs = new TabContainer
+        {
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            SizeFlagsVertical = SizeFlags.ExpandFill
+        };
+        cockpitBody.AddChild(_cockpitTabs);
 
         _platformerPanel = BuildShelfPanel();
         _brickbatPanel = BuildBrickbatPanel();
         _pinballPanel = BuildPinballPanel();
         _overheadPanel = BuildOverheadPanel();
 
-        columns.AddChild(_platformerPanel);
-        columns.AddChild(_brickbatPanel);
-        columns.AddChild(_pinballPanel);
-        columns.AddChild(_overheadPanel);
-        columns.AddChild(BuildLegacyLibraryPanel());
-        columns.AddChild(BuildEnemiesPanel());
-        columns.AddChild(BuildProjectilesPanel());
-        columns.AddChild(BuildObjectsPanel());
-        columns.AddChild(BuildCharacterWorkbenchPanel());
-        columns.AddChild(BuildInspectorPanel());
-        columns.AddChild(BuildUnderstandingPanel());
+        AddCockpitTab(_cockpitTabs, "Player", BuildPlayerPanel());
+        AddCockpitTab(_cockpitTabs, "Platformer", _platformerPanel);
+        AddCockpitTab(_cockpitTabs, "Brickbat", _brickbatPanel);
+        AddCockpitTab(_cockpitTabs, "Pinball", _pinballPanel);
+        AddCockpitTab(_cockpitTabs, "Overhead", _overheadPanel);
+        AddCockpitTab(_cockpitTabs, "Assets", BuildLegacyLibraryPanel());
+        AddCockpitTab(_cockpitTabs, "Enemies", BuildEnemiesPanel());
+        AddCockpitTab(_cockpitTabs, "Projectiles", BuildProjectilesPanel());
+        AddCockpitTab(_cockpitTabs, "Objects", BuildObjectsPanel());
+        AddCockpitTab(_cockpitTabs, "Builder", BuildCharacterWorkbenchPanel());
+        AddCockpitTab(_cockpitTabs, "Understand", BuildUnderstandingPanel());
+
+        ScrollContainer inspectorScroll = new()
+        {
+            CustomMinimumSize = new Vector2(300, 0),
+            SizeFlagsVertical = SizeFlags.ExpandFill,
+            HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
+            VerticalScrollMode = ScrollContainer.ScrollMode.Auto
+        };
+        inspectorScroll.AddChild(BuildInspectorPanel());
+        cockpitBody.AddChild(inspectorScroll);
+
         FitCockpitToViewport();
         UpdateCockpitToolkitPanels();
     }
@@ -879,6 +1003,7 @@ public partial class Main : Control
         shelf.AddChild(ButtonRow(
             ShelfButton("Goal", WorldObjectKind.GoalPoint, "Visible level objective marker: the first complete test level spine is Start -> Midpoint -> Goal."),
             ShelfButton("Hidden Switch", WorldObjectKind.HiddenSwitch, "Invisible gameplay logic: visible in editor, hidden from the player.")));
+        shelf.AddChild(ShelfButton("Enemy Spawn", WorldObjectKind.EnemySpawnPoint, "Editor-only spawn flag. Future binding: choose enemy art/graphic, spawn interval, burst count, max active count, speed, and behavior rules. All counts stay small whole numbers; 10 max per sprite."));
 
         shelf.AddChild(CockpitHeading("PLAYER RULES"));
         Button floor = Button(_platformerSafetyFloor ? "Safety Floor: On" : "Safety Floor: Off");
@@ -1273,7 +1398,7 @@ public partial class Main : Control
             .Replace("_", " ")
             .Replace("-", " ")
             .Trim();
-        return cleaned.Length <= 22 ? cleaned : cleaned[..21] + "…";
+        return cleaned.Length <= 22 ? cleaned : cleaned[..21] + "â€¦";
     }
 
     private List<LegacyAssetBundle> LoadLegacyBundles()
@@ -1333,6 +1458,18 @@ public partial class Main : Control
             animationSourceId: "tgc-green-crawler"
         );
         enemies.AddChild(ButtonRow(redContact, greenContact));
+
+        Button greenSnake = Button("Green Snake");
+        greenSnake.TooltipText = "Lower TGC snake/crawl animation split out as its own contact enemy.";
+        greenSnake.Pressed += () => AddEnemyCharacter(
+            "Green Snake",
+            SpriteAnimationSet.TryLoadTgcGreenSnake(),
+            "Green Snake added as a crawling/snake contact enemy.",
+            "Starter role: low snake hazard, future Snake/Maze candidate. Projectile ability starts OFF.",
+            canFireProjectiles: false,
+            animationSourceId: "tgc-green-snake"
+        );
+        enemies.AddChild(greenSnake);
 
         enemies.AddChild(CockpitHeading("GROUND SHOOTERS / GUARDS"));
         Button orangeShooter = Button("Orange Shooter");
@@ -1422,9 +1559,16 @@ public partial class Main : Control
         Button toughness = Button("Toughness +");
         toughness.Pressed += () => AdjustSelectedEnemyToughness(1);
 
+        Button radarNearer = Button("Radar -");
+        radarNearer.Pressed += () => AdjustSelectedEnemyRadar(-6f);
+
+        Button radarFarther = Button("Radar +");
+        radarFarther.Pressed += () => AdjustSelectedEnemyRadar(6f);
+
         enemies.AddChild(ButtonRow(enemyAi, enemyTrack));
         enemies.AddChild(ButtonRow(selectedShoots, toughness));
-        enemies.AddChild(CockpitNote("Behavior menu seeds: patrol, chase, defend, horde/flock, ground-only, flying, shooter, collision hazard, escort blocker."));
+        enemies.AddChild(ButtonRow(radarNearer, radarFarther));
+        enemies.AddChild(CockpitNote("Behavior menu seeds: patrol, chase, defend, horde/flock, ground-only, flying, shooter, collision hazard, escort blocker. Radar is invisible during play: smarter enemies simply notice the player from farther away."));
         return panel;
     }
 
@@ -1527,6 +1671,17 @@ public partial class Main : Control
         objects.AddChild(CockpitHeading("SOLIDS / COVER"));
         objects.AddChild(ObjectShelfButton("Barricade", WorldObjectKind.Barricade, "Chunky line obstacle. It is draggable/scalable and already acts like a simple standable top surface in side-view tests."));
 
+        objects.AddChild(CockpitHeading("DUNGEON PLAYSET"));
+        objects.AddChild(ButtonRow(
+            ObjectShelfButton("Dungeon Coin", WorldObjectKind.Coin, "8-Bit Dungeon coin/pickup role. Sprite thumbnail binding comes next; behavior starts as a coin."),
+            ObjectShelfButton("Dungeon Jewel", WorldObjectKind.Gem, "8-Bit Dungeon jewel/treasure role. Good for Lode Runner collection loops.")));
+        objects.AddChild(ButtonRow(
+            ObjectShelfButton("Dungeon Key", WorldObjectKind.Gem, "8-Bit Dungeon key role. Starts as a collectible gem-type object until lock/key rules are wired."),
+            ObjectShelfButton("Dungeon Door", WorldObjectKind.GoalPoint, "8-Bit Dungeon door/exit role. Starts as a visible goal marker.")));
+        objects.AddChild(ButtonRow(
+            ObjectShelfButton("Dungeon Spike", WorldObjectKind.Barricade, "8-Bit Dungeon spike/hazard role. Starts as a solid/hazard-like barricade placeholder."),
+            ObjectShelfButton("Dungeon Chest", WorldObjectKind.Gem, "8-Bit Dungeon chest/treasure role. Starts as a high-value pickup placeholder.")));
+
         objects.AddChild(CockpitHeading("FUTURE OBJECT SET"));
         objects.AddChild(CockpitNote(
             "- keys / locks / doors\n"
@@ -1538,56 +1693,118 @@ public partial class Main : Control
         return panel;
     }
 
+    private Control BuildPlayerPanel()
+    {
+        PanelContainer panel = CockpitPanel(340);
+        VBoxContainer player = PanelVBox(panel);
+        player.AddChild(CockpitHeading("PLAYER"));
+        player.AddChild(CockpitNote("Choose the protagonist as a card. Press Use to apply it, or drag a card onto the playfield to apply and place it."));
+
+        _characterPreview = new CharacterPreviewPanel();
+        player.AddChild(_characterPreview);
+
+        _characterWorkbenchStatus = CockpitNote("No actor selected yet.");
+        player.AddChild(_characterWorkbenchStatus);
+
+        player.AddChild(CockpitHeading("PLAYER CARDS"));
+        player.AddChild(PlayerCharacterCard(
+            "stickman-v0.2",
+            "Stickman 2.0",
+            "Fuller action scout",
+            "OctoPyte v0.2 stick figure with Idle, Run, Jump, Melee/Punch, and Death sheets. This is the new default stickfigure player."
+        ));
+        player.AddChild(PlayerCharacterCard(
+            "stickman-v0.1",
+            "Classic Stickman",
+            "Original thin scout",
+            "OctoPyte v0.1 thin stick figure. Kept as the classic look and compatibility baseline."
+        ));
+        player.AddChild(PlayerCharacterCard(
+            "tgc-player",
+            "TGC Player",
+            "Imported platformer body",
+            "The Game Creator's Pack player strip. Good for testing imported animation labels and human-scale platformer motion."
+        ));
+        player.AddChild(PlayerCharacterCard(
+            "8-bit-dungeon-runner",
+            "Dungeon Runner",
+            "8-bit climber / rope scout",
+            "Jamie Cross CC0 dungeon player with Idle, Run, Fall, Rope, and real two-frame Climb animation. Very Lode Runner / office-dungeon friendly."
+        ));
+        player.AddChild(PlayerCharacterCard(
+            "battle-fleet-red-ship-01",
+            "Battle Ship Player",
+            "Overhead / space pilot card",
+            "Legacy top-down shooter ship. Its frames are heading bins, not walk frames; useful for Overhead, Combat, space, and Lunar Lander experiments."
+        ));
+
+        player.AddChild(CockpitHeading("PLAYER TOOLS"));
+        Button selectPlayer = Button("Select Player");
+        selectPlayer.Pressed += () => SelectActor(_player);
+
+        Button openSpritePad = Button("Open Sprite / Anim Editor");
+        openSpritePad.Pressed += () =>
+        {
+            SelectActor(_player);
+            if (!_sidebar.Visible)
+                ToggleSpritePanel();
+            _inspectorText.Text = "Player sprite/animation editor opened. Player remains its own top-level card tab; frame editing stays in the detailed sprite page.";
+        };
+        player.AddChild(ButtonRow(selectPlayer, openSpritePad));
+
+        Button playerGun = Button(_gunEnabled ? "Gun: On" : "Gun: Off");
+        playerGun.Pressed += () =>
+        {
+            _gunEnabled = !_gunEnabled;
+            playerGun.Text = _gunEnabled ? "Gun: On" : "Gun: Off";
+            ClearPlayerShots();
+            RefreshMotionText();
+            RefreshCharacterWorkbenchStatus();
+            _inspectorText.Text = _gunEnabled
+                ? "Player gun enabled. This is the Contra-ish branch of the player card."
+                : "Player gun disabled. This is the Mario/Pitfall-ish branch of the player card.";
+        };
+
+        Button testPunch = Button("Test Melee");
+        testPunch.Pressed += TriggerPunchPreview;
+
+        Button halfSize = Button("Player 1/2x");
+        halfSize.Pressed += () =>
+        {
+            SelectActor(_player);
+            SetActorSizeMultiplier(0.5f);
+        };
+        Button normalSize = Button("Player 1x");
+        normalSize.Pressed += () =>
+        {
+            SelectActor(_player);
+            SetActorSizeMultiplier(1f);
+        };
+        Button doubleSize = Button("Player 2x");
+        doubleSize.Pressed += () =>
+        {
+            SelectActor(_player);
+            SetActorSizeMultiplier(2f);
+        };
+        player.AddChild(ButtonRow(playerGun, testPunch));
+        player.AddChild(ButtonRow(halfSize, normalSize, doubleSize));
+
+        player.AddChild(CockpitHeading("NEXT CARD SLOTS"));
+        player.AddChild(CockpitNote(
+            "- movement card: platformer, climber, overhead, thrust, lunar lander\n"
+            + "- weapon/tool card: none, gun, melee/sword, dig, climb, harvest, shield\n"
+            + "- text-rule card: stand, crawl, destroy, harvest, ignore\n"
+            + "- sound/effect card: jump, fire, hurt, death, power-up"
+        ));
+        return panel;
+    }
+
     private Control BuildCharacterWorkbenchPanel()
     {
         PanelContainer panel = CockpitPanel(340);
         VBoxContainer workbench = PanelVBox(panel);
-        workbench.AddChild(CockpitHeading("CHARACTER EDITOR"));
-        workbench.AddChild(CockpitNote("Selected sprite first; shelves underneath wire the actor into the rest of DACK."));
-
-        _characterPreview = new CharacterPreviewPanel();
-        workbench.AddChild(_characterPreview);
-
-        _characterWorkbenchStatus = CockpitNote("No actor selected yet.");
-        workbench.AddChild(_characterWorkbenchStatus);
-
-        workbench.AddChild(CockpitHeading("PLAYER CHARACTERS"));
-        Button stickmanPlayer = Button("Stickman Player");
-        stickmanPlayer.TooltipText = "Use the OctoPyte stick figure animation set as the current player.";
-        stickmanPlayer.Pressed += () =>
-        {
-            SetPlayerCharacter(
-                "Playable Scout",
-                SpriteAnimationSet.TryLoadStickman(),
-                "Stickman loaded as the current player character.",
-                "stickman-v0.1"
-            );
-            LoadStickmanEditorDefaults();
-        };
-
-        Button tgcPlayer = Button("TGC Player");
-        tgcPlayer.TooltipText = "Use The Game Creator's Pack player strip as the current player.";
-        tgcPlayer.Pressed += () =>
-        {
-            SetPlayerCharacter(
-                "TGC Player",
-                SpriteAnimationSet.TryLoadGameCreatorPlayer(),
-                "TGC Player loaded as the current player character.",
-                "tgc-player"
-            );
-            LoadTgcEditorDefaults();
-        };
-        workbench.AddChild(ButtonRow(stickmanPlayer, tgcPlayer));
-
-        Button battleShip = Button("Battle Ship Player");
-        battleShip.TooltipText = "Use the Legacy top-down shooter ship as the Overhead/space player.";
-        battleShip.Pressed += () => SetPlayerCharacter(
-            "Battle Ship 01",
-            SpriteAnimationSet.TryLoadBattleFleetRedShip01(),
-            "Battle Ship 01 loaded as the Overhead/space player. Its frames are heading bins, not walk frames.",
-            "battle-fleet-red-ship-01"
-        );
-        workbench.AddChild(battleShip);
+        workbench.AddChild(CockpitHeading("BUILDER"));
+        workbench.AddChild(CockpitNote("Composition workbench: wire the selected actor/object into projectiles, effects, AI, sounds, text rules, and future spawn/level cards. Player selection now has its own top-level tab."));
 
         workbench.AddChild(CockpitHeading("SELECTED ACTOR"));
         Button openSpritePad = Button("Open Sprite / Anim Editor");
@@ -1643,6 +1860,104 @@ public partial class Main : Control
         workbench.AddChild(ButtonRow(saveAnims, loadAnims));
 
         return panel;
+    }
+
+    private BuilderCard PlayerCharacterCard(string cardId, string title, string subtitle, string details)
+    {
+        BuilderCard card = new("player-character", cardId, title, subtitle, details);
+        card.Activated += activated => ActivatePlayerCharacterCard(activated.CardId, null);
+        return card;
+    }
+
+    private void OnPlayfieldCardDropped(Godot.Collections.Dictionary card, Vector2 position)
+    {
+        string kind = card.ContainsKey("dackCardKind") ? card["dackCardKind"].AsString() : "";
+        string cardId = card.ContainsKey("dackCardId") ? card["dackCardId"].AsString() : "";
+        if (kind == "player-character")
+            ActivatePlayerCharacterCard(cardId, position);
+    }
+
+    private void ActivatePlayerCharacterCard(string cardId, Vector2? dropPosition)
+    {
+        switch (cardId)
+        {
+            case "stickman-v0.2":
+                SetPlayerCharacter(
+                    "Stickman 2.0",
+                    SpriteAnimationSet.TryLoadStickmanV2(),
+                    "Stickman 2.0 Player Card applied. Melee/Punch and Death are now available as imported sheets.",
+                    "stickman-v0.2"
+                );
+                LoadStickmanV2EditorDefaults();
+                break;
+            case "stickman-v0.1":
+                SetPlayerCharacter(
+                    "Classic Stickman",
+                    SpriteAnimationSet.TryLoadStickman(),
+                    "Classic Stickman Player Card applied.",
+                    "stickman-v0.1"
+                );
+                LoadStickmanEditorDefaults();
+                break;
+            case "tgc-player":
+                SetPlayerCharacter(
+                    "TGC Player",
+                    SpriteAnimationSet.TryLoadGameCreatorPlayer(),
+                    "TGC Player Card applied.",
+                    "tgc-player"
+                );
+                LoadTgcEditorDefaults();
+                break;
+            case "8-bit-dungeon-runner":
+                SetPlayerCharacter(
+                    "Dungeon Runner",
+                    SpriteAnimationSet.TryLoadDungeonRunner(),
+                    "Dungeon Runner Player Card applied. This is our first climb-native 8-bit player: ideal for ladders, ropes, gutters, and Lode Runner-style text dungeons.",
+                    "8-bit-dungeon-runner"
+                );
+                LoadDungeonRunnerEditorDefaults();
+                break;
+            case "battle-fleet-red-ship-01":
+                SetPlayerCharacter(
+                    "Battle Ship 01",
+                    SpriteAnimationSet.TryLoadBattleFleetRedShip01(),
+                    "Battle Ship Player Card applied. Its frames are heading bins, not walk frames.",
+                    "battle-fleet-red-ship-01"
+                );
+                break;
+            default:
+                if (_inspectorText is not null)
+                    _inspectorText.Text = $"Unknown player card: {cardId}";
+                return;
+        }
+
+        if (dropPosition.HasValue)
+            PlacePlayerFromCardDrop(dropPosition.Value);
+    }
+
+    private void PlacePlayerFromCardDrop(Vector2 playfieldPosition)
+    {
+        if (_playfield.HasStartMarker())
+        {
+            _inspectorText.Text += "\n\nCard drop selected this player. Existing Start Point still controls play-mode spawn; remove or move the Start Point to change the spawn.";
+            return;
+        }
+
+        Rect2 bounds = _playfield.PlayBounds;
+        Vector2 desired = playfieldPosition - _player.Size * 0.5f;
+        desired = new Vector2(
+            Mathf.Clamp(desired.X, bounds.Position.X, Mathf.Max(bounds.Position.X, bounds.End.X - _player.Size.X)),
+            Mathf.Clamp(desired.Y, bounds.Position.Y, Mathf.Max(bounds.Position.Y, bounds.End.Y - _player.Size.Y))
+        );
+
+        _playerPosition = desired;
+        _player.Position = desired;
+        _player.HomePosition = desired;
+        _player.ManualPlacement = true;
+        _player.CanDragPlayableInEditor = _editorMode;
+        SelectActor(_player);
+        RefreshMotionText();
+        _inspectorText.Text += "\n\nDropped onto the playfield: player card is now the active player and has been placed here.";
     }
 
     private void AddGameTypeSessionBlock(VBoxContainer page, PlaysetMode mode, string enterText)
@@ -1839,13 +2154,13 @@ public partial class Main : Control
         };
         inspector.AddChild(reverse);
 
-        Button rotateLeft = Button("Rotate -15°");
+        Button rotateLeft = Button("Rotate -15Â°");
         rotateLeft.Pressed += () =>
         {
             _playfield.RotateSelected(-15f);
             UpdateAttributeControls(_playfield.GetSelectedWorldObject());
         };
-        Button rotateRight = Button("Rotate +15°");
+        Button rotateRight = Button("Rotate +15Â°");
         rotateRight.Pressed += () =>
         {
             _playfield.RotateSelected(15f);
@@ -1888,7 +2203,7 @@ public partial class Main : Control
 
         inspector.AddChild(CockpitHeading("PINBALL ASSET NOTE"));
         inspector.AddChild(CockpitNote(
-            "VerzatileDev pinball source PNGs are huge (~3937×3937 / ~118 MB each). "
+            "VerzatileDev pinball source PNGs are huge (~3937Ã—3937 / ~118 MB each). "
             + "Do not shelf-import them raw. Next step is a curated pinball-parts sheet: flipper, ball, bumper, plunger, insert, gate, drain, ramp segment."
         ));
         return panel;
@@ -2010,8 +2325,8 @@ public partial class Main : Control
 
         Label copy = new()
         {
-            Text = "\nQ3 priorities\n\n• Review staffing plan and delivery milestones\n• Reconcile the operating forecast\n• Prepare notes for Monday's status meeting\n\n"
-                 + "Draft workspace — press Ctrl+Alt+B to return.",
+            Text = "\nQ3 priorities\n\nâ€¢ Review staffing plan and delivery milestones\nâ€¢ Reconcile the operating forecast\nâ€¢ Prepare notes for Monday's status meeting\n\n"
+                 + "Draft workspace â€” press Ctrl+Alt+B to return.",
             AutowrapMode = TextServer.AutowrapMode.WordSmart
         };
         copy.AddThemeFontSizeOverride("font_size", 16);
@@ -2048,16 +2363,16 @@ public partial class Main : Control
         _playfield.AddChild(_combatFxOverlay);
 
         _player = _actors[0];
-        _player.ActorName = "Playable Scout";
-        _player.AnimationSourceId = "stickman-v0.1";
+        _player.ActorName = "Stickman 2.0";
+        _player.AnimationSourceId = "stickman-v0.2";
         _player.IsPlayable = true;
-        _player.AnimationSet = SpriteAnimationSet.TryLoadStickman();
+        _player.AnimationSet = SpriteAnimationSet.TryLoadStickmanV2() ?? SpriteAnimationSet.TryLoadStickman();
         ApplyActorScale();
         SetPlatformerMode(PlatformerMode.Horizontal);
 
         _toolLabel.Text = loadedThirdPartyAsset
             ? "OctoPyte CC BY 4.0 figure loaded"
-            : "Procedural project figure loaded  •  export-safe";
+            : "Procedural project figure loaded  â€¢  export-safe";
     }
 
     private void SelectActor(ActorView actor)
@@ -2102,11 +2417,17 @@ public partial class Main : Control
 
         switch (sourceId)
         {
+            case "stickman-v0.2":
+                LoadStickmanV2EditorDefaults();
+                break;
             case "stickman-v0.1":
                 LoadStickmanEditorDefaults();
                 break;
             case "tgc-player":
                 LoadTgcEditorDefaults();
+                break;
+            case "8-bit-dungeon-runner":
+                LoadDungeonRunnerEditorDefaults();
                 break;
             case "sunny-dragon-fly":
                 LoadSunnyDragonEditorDefaults();
@@ -2122,6 +2443,9 @@ public partial class Main : Control
                 break;
             case "tgc-green-crawler":
                 LoadTgcGreenCrawlerEditorDefaults(actor.ActorName, sourceId);
+                break;
+            case "tgc-green-snake":
+                LoadTgcGreenSnakeEditorDefaults(actor.ActorName, sourceId);
                 break;
             case "tgc-shooter-boss":
                 LoadShooterBossEditorDefaults();
@@ -2143,6 +2467,8 @@ public partial class Main : Control
             return "tgc-red-runner";
         if (name.Contains("blue"))
             return "tgc-blue-guard";
+        if (name.Contains("snake"))
+            return "tgc-green-snake";
         if (name.Contains("green") || name.Contains("crawler"))
             return "tgc-green-crawler";
         if (name.Contains("boss"))
@@ -2151,9 +2477,11 @@ public partial class Main : Control
             return "tgc-shooter-fleet";
         if (name.Contains("battle"))
             return "battle-fleet-red-ship-01";
+        if (name.Contains("dungeon") || name.Contains("runner"))
+            return "8-bit-dungeon-runner";
         if (name.Contains("tgc"))
             return "tgc-player";
-        return playable ? "stickman-v0.1" : "";
+        return playable ? "stickman-v0.2" : "";
     }
 
     private void SetPlayerCharacter(string actorName, SpriteAnimationSet? animationSet, string note, string animationSourceId = "")
@@ -2203,6 +2531,7 @@ public partial class Main : Control
         enemy.FacingRight = false;
         enemy.CanFireProjectiles = canFireProjectiles;
         enemy.ShotToughness = DefaultEnemyShotToughness(actorName);
+        enemy.RadarRangeUnits = DefaultEnemyRadarRange(actorName);
         enemy.ManualPlacement = true;
         int slotIndex = _actors.IndexOf(enemy);
         enemy.Size = EnemyDefaultSize();
@@ -2213,7 +2542,7 @@ public partial class Main : Control
         SelectActor(enemy);
         _enemyHealth.Remove(enemy);
         _defeatedEnemies.Remove(enemy);
-        _inspectorText.Text = note + "\n\n" + footer + $"\n\nProjectile capable: {(canFireProjectiles ? "yes" : "no")}.\nShot toughness: {enemy.ShotToughness}.";
+        _inspectorText.Text = note + "\n\n" + footer + $"\n\nProjectile capable: {(canFireProjectiles ? "yes" : "no")}.\nShot toughness: {enemy.ShotToughness}.\nRadar: {enemy.RadarRangeUnits:0} text units.";
     }
 
     private ActorView NextEnemySlot()
@@ -2270,6 +2599,60 @@ public partial class Main : Control
         AddTgcClipRow("Run Shoot", Mathf.Min(17, maxFrame), Mathf.Min(20, maxFrame), maxFrame);
         AddTgcClipRow("Jump Shoot", Mathf.Min(21, maxFrame), Mathf.Min(24, maxFrame), maxFrame);
         AddTgcClipRow("Death", Mathf.Min(16, maxFrame), Mathf.Min(17, maxFrame), maxFrame);
+        TryLoadAnimationClipLabels(showFeedback: false);
+        UpdateTgcStripPreview();
+    }
+
+    private void LoadStickmanV2EditorDefaults()
+    {
+        _animationEditorName = "Stickman 2.0";
+        _animationEditorSource = "assets/third_party/stickman-pack-v0.2/*.png";
+        _animationEditorSourceKind = "admitted-third-party";
+        _animationEditorSourceId = "stickman-v0.2";
+        _animationEditorFolder = "stickman-pack-v0.2";
+        _animationEditorFileName = "stickman-2.dackanim.json";
+
+        SpriteFrame[] frames = SpriteAnimationSet.TryLoadStickmanV2Frames(out SpriteFrame[] loaded) ? loaded : [];
+        SetAnimationEditorFrames(frames);
+        int maxFrame = Mathf.Max(0, _animationEditorFrameCount - 1);
+        ClearTgcClipRows();
+        AddTgcClipRow("Idle", 0, Mathf.Min(5, maxFrame), maxFrame);
+        AddTgcClipRow("Run", Mathf.Min(6, maxFrame), Mathf.Min(14, maxFrame), maxFrame);
+        AddTgcClipRow("Jump Up", Mathf.Min(15, maxFrame), Mathf.Min(15, maxFrame), maxFrame);
+        AddTgcClipRow("Jump Down", Mathf.Min(16, maxFrame), Mathf.Min(16, maxFrame), maxFrame);
+        AddTgcClipRow("Fall", Mathf.Min(16, maxFrame), Mathf.Min(16, maxFrame), maxFrame);
+        AddTgcClipRow("Punch", Mathf.Min(17, maxFrame), Mathf.Min(28, maxFrame), maxFrame);
+        AddTgcClipRow("Run Shoot", Mathf.Min(17, maxFrame), Mathf.Min(28, maxFrame), maxFrame);
+        AddTgcClipRow("Jump Shoot", Mathf.Min(17, maxFrame), Mathf.Min(28, maxFrame), maxFrame);
+        AddTgcClipRow("Death", Mathf.Min(29, maxFrame), maxFrame, maxFrame);
+        TryLoadAnimationClipLabels(showFeedback: false);
+        UpdateTgcStripPreview();
+    }
+
+    private void LoadDungeonRunnerEditorDefaults()
+    {
+        _animationEditorName = "Dungeon Runner";
+        _animationEditorSource = "assets/third_party/8-bit-dungeon/player-*.png";
+        _animationEditorSourceKind = "admitted-third-party";
+        _animationEditorSourceId = "8-bit-dungeon-runner";
+        _animationEditorFolder = "8-bit-dungeon";
+        _animationEditorFileName = "dungeon-runner.dackanim.json";
+
+        SpriteFrame[] frames = SpriteAnimationSet.TryLoadDungeonRunnerFrames(out SpriteFrame[] loaded) ? loaded : [];
+        SetAnimationEditorFrames(frames);
+        int maxFrame = Mathf.Max(0, _animationEditorFrameCount - 1);
+        ClearTgcClipRows();
+        AddTgcClipRow("Idle", 0, 0, maxFrame);
+        AddTgcClipRow("Run", Mathf.Min(1, maxFrame), Mathf.Min(4, maxFrame), maxFrame);
+        AddTgcClipRow("Crawl", Mathf.Min(5, maxFrame), Mathf.Min(6, maxFrame), maxFrame);
+        AddTgcClipRow("Climb", Mathf.Min(5, maxFrame), Mathf.Min(6, maxFrame), maxFrame);
+        AddTgcClipRow("Jump Up", Mathf.Min(7, maxFrame), Mathf.Min(7, maxFrame), maxFrame);
+        AddTgcClipRow("Jump Down", Mathf.Min(7, maxFrame), Mathf.Min(7, maxFrame), maxFrame);
+        AddTgcClipRow("Fall", Mathf.Min(7, maxFrame), Mathf.Min(7, maxFrame), maxFrame);
+        AddTgcClipRow("Melee / Rope", Mathf.Min(8, maxFrame), Mathf.Min(10, maxFrame), maxFrame);
+        AddTgcClipRow("Run Shoot", Mathf.Min(8, maxFrame), Mathf.Min(10, maxFrame), maxFrame);
+        AddTgcClipRow("Jump Shoot", Mathf.Min(9, maxFrame), Mathf.Min(9, maxFrame), maxFrame);
+        AddTgcClipRow("Death", Mathf.Min(7, maxFrame), Mathf.Min(7, maxFrame), maxFrame);
         TryLoadAnimationClipLabels(showFeedback: false);
         UpdateTgcStripPreview();
     }
@@ -2455,6 +2838,32 @@ public partial class Main : Control
         UpdateTgcStripPreview();
     }
 
+    private void LoadTgcGreenSnakeEditorDefaults(string actorName, string sourceId)
+    {
+        _animationEditorName = actorName;
+        _animationEditorSource = "raw base assets/The Game Creator's Pack/The Game Creator's Pack/Graphic Pack/Platformer_SpriteSheet.png";
+        _animationEditorSourceKind = "raw-local-evaluation";
+        _animationEditorSourceId = sourceId;
+        _animationEditorFolder = "game-creators-pack-graphics-prep";
+        _animationEditorFileName = $"{sourceId}.dackanim.json";
+
+        SpriteFrame[] frames = SpriteAnimationSet.TryLoadTgcGreenSnakeFrames(out SpriteFrame[] loaded) ? loaded : [];
+        SetAnimationEditorFrames(frames);
+        int maxFrame = Mathf.Max(0, _animationEditorFrameCount - 1);
+        ClearTgcClipRows();
+        AddTgcClipRow("Idle", 0, maxFrame, maxFrame);
+        AddTgcClipRow("Run", 0, maxFrame, maxFrame);
+        AddTgcClipRow("Crawl", 0, maxFrame, maxFrame);
+        AddTgcClipRow("Jump Up", "-", "-", maxFrame);
+        AddTgcClipRow("Jump Down", "-", "-", maxFrame);
+        AddTgcClipRow("Fall", "-", "-", maxFrame);
+        AddTgcClipRow("Run Shoot", "-", "-", maxFrame);
+        AddTgcClipRow("Jump Shoot", "-", "-", maxFrame);
+        AddTgcClipRow("Death", "-", "-", maxFrame);
+        TryLoadAnimationClipLabels(showFeedback: false);
+        UpdateTgcStripPreview();
+    }
+
     private void LoadShooterBossEditorDefaults()
     {
         _animationEditorName = "Shooter Boss";
@@ -2500,6 +2909,10 @@ public partial class Main : Control
     {
         _animationEditorFrames = frames;
         _animationEditorFrameCount = frames.Length;
+        _focusedClipRow = null;
+        _focusedClipFrames = [];
+        _focusedClipFrameIndex = -1;
+        RefreshFocusedClipLabel();
         _tgcStripPreview?.SetFrames(frames);
         if (_spriteEditorPreview is not null)
             _spriteEditorPreview.Actor = _selectedActor;
@@ -2540,8 +2953,14 @@ public partial class Main : Control
         SpriteAnimationSet? animationSet;
         switch (_animationEditorSourceId)
         {
+            case "stickman-v0.2":
+                animationSet = SpriteAnimationSet.TryLoadStickmanV2();
+                break;
             case "stickman-v0.1":
                 animationSet = SpriteAnimationSet.TryLoadStickman(idle, run, jumpUp, jumpDown, fall, runShoot, jumpShoot, death, idlePingPong, runPingPong, jumpUpPingPong, jumpDownPingPong, fallPingPong, runShootPingPong, jumpShootPingPong, deathPingPong);
+                break;
+            case "8-bit-dungeon-runner":
+                animationSet = SpriteAnimationSet.TryLoadDungeonRunner();
                 break;
             case "sunny-dragon-fly":
                 animationSet = SpriteAnimationSet.TryLoadSunnyDragon(idle, run, jumpUp, jumpDown, fall, runShoot, jumpShoot, death, idlePingPong, runPingPong, jumpUpPingPong, jumpDownPingPong, fallPingPong, runShootPingPong, jumpShootPingPong, deathPingPong);
@@ -2557,6 +2976,9 @@ public partial class Main : Control
                 break;
             case "tgc-green-crawler":
                 animationSet = SpriteAnimationSet.TryLoadTgcGreenCrawler(idle, run, jumpUp, jumpDown, fall, runShoot, jumpShoot, death, idlePingPong, runPingPong, jumpUpPingPong, jumpDownPingPong, fallPingPong, runShootPingPong, jumpShootPingPong, deathPingPong);
+                break;
+            case "tgc-green-snake":
+                animationSet = SpriteAnimationSet.TryLoadTgcGreenSnake();
                 break;
             case "tgc-shooter-fleet":
                 animationSet = SpriteAnimationSet.TryLoadTgcShooterFleet(idle, run, jumpUp, jumpDown, fall, runShoot, jumpShoot, death, idlePingPong, runPingPong, jumpUpPingPong, jumpDownPingPong, fallPingPong, runShootPingPong, jumpShootPingPong, deathPingPong);
@@ -2630,13 +3052,16 @@ public partial class Main : Control
     {
         return sourceId switch
         {
+            "stickman-v0.2" => SpriteAnimationSet.TryLoadStickmanV2(),
             "stickman-v0.1" => SpriteAnimationSet.TryLoadStickman(),
+            "8-bit-dungeon-runner" => SpriteAnimationSet.TryLoadDungeonRunner(),
             "sunny-dragon-fly" => SpriteAnimationSet.TryLoadSunnyDragon(),
             "tgc-player" => SpriteAnimationSet.TryLoadGameCreatorPlayer(),
             "tgc-orange-worker" => SpriteAnimationSet.TryLoadTgcOrangeWorker(),
             "tgc-red-runner" => SpriteAnimationSet.TryLoadTgcRedRunner(),
             "tgc-blue-guard" => SpriteAnimationSet.TryLoadTgcBlueGuard(),
             "tgc-green-crawler" => SpriteAnimationSet.TryLoadTgcGreenCrawler(),
+            "tgc-green-snake" => SpriteAnimationSet.TryLoadTgcGreenSnake(),
             "tgc-shooter-boss" => SpriteAnimationSet.TryLoadTgcShooterBoss(),
             "tgc-shooter-fleet" => SpriteAnimationSet.TryLoadTgcShooterFleet(),
             "battle-fleet-red-ship-01" => SpriteAnimationSet.TryLoadBattleFleetRedShip01(),
@@ -2652,6 +3077,27 @@ public partial class Main : Control
         _player.MotionState = ActorMotionState.Death;
         _player.AnimationClock = 0;
         _inspectorText.Text = "Death animation test started. Adjust the Death row, STR, and count, then Apply/Save again.";
+    }
+
+    private void TriggerPunchPreview()
+    {
+        SelectActor(_player);
+        _punchPreviewSeconds = 0.85;
+        _player.AnimationClock = 0;
+        _player.MotionState = ActorMotionState.Punch;
+        _player.QueueRedraw();
+        _inspectorText.Text = "Melee preview started. Stickman 2.0 calls this source animation Punch, but the gameplay card can become punch, sword, bite, club, wand, or other close-action rules.";
+    }
+
+    private void UpdatePunchPreview(double delta)
+    {
+        if (_player is null || _punchPreviewSeconds <= 0)
+            return;
+
+        _punchPreviewSeconds -= delta;
+        _player.AnimationClock += delta;
+        _player.MotionState = ActorMotionState.Punch;
+        _player.QueueRedraw();
     }
 
     private void ApplyDeathStrobeSettings()
@@ -2947,6 +3393,7 @@ public partial class Main : Control
             actor.FacingRight = saved.facingRight;
             actor.ManualPlacement = saved.manualPlacement;
             actor.ShotToughness = saved.shotToughness <= 0 ? DefaultEnemyShotToughness(actor.ActorName) : Mathf.Clamp(saved.shotToughness, 1, 9);
+            actor.RadarRangeUnits = saved.radarRangeUnits <= 0 ? DefaultEnemyRadarRange(actor.ActorName) : Mathf.Clamp(saved.radarRangeUnits, 6f, 90f);
             actor.MotionState = Enum.TryParse(saved.motionState, out ActorMotionState motionState) ? motionState : ActorMotionState.Idle;
             actor.Position = new Vector2(saved.x, saved.y);
             actor.Size = new Vector2(saved.width, saved.height);
@@ -2954,12 +3401,15 @@ public partial class Main : Control
             actor.AnimationSet = actor.AnimationSourceId switch
             {
                 "stickman-v0.1" => SpriteAnimationSet.TryLoadStickman(),
+                "stickman-v0.2" => SpriteAnimationSet.TryLoadStickmanV2(),
+                "8-bit-dungeon-runner" => SpriteAnimationSet.TryLoadDungeonRunner(),
                 "sunny-dragon-fly" => SpriteAnimationSet.TryLoadSunnyDragon(),
                 "tgc-player" => SpriteAnimationSet.TryLoadGameCreatorPlayer(),
                 "tgc-orange-worker" => SpriteAnimationSet.TryLoadTgcOrangeWorker(),
                 "tgc-red-runner" => SpriteAnimationSet.TryLoadTgcRedRunner(),
                 "tgc-blue-guard" => SpriteAnimationSet.TryLoadTgcBlueGuard(),
                 "tgc-green-crawler" => SpriteAnimationSet.TryLoadTgcGreenCrawler(),
+                "tgc-green-snake" => SpriteAnimationSet.TryLoadTgcGreenSnake(),
                 "tgc-shooter-boss" => SpriteAnimationSet.TryLoadTgcShooterBoss(),
                 "tgc-shooter-fleet" => SpriteAnimationSet.TryLoadTgcShooterFleet(),
                 "battle-fleet-red-ship-01" => SpriteAnimationSet.TryLoadBattleFleetRedShip01(),
@@ -3058,7 +3508,7 @@ public partial class Main : Control
     private static bool IsDashEndpoint(LineEdit endpoint)
     {
         string value = endpoint.Text.Trim();
-        return value == "-" || value == "—" || value == "–";
+        return value == "-" || value == "â€”" || value == "â€“";
     }
 
     private static bool IsUnavailableClipRow(TgcClipRow row)
@@ -3133,15 +3583,18 @@ public partial class Main : Control
     private TgcClipRow BuildEditableClipRow(string name, int defaultStart, int defaultEnd, int maxFrame)
     {
         HBoxContainer row = new();
+        row.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         row.AddThemeConstantOverride("separation", 6);
 
         LineEdit nameEdit = new()
         {
             Text = name,
-            CustomMinimumSize = new Vector2(96, 32),
+            CustomMinimumSize = new Vector2(118, 30),
             PlaceholderText = "Label"
         };
+        nameEdit.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         nameEdit.AddThemeFontSizeOverride("font_size", 12);
+        StyleLightEditorLineEdit(nameEdit);
         nameEdit.TextChanged += _ => UpdateTgcStripPreview();
         row.AddChild(nameEdit);
 
@@ -3154,21 +3607,23 @@ public partial class Main : Control
 
         CheckBox pingPong = new()
         {
-            Text = "↔",
+            Text = "Ping",
             TooltipText = "PingPong: play forward, then reverse the frames.",
-            CustomMinimumSize = new Vector2(36, 32),
+            CustomMinimumSize = new Vector2(58, 30),
             FocusMode = FocusModeEnum.None
         };
+        StyleLightEditorCheckBox(pingPong);
         pingPong.Pressed += UpdateTgcStripPreview;
         row.AddChild(pingPong);
 
         CheckBox strobe = new()
         {
-            Text = "STR",
+            Text = "Strobe",
             TooltipText = "Strobe this label during test/play effects.",
-            CustomMinimumSize = new Vector2(48, 32),
+            CustomMinimumSize = new Vector2(70, 30),
             FocusMode = FocusModeEnum.None
         };
+        StyleLightEditorCheckBox(strobe);
         strobe.Pressed += UpdateTgcStripPreview;
         row.AddChild(strobe);
 
@@ -3200,10 +3655,29 @@ public partial class Main : Control
 
         if (IsUnavailableClipRow(row) || _animationEditorFrames.Length == 0)
         {
+            _focusedClipRow = row;
+            _focusedClipFrames = [];
+            _focusedClipFrameIndex = -1;
+            RefreshFocusedClipLabel();
             _spriteEditorPreview.Actor = _selectedActor;
             _inspectorText.Text = $"{row.Name.Text} is unavailable for this character. Preview falls back to the selected actor's default idle animation.";
             return;
         }
+
+        SpriteFrame[] frames = BuildFramesForClipRow(row);
+        string label = FocusedClipDisplayName(row);
+        _focusedClipRow = row;
+        _focusedClipFrames = frames;
+        _focusedClipFrameIndex = -1;
+        RefreshFocusedClipLabel();
+        _spriteEditorPreview.ShowFrames(frames, label);
+        _inspectorText.Text = $"Focused clip: {label}, frames {row.Start.Text}–{row.End.Text}.\n\nUse Prev/Next Frame to inspect individual frames, or Play Clip to loop just this sequence.";
+    }
+
+    private SpriteFrame[] BuildFramesForClipRow(TgcClipRow row)
+    {
+        if (_animationEditorFrames.Length == 0 || IsUnavailableClipRow(row))
+            return [];
 
         int numberBase = Mathf.RoundToInt((float)(_tgcNumberBase?.Value ?? 0));
         AnimationFrameRange range = DisplayToInternalRange(EndpointRange(row.Start, row.End), numberBase, _animationEditorFrames.Length);
@@ -3219,9 +3693,73 @@ public partial class Main : Control
                 frames.Add(frames[i]);
         }
 
-        string label = string.IsNullOrWhiteSpace(row.Name.Text) ? "Animation" : row.Name.Text.Trim();
-        _spriteEditorPreview.ShowFrames(frames.ToArray(), label);
-        _inspectorText.Text = $"Previewing {label}: frames {row.Start.Text}–{row.End.Text}.\n\nClick another animation label to test its sequence on the large white stage.";
+        return frames.ToArray();
+    }
+
+    private void StepFocusedClipFrame(int delta)
+    {
+        if (_focusedClipRow is null)
+        {
+            _inspectorText.Text = "Click an animation label row first, then use Prev/Next Frame to inspect that sequence.";
+            return;
+        }
+
+        _focusedClipFrames = BuildFramesForClipRow(_focusedClipRow);
+        if (_focusedClipFrames.Length == 0)
+        {
+            RefreshFocusedClipLabel();
+            _inspectorText.Text = $"{FocusedClipDisplayName(_focusedClipRow)} has no editable frames for this character.";
+            return;
+        }
+
+        if (_focusedClipFrameIndex < 0)
+            _focusedClipFrameIndex = delta >= 0 ? 0 : _focusedClipFrames.Length - 1;
+        else
+            _focusedClipFrameIndex = Mathf.PosMod(_focusedClipFrameIndex + delta, _focusedClipFrames.Length);
+
+        string label = FocusedClipDisplayName(_focusedClipRow);
+        _spriteEditorPreview.ShowFrames(_focusedClipFrames, label, _focusedClipFrameIndex);
+        RefreshFocusedClipLabel();
+        _inspectorText.Text = $"{label}: showing frame {_focusedClipFrameIndex + 1} of {_focusedClipFrames.Length}.\n\nThis is the focused animation sequence; edits should stay scoped to this clip.";
+    }
+
+    private void PlayFocusedClipSequence()
+    {
+        if (_focusedClipRow is null)
+        {
+            _inspectorText.Text = "Click an animation label row first, then Play Clip will loop only that sequence.";
+            return;
+        }
+
+        _focusedClipFrames = BuildFramesForClipRow(_focusedClipRow);
+        _focusedClipFrameIndex = -1;
+        string label = FocusedClipDisplayName(_focusedClipRow);
+        _spriteEditorPreview.ShowFrames(_focusedClipFrames, label);
+        RefreshFocusedClipLabel();
+        _inspectorText.Text = $"{label} is looping as the focused clip.";
+    }
+
+    private void RefreshFocusedClipLabel()
+    {
+        if (_focusedClipLabel is null)
+            return;
+
+        if (_focusedClipRow is null)
+        {
+            _focusedClipLabel.Text = "Focused clip: click an animation row";
+            return;
+        }
+
+        string label = FocusedClipDisplayName(_focusedClipRow);
+        string frame = _focusedClipFrameIndex >= 0 && _focusedClipFrames.Length > 0
+            ? $"frame {_focusedClipFrameIndex + 1}/{_focusedClipFrames.Length}"
+            : $"{_focusedClipFrames.Length} frame sequence";
+        _focusedClipLabel.Text = $"Focused clip: {label}\n{frame}";
+    }
+
+    private static string FocusedClipDisplayName(TgcClipRow row)
+    {
+        return string.IsNullOrWhiteSpace(row.Name.Text) ? "Animation" : row.Name.Text.Trim();
     }
 
     private void OnClipEndpointTextChanged(LineEdit changed, LineEdit partner, string text, int maxFrame)
@@ -3230,7 +3768,7 @@ public partial class Main : Control
             return;
 
         string value = text.Trim();
-        if (value == "-" || value == "—" || value == "–")
+        if (value == "-" || value == "â€”" || value == "â€“")
         {
             _syncingClipUnavailable = true;
             changed.Text = "-";
@@ -3307,8 +3845,8 @@ public partial class Main : Control
         }
 
         _bindingLabel.Text = linkedActors > 1
-            ? $"LIVE LINK ACTIVE — edits update {linkedActors} actors instantly. Fork to make this actor independent."
-            : "INDEPENDENT SPRITE — edits affect only this actor.";
+            ? $"LIVE LINK ACTIVE â€” edits update {linkedActors} actors instantly. Fork to make this actor independent."
+            : "INDEPENDENT SPRITE â€” edits affect only this actor.";
     }
 
     private void ToggleBossMode()
@@ -3325,7 +3863,7 @@ public partial class Main : Control
         _sidebar.Visible = opening;
         if (_playfieldFrame is not null)
             _playfieldFrame.Visible = !opening;
-        _spritePanelButton.Text = _sidebar.Visible ? "HIDE SPRITE PAD" : "SHOW SPRITE PAD";
+        _spritePanelButton.Text = _sidebar.Visible ? "Hide Sprite Pad" : "Show Sprite Pad";
 
         if (opening && _cockpit is not null && _cockpit.Visible)
         {
@@ -3348,7 +3886,7 @@ public partial class Main : Control
         if (_playfieldFrame is not null)
             _playfieldFrame.Visible = true;
         if (_spritePanelButton is not null)
-            _spritePanelButton.Text = "SHOW SPRITE PAD";
+            _spritePanelButton.Text = "Show Sprite Pad";
         UpdateCursorMode();
     }
 
@@ -3474,7 +4012,7 @@ public partial class Main : Control
 
         string mode = PlaysetModeLabel(_playsetMode);
         string authority = _editorMode ? "EDIT" : "PLAY";
-        _cockpitStatus.Text = $"{authority}  •  {mode}  •  {_playfield.Ocr.StatusText}  •  contextual shelves  •  Esc toggles cockpit";
+        _cockpitStatus.Text = $"{authority}  â€¢  {mode}  â€¢  {_playfield.Ocr.StatusText}  â€¢  contextual shelves  â€¢  Esc toggles cockpit";
     }
 
     private void RefreshSessionModeUi()
@@ -3488,13 +4026,25 @@ public partial class Main : Control
 
     private void UpdateCockpitToolkitPanels()
     {
-        if (_platformerPanel is null || _brickbatPanel is null || _pinballPanel is null || _overheadPanel is null)
+        if (_cockpitTabs is null)
             return;
 
-        _platformerPanel.Visible = _playsetMode == PlaysetMode.Platformer;
-        _brickbatPanel.Visible = _playsetMode == PlaysetMode.Brickbat;
-        _pinballPanel.Visible = _playsetMode == PlaysetMode.Pinball;
-        _overheadPanel.Visible = _playsetMode == PlaysetMode.Overhead;
+        string target = _playsetMode switch
+        {
+            PlaysetMode.Brickbat => "Brickbat",
+            PlaysetMode.Pinball => "Pinball",
+            PlaysetMode.Overhead => "Overhead",
+            _ => "Platformer"
+        };
+
+        for (int i = 0; i < _cockpitTabs.GetTabCount(); i++)
+        {
+            if (_cockpitTabs.GetTabTitle(i) == target || _cockpitTabs.GetChild(i).Name == target)
+            {
+                _cockpitTabs.CurrentTab = i;
+                return;
+            }
+        }
     }
 
     private void ProbeDisplayLayout()
@@ -3509,7 +4059,7 @@ public partial class Main : Control
             Vector2I position = DisplayServer.ScreenGetPosition(i);
             Vector2I size = DisplayServer.ScreenGetSize(i);
             Rect2I usable = DisplayServer.ScreenGetUsableRect(i);
-            lines.Add($"#{i}: pos {position.X},{position.Y}  size {size.X}×{size.Y}  usable {usable.Size.X}×{usable.Size.Y}");
+            lines.Add($"#{i}: pos {position.X},{position.Y}  size {size.X}Ã—{size.Y}  usable {usable.Size.X}Ã—{usable.Size.Y}");
         }
 
         _inspectorText.Text = string.Join("\n", lines)
@@ -3594,9 +4144,66 @@ public partial class Main : Control
             if (!_editorMode && _playsetMode == PlaysetMode.Platformer)
                 continue;
 
+            if (!_editorMode && _enemyAiEnabled)
+            {
+                UpdateAmbientEnemyPresentation(actor, dt, i);
+                continue;
+            }
+
             actor.MotionState = IsFlyingEnemy(actor) ? ActorMotionState.Idle : ActorMotionState.Run;
+            actor.AnimationClock += dt * 0.65f;
             actor.QueueRedraw();
         }
+    }
+
+    private void UpdateAmbientEnemyPresentation(ActorView actor, float dt, int index)
+    {
+        if (actor.HomePosition == Vector2.Zero)
+            actor.HomePosition = actor.Position;
+
+        float unit = Mathf.Max(_textUnitPixels, 10f);
+        Rect2 bounds = _playfield.PlayBounds;
+        bool flying = IsFlyingEnemy(actor) || _playsetMode is PlaysetMode.Overhead or PlaysetMode.Pinball or PlaysetMode.Brickbat;
+        if (flying)
+        {
+            float phase = (float)_elapsed * (0.9f + index * 0.04f) + index * 1.7f;
+            Vector2 drift = new(
+                Mathf.Sin(phase) * unit * 5.2f,
+                Mathf.Sin(phase * 1.37f) * unit * 2.4f
+            );
+            Vector2 next = actor.HomePosition + drift;
+            actor.Position = new Vector2(
+                Mathf.Clamp(next.X, bounds.Position.X, Mathf.Max(bounds.Position.X, bounds.End.X - actor.Size.X)),
+                Mathf.Clamp(next.Y, bounds.Position.Y, Mathf.Max(bounds.Position.Y, bounds.End.Y - actor.Size.Y))
+            );
+            actor.FacingRight = Mathf.Cos(phase) >= 0f;
+            actor.MotionState = ActorMotionState.Idle;
+        }
+        else
+        {
+            float direction = _enemyPatrolDirections.TryGetValue(actor, out float existingDirection) && !Mathf.IsZeroApprox(existingDirection)
+                ? Mathf.Sign(existingDirection)
+                : (actor.FacingRight ? 1f : -1f);
+            float patrolRange = unit * 10f;
+            float speed = unit * 3.2f;
+            Vector2 next = actor.Position + new Vector2(direction * speed * dt, 0f);
+            if (next.X < actor.HomePosition.X - patrolRange || next.X > actor.HomePosition.X + patrolRange)
+            {
+                direction *= -1f;
+                next = actor.Position + new Vector2(direction * speed * dt, 0f);
+            }
+
+            actor.Position = new Vector2(
+                Mathf.Clamp(next.X, bounds.Position.X, Mathf.Max(bounds.Position.X, bounds.End.X - actor.Size.X)),
+                Mathf.Clamp(next.Y, bounds.Position.Y, Mathf.Max(bounds.Position.Y, bounds.End.Y - actor.Size.Y))
+            );
+            actor.FacingRight = direction > 0f;
+            actor.MotionState = ActorMotionState.Run;
+            _enemyPatrolDirections[actor] = direction;
+        }
+
+        actor.AnimationClock += dt;
+        actor.QueueRedraw();
     }
 
     private void UpdateOverheadPlayer(double delta)
@@ -3891,7 +4498,8 @@ public partial class Main : Control
             else
                 UpdateGroundEnemy(enemy, dt);
 
-            if (_enemyProjectilesEnabled && enemy.CanFireProjectiles && _hazardArmDelaySeconds <= 0)
+            bool playerInRadar = IsPlayerInsideEnemyRadar(enemy);
+            if (_enemyProjectilesEnabled && enemy.CanFireProjectiles && playerInRadar && _hazardArmDelaySeconds <= 0)
             {
                 float timer = _enemyShotTimers.TryGetValue(enemy, out float existing) ? existing : 0.8f + i * 0.45f;
                 timer -= dt;
@@ -3908,19 +4516,20 @@ public partial class Main : Control
 
     private void UpdateFlyingEnemy(ActorView enemy, float dt, int index)
     {
+        bool playerInRadar = IsPlayerInsideEnemyRadar(enemy);
         float phase = (float)_elapsed * 1.4f + index * 2.1f;
         Vector2 patrol = new(
             Mathf.Sin(phase) * _textUnitPixels * 5.5f,
             Mathf.Sin(phase * 1.7f) * _textUnitPixels * 1.8f
         );
-        if (_enemyTracksPlayer)
+        if (_enemyTracksPlayer && playerInRadar)
         {
             float chaseBias = Mathf.Clamp((_player.Position.X - enemy.HomePosition.X) * 0.18f, -_textUnitPixels * 7f, _textUnitPixels * 7f);
             patrol.X += chaseBias;
         }
 
         enemy.Position = enemy.HomePosition + patrol;
-        if (_enemyTracksPlayer)
+        if (_enemyTracksPlayer && playerInRadar)
             enemy.FacingRight = _player.Position.X > enemy.Position.X;
         enemy.MotionState = ActorMotionState.Idle;
         enemy.AnimationClock += dt;
@@ -3933,10 +4542,11 @@ public partial class Main : Control
         float direction = _enemyPatrolDirections.TryGetValue(enemy, out float existingDirection) && !Mathf.IsZeroApprox(existingDirection)
             ? Mathf.Sign(existingDirection)
             : (enemy.FacingRight ? 1f : -1f);
+        bool playerInRadar = IsPlayerInsideEnemyRadar(enemy);
 
         float patrolRange = motionUnit * 11f;
         float patrolSpeed = motionUnit * 5.2f;
-        if (_enemyTracksPlayer && Mathf.Abs(_player.Position.X - enemy.Position.X) < motionUnit * 28f)
+        if (_enemyTracksPlayer && playerInRadar)
             direction = _player.Position.X >= enemy.Position.X ? 1f : -1f;
         else if (enemy.Position.X < enemy.HomePosition.X - patrolRange)
             direction = 1f;
@@ -3945,6 +4555,23 @@ public partial class Main : Control
 
         velocity.X = direction * patrolSpeed;
         velocity.Y += motionUnit * 58f * _gravityScale * dt;
+
+        Rect2 actorBounds = new(enemy.Position, enemy.Size);
+        Vector2 slideVelocity = _playfield.GetSlideVelocity(actorBounds);
+        if (slideVelocity != Vector2.Zero)
+        {
+            velocity.X = Mathf.MoveToward(velocity.X, slideVelocity.X, Mathf.Abs(slideVelocity.X) * 5f * dt + motionUnit * 16f * dt);
+            if (slideVelocity.Y > 0)
+                velocity.Y = Mathf.MoveToward(velocity.Y, slideVelocity.Y, Mathf.Abs(slideVelocity.Y) * 3f * dt + motionUnit * 18f * dt);
+        }
+
+        Vector2 conveyorVelocity = _playfield.GetConveyorVelocity(actorBounds);
+        if (conveyorVelocity != Vector2.Zero)
+        {
+            velocity += conveyorVelocity * dt;
+            if (conveyorVelocity.Y < 0)
+                velocity.Y = Mathf.Min(velocity.Y, conveyorVelocity.Y * 0.18f);
+        }
 
         Vector2 next = enemy.Position + velocity * dt;
         Rect2 playBounds = _playfield.PlayBounds;
@@ -4032,11 +4659,12 @@ public partial class Main : Control
 
         Vector2 origin = enemy.Position + enemy.Size * 0.5f;
         Vector2 target = _player.Position + _player.Size * 0.5f;
-        float maxRange = Mathf.Max(_textUnitPixels * _enemyShotRangeUnits, 80f);
+        float rangeUnits = Mathf.Max(_enemyShotRangeUnits, enemy.RadarRangeUnits);
+        float maxRange = Mathf.Max(_textUnitPixels * rangeUnits, 80f);
         if (origin.DistanceTo(target) > maxRange)
             return;
 
-        if (_enemyTracksPlayer)
+        if (_enemyTracksPlayer && IsPlayerInsideEnemyRadar(enemy))
             enemy.FacingRight = target.X > origin.X;
 
         Vector2 direction = target - origin;
@@ -4053,6 +4681,18 @@ public partial class Main : Control
         _platformerStatus = $"{enemy.ActorName.ToUpperInvariant()} FIRED";
         RefreshPlatformerHud();
         PushEnemyShotPositionsToPlayfield();
+    }
+
+    private bool IsPlayerInsideEnemyRadar(ActorView enemy)
+    {
+        if (_player is null)
+            return false;
+
+        Vector2 origin = enemy.Position + enemy.Size * 0.5f;
+        Vector2 target = _player.Position + _player.Size * 0.5f;
+        float rangeUnits = enemy.RadarRangeUnits > 0 ? enemy.RadarRangeUnits : DefaultEnemyRadarRange(enemy.ActorName);
+        float maxRange = Mathf.Max(_textUnitPixels * rangeUnits, 80f);
+        return origin.DistanceTo(target) <= maxRange;
     }
 
     private string EnemyRangeButtonText()
@@ -4101,12 +4741,13 @@ public partial class Main : Control
             ? (_gunEnabled ? "player gun on" : "player gun off")
             : (_selectedActor.CanFireProjectiles ? "can fire" : "no shots");
         string toughness = _selectedActor.IsPlayable ? $"HP {_playerHealth}/{_playerMaxHealth}" : $"toughness {_selectedActor.ShotToughness}";
+        string radar = _selectedActor.IsPlayable ? "player senses" : $"radar {_selectedActor.RadarRangeUnits:0}u";
         _characterWorkbenchStatus.Text =
             $"Selected: {_selectedActor.ActorName}\n"
             + $"Role: {role}\n"
             + $"Animation: {source}\n"
-            + $"Combat: {projectile}, {toughness}\n"
-            + $"Size: {_selectedActor.Size.X:0} × {_selectedActor.Size.Y:0}";
+            + $"Combat: {projectile}, {toughness}, {radar}\n"
+            + $"Size: {_selectedActor.Size.X:0} Ã— {_selectedActor.Size.Y:0}";
     }
 
     private void AdjustSelectedEnemyToughness(int delta)
@@ -4120,6 +4761,21 @@ public partial class Main : Control
         _selectedActor.ShotToughness = Mathf.Clamp(_selectedActor.ShotToughness + delta, 1, 9);
         _enemyHealth.Remove(_selectedActor);
         _inspectorText.Text = $"{_selectedActor.ActorName} shot toughness set to {_selectedActor.ShotToughness}.\n\nThis means {_selectedActor.ShotToughness} regular 1x shot(s), or fewer with stronger guns.";
+        RefreshCharacterWorkbenchStatus();
+        RefreshPlatformerHud();
+    }
+
+    private void AdjustSelectedEnemyRadar(float delta)
+    {
+        if (_selectedActor is null || _selectedActor.IsPlayable)
+        {
+            _inspectorText.Text = "Select an enemy first, then adjust its invisible radar range.";
+            return;
+        }
+
+        _selectedActor.RadarRangeUnits = Mathf.Clamp(_selectedActor.RadarRangeUnits + delta, 6f, 90f);
+        ClearEnemyShots();
+        _inspectorText.Text = $"{_selectedActor.ActorName} radar set to {_selectedActor.RadarRangeUnits:0} text units.\n\nTracking and firing now wait until the player enters this invisible awareness bubble. Bigger numbers make the enemy feel smarter or more alert.";
         RefreshCharacterWorkbenchStatus();
         RefreshPlatformerHud();
     }
@@ -4351,6 +5007,22 @@ public partial class Main : Control
             return 2;
 
         return 1;
+    }
+
+    private static float DefaultEnemyRadarRange(string actorName)
+    {
+        if (actorName.Contains("Boss", StringComparison.OrdinalIgnoreCase))
+            return 55f;
+        if (actorName.Contains("Dragon", StringComparison.OrdinalIgnoreCase)
+            || actorName.Contains("Ship", StringComparison.OrdinalIgnoreCase)
+            || actorName.Contains("Fleet", StringComparison.OrdinalIgnoreCase)
+            || actorName.Contains("Guard", StringComparison.OrdinalIgnoreCase))
+            return 42f;
+        if (actorName.Contains("Shooter", StringComparison.OrdinalIgnoreCase)
+            || actorName.Contains("Orange", StringComparison.OrdinalIgnoreCase))
+            return 34f;
+
+        return 24f;
     }
 
     private void DamagePlayer(string reason, int amount)
@@ -4851,9 +5523,15 @@ public partial class Main : Control
             _customTintCheck.ButtonPressed = false;
             _speedSlider.MinValue = -180;
             _speedSlider.MaxValue = 180;
+            _speedSlider.Step = 1;
             _speedSlider.Value = 0;
+            _thicknessSlider.MinValue = 0.3;
             _thicknessSlider.MaxValue = 3.0;
+            _thicknessSlider.Step = 0.1;
             _thicknessSlider.Value = 0.8;
+            _rangeSlider.MinValue = 0;
+            _rangeSlider.MaxValue = 16;
+            _rangeSlider.Step = 0.5;
             _rangeSlider.Value = 5;
             _opacitySlider.Value = 1;
             _tintPicker.Color = new Color("#5CB8A7");
@@ -4867,12 +5545,19 @@ public partial class Main : Control
             return;
         }
 
+        bool isEnemySpawn = selected.Kind == WorldObjectKind.EnemySpawnPoint;
         _speedSlider.Editable = true;
-        _speedSlider.MinValue = -180;
-        _speedSlider.MaxValue = 180;
+        _speedSlider.MinValue = isEnemySpawn ? 1 : -180;
+        _speedSlider.MaxValue = isEnemySpawn ? 10 : 180;
+        _speedSlider.Step = 1;
         _thicknessSlider.Editable = true;
-        _thicknessSlider.MaxValue = selected.Kind == WorldObjectKind.Ladder ? 2.5 : 3.0;
-        _rangeSlider.Editable = selected.Kind == WorldObjectKind.Elevator;
+        _thicknessSlider.MinValue = isEnemySpawn ? 1 : 0.3;
+        _thicknessSlider.MaxValue = isEnemySpawn ? 10 : selected.Kind == WorldObjectKind.Ladder ? 2.5 : 3.0;
+        _thicknessSlider.Step = isEnemySpawn ? 1 : 0.1;
+        _rangeSlider.Editable = selected.Kind == WorldObjectKind.Elevator || isEnemySpawn;
+        _rangeSlider.MinValue = isEnemySpawn ? 1 : 0;
+        _rangeSlider.MaxValue = isEnemySpawn ? 10 : 16;
+        _rangeSlider.Step = isEnemySpawn ? 1 : 0.5;
         _opacitySlider.Editable = true;
         _tintPicker.Disabled = false;
         _customTintCheck.Disabled = false;
@@ -4882,16 +5567,24 @@ public partial class Main : Control
         _rangeSlider.Value = selected.RangeUnits;
         _opacitySlider.Value = selected.Opacity;
         _tintPicker.Color = selected.UseCustomTint ? selected.Tint : DefaultWorldObjectColor(selected.Kind);
-        _attributeText.Text =
-            $"{selected.Kind}\n"
-            + $"Speed/force: {selected.SpeedUnits:0.0}\n"
-            + $"Thickness: {selected.ThicknessUnits:0.0}\n"
-            + $"Range: {selected.RangeUnits:0.0} text units\n"
-            + $"Opacity: {selected.Opacity * 100f:0}%\n"
-            + $"Color: {(selected.UseCustomTint ? "custom" : "default")}\n"
-            + $"Gravity: {_gravityScale:0.00}x\n"
-            + (selected.IsEditorOnly ? "Editor-only: visible while building, hidden during play.\n" : "")
-            + "A/B endpoints rotate and scale line tools. Rotate nudges most selected objects around their center. Ladders stay vertical and use thickness as climb width.";
+        _attributeText.Text = isEnemySpawn
+            ? "Enemy Spawn Point\n"
+                + $"Spawn interval: {Mathf.Clamp(Mathf.Round(selected.SpeedUnits), 1f, 10f):0} sec\n"
+                + $"Burst count: {Mathf.Clamp(Mathf.Round(selected.ThicknessUnits), 1f, 10f):0}\n"
+                + $"Max active: {Mathf.Clamp(Mathf.Round(selected.RangeUnits), 1f, 10f):0}\n"
+                + $"Opacity: {selected.Opacity * 100f:0}%\n"
+                + $"Color: {(selected.UseCustomTint ? "custom" : "default")}\n"
+                + "Editor-only: visible while building, hidden during play.\n"
+                + "Next pass: bind enemy type/graphic, spawn speed, and AI preset. Counts stay small; 10 is the hard ceiling."
+            : $"{selected.Kind}\n"
+                + $"Speed/force: {selected.SpeedUnits:0.0}\n"
+                + $"Thickness: {selected.ThicknessUnits:0.0}\n"
+                + $"Range: {selected.RangeUnits:0.0} text units\n"
+                + $"Opacity: {selected.Opacity * 100f:0}%\n"
+                + $"Color: {(selected.UseCustomTint ? "custom" : "default")}\n"
+                + $"Gravity: {_gravityScale:0.00}x\n"
+                + (selected.IsEditorOnly ? "Editor-only: visible while building, hidden during play.\n" : "")
+                + "A/B endpoints rotate and scale line tools. Rotate nudges most selected objects around their center. Ladders stay vertical and use thickness as climb width.";
         _updatingAttributeControls = false;
     }
 
@@ -4936,9 +5629,19 @@ public partial class Main : Control
         {
             Text = text,
             CustomMinimumSize = new Vector2(0, 38),
-            FocusMode = FocusModeEnum.None
+            FocusMode = FocusModeEnum.None,
+            SizeFlagsHorizontal = SizeFlags.ShrinkBegin
         };
         button.AddThemeFontSizeOverride("font_size", 12);
+        button.AddThemeColorOverride("font_color", new Color("#202A34"));
+        button.AddThemeColorOverride("font_hover_color", new Color("#101820"));
+        button.AddThemeColorOverride("font_pressed_color", new Color("#101820"));
+        button.AddThemeColorOverride("font_focus_color", new Color("#101820"));
+        button.AddThemeColorOverride("font_disabled_color", new Color("#737F8C"));
+        button.AddThemeStyleboxOverride("normal", FlatStyle("#FFFFFF", 6));
+        button.AddThemeStyleboxOverride("hover", FlatStyle("#EAF2FF", 6));
+        button.AddThemeStyleboxOverride("pressed", FlatStyle("#D9E8FF", 6));
+        button.AddThemeStyleboxOverride("disabled", FlatStyle("#E4E8ED", 6));
         return button;
     }
 
@@ -4948,7 +5651,7 @@ public partial class Main : Control
         row.AddThemeConstantOverride("separation", 6);
         foreach (Button button in buttons)
         {
-            button.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+            button.SizeFlagsHorizontal = SizeFlags.ShrinkBegin;
             row.AddChild(button);
         }
 
@@ -4985,11 +5688,15 @@ public partial class Main : Control
             MaxValue = Mathf.Max(0, maxFrame),
             Value = Mathf.Clamp(value, 0, Mathf.Max(0, maxFrame)),
             Step = 1,
-            CustomMinimumSize = new Vector2(70, 32),
+            CustomMinimumSize = new Vector2(58, 30),
             FocusMode = FocusModeEnum.Click
         };
+        spin.AddThemeColorOverride("font_color", new Color("#202A34"));
+        spin.AddThemeColorOverride("font_hover_color", new Color("#101820"));
+        spin.AddThemeColorOverride("font_focus_color", new Color("#101820"));
         spin.GetLineEdit().FocusMode = FocusModeEnum.Click;
         spin.GetLineEdit().SelectAllOnFocus = true;
+        StyleLightEditorLineEdit(spin.GetLineEdit());
         return spin;
     }
 
@@ -4999,13 +5706,33 @@ public partial class Main : Control
         {
             Text = Mathf.Clamp(value, 0, Mathf.Max(0, maxFrame)).ToString(),
             PlaceholderText = "-",
-            CustomMinimumSize = new Vector2(70, 32),
+            CustomMinimumSize = new Vector2(52, 30),
             FocusMode = FocusModeEnum.Click,
             SelectAllOnFocus = true,
             TooltipText = "Frame number, or '-' if this character does not use this animation."
         };
         edit.AddThemeFontSizeOverride("font_size", 12);
+        StyleLightEditorLineEdit(edit);
         return edit;
+    }
+
+    private static void StyleLightEditorCheckBox(CheckBox checkBox)
+    {
+        checkBox.AddThemeColorOverride("font_color", new Color("#202A34"));
+        checkBox.AddThemeColorOverride("font_hover_color", new Color("#101820"));
+        checkBox.AddThemeColorOverride("font_pressed_color", new Color("#101820"));
+        checkBox.AddThemeColorOverride("font_focus_color", new Color("#101820"));
+        checkBox.AddThemeColorOverride("font_disabled_color", new Color("#737F8C"));
+        checkBox.AddThemeFontSizeOverride("font_size", 12);
+    }
+
+    private static void StyleLightEditorLineEdit(LineEdit lineEdit)
+    {
+        lineEdit.AddThemeColorOverride("font_color", new Color("#202A34"));
+        lineEdit.AddThemeColorOverride("font_placeholder_color", new Color("#737F8C"));
+        lineEdit.AddThemeColorOverride("font_selected_color", new Color("#FFFFFF"));
+        lineEdit.AddThemeColorOverride("selection_color", new Color("#4378B8"));
+        lineEdit.AddThemeFontSizeOverride("font_size", 12);
     }
 
     private Button ShelfButton(string text, WorldObjectKind kind, string description)
@@ -5091,6 +5818,7 @@ public partial class Main : Control
             WorldObjectKind.StartPoint => new Color("#B56CFF"),
             WorldObjectKind.GoalPoint => new Color("#F4C95D"),
             WorldObjectKind.HiddenSwitch => new Color("#FF2BD6"),
+            WorldObjectKind.EnemySpawnPoint => new Color("#FF2B2B"),
             WorldObjectKind.Checkpoint => new Color("#5CB8A7"),
             WorldObjectKind.PinballFlipper => new Color("#FF5C35"),
             WorldObjectKind.PinballBumper => new Color("#5CB8A7"),
@@ -5110,10 +5838,27 @@ public partial class Main : Control
         PanelContainer panel = new()
         {
             CustomMinimumSize = new Vector2(width, 0),
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
             SizeFlagsVertical = SizeFlags.ExpandFill
         };
         panel.AddThemeStyleboxOverride("panel", FlatStyle("#F7F5EF", 8));
         return panel;
+    }
+
+    private static void AddCockpitTab(TabContainer tabs, string title, Control content)
+    {
+        ScrollContainer scroll = new()
+        {
+            Name = title,
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            SizeFlagsVertical = SizeFlags.ExpandFill,
+            HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
+            VerticalScrollMode = ScrollContainer.ScrollMode.Auto
+        };
+        content.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        content.SizeFlagsVertical = SizeFlags.ExpandFill;
+        scroll.AddChild(content);
+        tabs.AddChild(scroll);
     }
 
     private static VBoxContainer PanelVBox(PanelContainer panel)
@@ -5320,6 +6065,7 @@ public partial class Main : Control
         public bool facingRight { get; set; }
         public bool manualPlacement { get; set; }
         public int shotToughness { get; set; } = 1;
+        public float radarRangeUnits { get; set; } = 28f;
         public float x { get; set; }
         public float y { get; set; }
         public float width { get; set; }
@@ -5339,6 +6085,7 @@ public partial class Main : Control
                 facingRight = actor.FacingRight,
                 manualPlacement = actor.ManualPlacement,
                 shotToughness = actor.ShotToughness,
+                radarRangeUnits = actor.RadarRangeUnits,
                 x = actor.Position.X,
                 y = actor.Position.Y,
                 width = actor.Size.X,

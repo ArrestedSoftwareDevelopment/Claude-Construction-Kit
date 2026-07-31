@@ -14,6 +14,7 @@ public enum WorldObjectKind
     StartPoint,
     GoalPoint,
     HiddenSwitch,
+    EnemySpawnPoint,
     PinballFlipper,
     PinballBumper,
     PinballPlunger,
@@ -32,7 +33,8 @@ public enum MarkerRole
     Midpoint,
     End,
     Secret,
-    Switch
+    Switch,
+    EnemySpawn
 }
 
 public sealed record WorldObject(
@@ -51,8 +53,8 @@ public sealed record WorldObject(
 )
 {
     public Vector2 Center => (Start + End) * 0.5f;
-    public bool IsMarker => MarkerRole != MarkerRole.None || Kind is WorldObjectKind.Checkpoint or WorldObjectKind.StartPoint or WorldObjectKind.GoalPoint or WorldObjectKind.HiddenSwitch;
-    public bool IsEditorOnly => !VisibleInPlay || Kind is WorldObjectKind.StartPoint or WorldObjectKind.HiddenSwitch;
+    public bool IsMarker => MarkerRole != MarkerRole.None || Kind is WorldObjectKind.Checkpoint or WorldObjectKind.StartPoint or WorldObjectKind.GoalPoint or WorldObjectKind.HiddenSwitch or WorldObjectKind.EnemySpawnPoint;
+    public bool IsEditorOnly => !VisibleInPlay || Kind is WorldObjectKind.StartPoint or WorldObjectKind.HiddenSwitch or WorldObjectKind.EnemySpawnPoint;
     public Color Styled(Color fallback)
     {
         Color color = UseCustomTint ? Tint : fallback;
