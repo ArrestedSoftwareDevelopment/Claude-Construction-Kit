@@ -24,6 +24,9 @@ Supporting notes:
 - Asset audit and sprite animator plan: [`docs/DACK-Asset-Audit-and-Sprite-Animator.md`](docs/DACK-Asset-Audit-and-Sprite-Animator.md)
 - Level Snapshot and package format: [`docs/DACK-Level-Snapshot-Format.md`](docs/DACK-Level-Snapshot-Format.md)
 - Object/player/enemy attribute model: [`docs/DACK-Object-Attribute-Model.md`](docs/DACK-Object-Attribute-Model.md)
+- Construction-kit inspiration and document-native guardrails: [`docs/DACK-Construction-Kit-Inspiration.md`](docs/DACK-Construction-Kit-Inspiration.md)
+- Live capture and scene understanding plan: [`docs/DACK-Live-Capture-and-Understanding-Plan.md`](docs/DACK-Live-Capture-and-Understanding-Plan.md)
+- Document geometry and pagination plan: [`docs/DACK-Document-Geometry-and-Pagination-Plan.md`](docs/DACK-Document-Geometry-and-Pagination-Plan.md)
 - Brickbat builder and canonical ball/target rules: [`docs/DACK-Brickbat-Builder.md`](docs/DACK-Brickbat-Builder.md)
 
 Current productization plateau: the RAD has proved enough separate ideas that architecture, responsiveness, and creator trust now matter more than adding another isolated button. Platformer, Brickbat, Pinball, Overhead, cards, shelves, actor imports, animation labeling, combat, OCR, effects, sound, and level save/load all exist at proof depth. The active engineering sequence is therefore **stabilize → measure → extract shared services → complete one creator loop → add Live Desktop**, while keeping every proven play loop running. The optimization/refactoring plan is the authoritative “what next” document; genre notes remain design inventories rather than competing schedules.
@@ -50,7 +53,7 @@ Current productization plateau: the RAD has proved enough separate ideas that ar
 
 ## 3. Player Experience Walkthrough
 
-1. Player opens DACK and, on first launch, sees a low-intensity ambient scene: a few stick-figure actors or vehicles enter a cloned desktop and begin exploring without demanding attention.
+1. Player opens DACK and first sees only a translucent, hovering DACK logo over the playfield plus the `Ctrl+Alt+B` show/hide instruction. `Esc` or `F1` reveals the ordinary workspace; the initial visual priority is the user's desktop, not DACK chrome. After that brief launch surface, a low-intensity ambient scene may begin: a few stick-figure actors or vehicles enter a cloned desktop and explore without demanding attention.
 2. Player picks a toolkit (say, **Action Kit** or **RPG/Roguelike Kit**) and a source: **"Capture Desktop," "Capture Window/Region," "Use Image,"** or **"Use Text Grid."** Live modes and structured document import appear only when supported.
 3. DACK creates a working clone and runs **auto-terrain analysis**: UI-chrome/edge detection for captures, glyph mapping for text grids, and—in later structured modes—document parsing. Proposed geometry is overlaid as translucent outlines. The source remains untouched.
 4. Player enters the **Level Editor**: accepts/rejects/nudges auto-detected platforms, paints extra invisible collision where desired, places enemy spawns, collectibles, hazards, and a goal/exit. Live sources can also configure an **Activity Event Map** (§8.3)—which observed changes trigger which game events.
@@ -80,6 +83,8 @@ Current productization plateau: the RAD has proved enough separate ideas that ar
 | Kingdom Rush                                                             | Camera/art scalability target: stunning zoomed in, still legible zoomed out to the full battlefield |
 
 DACK's genuinely novel piece is **turning a safe visual/semantic clone of real desktop activity into procedurally-assisted, reactive game space**, then layering a classic construction-kit editor and modern agent behaviors on top.
+
+The internal `Inspiration` references sharpen that distinction. DACK borrows the classic kits' compact workrooms, reusable definitions, bounded parameter sheets, palette/frame tools, terrain permissions, and built-in test/storage loop; it makes the document or desktop the material those tools operate on. Text, whitespace, headings, icons, window boundaries, color regions, and live application activity must remain potential mechanics, not merely a backdrop behind generic sprites. See [`docs/DACK-Construction-Kit-Inspiration.md`](docs/DACK-Construction-Kit-Inspiration.md).
 
 ### 4.1 Atari 2600 Play-Pattern Lens
 
@@ -133,7 +138,7 @@ Turning a screenshot into "this is a platform, this is a hazard, this is empty s
 5. **Creator correction layer:** all detected geometry is visible in Understand mode and can be accepted, rejected, split, merged, rebound, or replaced. Detection proposes; the editor disposes.
 6. **Manual-only fallback:** hand-paint collision/regions directly onto the DACK clone, like a traditional construction kit.
 
-The analysis runs at capture/Snapshot time or as bounded incremental work after a live-source change. Gameplay never re-scans the whole image just to ask whether a nearby word or platform still exists. See ADR-0009.
+The analysis runs once at initial capture and again only for an explicitly requested refresh candidate. Gameplay never re-scans the whole image just to ask whether a nearby word or platform still exists. A future continuous-live experiment may use bounded incremental work, but it is not the default authoring or shipping path. See ADR-0009 and the [Live Capture and Understanding Plan](docs/DACK-Live-Capture-and-Understanding-Plan.md).
 
 ### 5.2.1 Semantic Word-Objects
 
@@ -147,6 +152,8 @@ Platformer projectiles exposed an important general rule: any gameplay verb that
 Visual effects must respect the same distinction. A rectangle-only word hit can produce generic text shrapnel, score text, and impact bursts immediately. Exploding the *actual struck word* into its own component letters requires the optional meaning layer: OCR, UIA accessible text, or native text labels attached to the geometry. Once labels exist, Brickbat, Pinball, Platformer shots, RPG spells, and Snake/Maze pickups can all reuse true word-shard effects.
 
 OCR should be **lazy, local, and gameplay-prioritized**. DACK does not need to OCR a whole page before play. Instead, each toolkit should predict which regions are likely to matter next and queue those first: Brickbat reads word targets near the paddle and ball path; Platformer reads words along the player's facing/projectile ray; Pinball reads lit lanes, rollover banks, and ball-near targets; Snake/Maze reads nearby pellets, doors, and power words. Tesseract is the preferred first spike because it is free/open and can run offline, but it should remain behind a swappable service boundary so UIA/native labels or another OCR provider can replace or supplement it later.
+
+The development corpus for this pipeline is documented in [`docs/DACK-Document-Analysis-Fixture-Matrix.md`](docs/DACK-Document-Analysis-Fixture-Matrix.md). It deliberately covers sparse desktop icons, nested application rectangles, spreadsheet/Gantt grids, light and colored text, fixed-width ASCII, and temporal browser frames. These fixtures are the acceptance basis for rectangle/icon discovery and background estimation.
 
 End-user packaging should present this as **Word Sense** or **Page Reading**, not as a scary OCR subsystem. The product rule is:
 
@@ -205,15 +212,15 @@ The same pattern applies to `BRIDGE`, `CONVEYOR`, `ELEVATOR`, `DOOR`, `CHECKPOIN
 ### 5.3 Four Modes of Level Sourcing, Delivered in Order
 
 - **Snapshot Clone Mode (engine baseline):** the desktop, window, region, or image is cloned once and frozen as a static background/level asset. It is deterministic, shareable, safe, and works with any visible file.
-- **Live Desktop Mode (second):** DACK renders a cloned playfield beside the desktop or a transparent overlay above it. Geometry re-samples on window-move events so actors understand moving/resizing window boundaries. The game may *simulate* a window being breached, disabled, or closed inside the clone; it never sends that action to the real window.
+- **Manual-refresh Desktop Mode (second):** DACK renders a cloned playfield beside the desktop or a transparent overlay above it. It captures once, then stays on the immutable Snapshot and mutable clone until the creator explicitly chooses **Refresh Source**. A lightweight source-change badge may advise the creator, but no capture, analysis, OCR, or geometry transaction runs automatically. The game may *simulate* a window being breached, disabled, or closed inside the clone; it never sends that action to the real window.
 - **Native Document Mode (later):** a supported, sandboxed importer derives geometry from a cloned file's structure. This is enhancement, not the universal compatibility layer.
-- **Live Document Mode (later, no add-in required):** DACK observes accessible text, selection, save, and layout signals and updates the cloned level in near-real time. The game never writes into the document. An app-specific add-in is considered only after a demonstrated use case cannot be served by capture/UIA.
+- **Live Document Mode (later, explicit refresh first):** DACK may observe accessible text, selection, save, and layout signals to show a non-invasive "Refresh available" advisory, but the cloned level updates only after creator approval. Continuous near-real-time updates remain an opt-in experiment. The game never writes into the document. An app-specific add-in is considered only after a demonstrated use case cannot be served by capture/UIA.
 
 RAD milestone note: the static screenshot prototype has achieved its purpose. It proved text-as-platform, text-as-target, clone-only erasure, cross-playset deformation, reusable projectiles/effects, multiple play families, and a first editor shell. It remains the deterministic smoke-test path. The active plateau is to stabilize and extract the shared session/UI/environment/asset/persistence spine; **Live Desktop Mode and coordinated two-monitor editing are the next product validation path built on that spine**, not a second parallel engine.
 
 **Snapshot** is the authoring version of Snapshot Clone Mode. It is the moment the creator says: this document/window/desktop region now works as a level; freeze the playable clone, save the detected geometry, cache any background OCR/Word Sense results, and let me build on that stable artifact. The creator can keep editing the real source and re-snapshot later, but the level itself is grounded in a DACK-owned clone that can be reset, damaged, promoted to a variant, or exported without touching the original.
 
-The level/package format for this lives in `docs/DACK-Level-Snapshot-Format.md`. In short, a `.dacklevel` stores the frozen image, geometry, OCR labels, placed tools, rules, assets, source-clone policy, and mutation variants. A `.dackpack` bundles one or more levels for sharing. Hub publishing uses scrubbed clones only; metadata scrubbing is mandatory and cannot be disabled.
+The level/package format for this lives in `docs/DACK-Level-Snapshot-Format.md`. In short, a `.dacklevel` stores the frozen image, geometry, OCR labels, placed tools, rules, assets, source-clone policy, and mutation variants. A `.dackpack` bundles one or more levels for sharing. Hub publishing uses scrubbed clones only; metadata scrubbing is mandatory and cannot be disabled. The refresh transaction is defined in [`docs/DACK-Live-Capture-and-Understanding-Plan.md`](docs/DACK-Live-Capture-and-Understanding-Plan.md): a candidate is analyzed off the active game path, previewed, then applied as a new Snapshot or discarded.
 
 ### 5.4 Source-Family / App-Archetype Affinity Matrix
 
@@ -241,7 +248,7 @@ The source family's native visual grammar should suggest the first few game type
 
 Design principle: **recommend by source grammar, not by file extension alone, and never lock the creator out of a weird idea.** Any toolkit should be applicable to any captured screen. The affinity matrix only chooses good defaults: a Word document full of diagrams might recommend Racing or Pinball; a Photoshop canvas full of text might recommend Brickbat; an Excel sheet used as a dungeon map should recommend RPG. The source detector should therefore combine app identity, geometry, text density, grid/path/layer signals, and creator intent, then let the creator force any playset onto any source.
 
-Pinball's natural home is visual/layered/canvas-heavy material: Photoshop, Illustrator, PowerPoint, Paint/whiteboards, and desktop/icon layouts. It can work on Word, especially for BBS backglass or text-themed boards, but Word's strongest native games remain text traversal, text destruction, semantic word-objects, and writing-reactive play.
+Pinball's natural home is visual/layered/canvas-heavy material: Photoshop, Illustrator, PowerPoint, Paint/whiteboards, desktop/icon layouts, and blank or nearly blank text files. A sparse text canvas gives a color ANSI board skin, logo, and art cards room to establish the table. It can work on Word, especially for BBS backglass or text-themed boards, but dense documents should default to a quieter blend or text-protected margins; Word's strongest native games remain text traversal, text destruction, semantic word-objects, and writing-reactive play.
 
 ---
 
@@ -450,6 +457,8 @@ The product UI groups construction by **view/control family**, then offers named
 - Paragraph/text tools include **slant paragraph**, **raise/lower line**, and **stagger rows** operations so creators can turn ordinary text blocks into Donkey Kong-style diagonal ramps while preserving native document readability in the clone. The tool stores a transform/physics overlay, not a mutation of the original source.
 - Single-spaced text can act as a crawl/climb surface in Climber mode: the character should be able to crawl up or down dense rows of text with a distinct crawl animation, separate from ladder climbing.
 - Text-as-terrain and text-as-climbable must be rules, not assumptions. A creator can decide whether text supports the player, whether text can be crawled/climbed, and whether projectiles/actors can destroy it. The same capability flags should later apply per actor/enemy/projectile: a spider enemy might climb text, a ghost might ignore it, a drill might destroy it, and a courier might treat it as solid ground.
+- Text surface policy must include `ignore`, `solid-platform`, `solid-block`, `climbable`, `crawlable`, and `hybrid`. Line spacing is a visible suggestion—not a hardcoded law: tight/single-spaced rows may become a crawl/fence face, loose/double-spaced rows may become separated ledges or ladder-required gaps, and the creator can override either interpretation per text block.
+- The 8-bit player profile must bind `canClimbText`, `canCrawlText`, `canUseLadders`, and explicit climb/crawl animation labels independently. A climb-capable actor without a mapped animation should show a diagnostic and fall back safely rather than appear to ignore the surface.
 - Action verbs include shoot and dig. Shooting removes/mutates text regions at range; digging removes/mutates terrain locally over time. Both operate only on the cloned playfield and publish deformation events that other playsets can inherit.
 - Entities: player, patrol enemies, collectibles (icons or images), hazards, moving platforms, goal flag.
 - Win conditions: reach exit, collect N items, survive timer, or (Live Document Mode) reach a word-count goal.
@@ -476,6 +485,7 @@ The product UI groups construction by **view/control family**, then offers named
 ### 9.4 Paddle / Clearing: Brickbat and Marble-Track Presets
 
 - **Brickbat:** the target wall is auto-generated from letters, words, headings, icon grids, tiled thumbnails, cells, or accepted regions, with document-native erasure and literary bonuses.
+- **ANSI Target Table:** a color ANSI/CP437 skin can provide the visual wall, framing, logos, and bonus language—especially on a blank text file—while accepted text/region targets remain the exact destructible gameplay layer. ANSI cells become targets only through explicit creator promotion.
 - **Marble-track preset:** a color/match/route track is hand-drawn as a spline across the cloned source; marble colors may be sampled from the source palette.
 - Params: ball speed, combo rules, track shape, color count.
 - **Featured preset: "Grow a Garden."** Live Document Mode ruleset where new writing sprouts decorative platforms/flora with no combat framing — the ambient, non-adversarial counterpart to "Word War."
@@ -511,6 +521,7 @@ The product UI groups construction by **view/control family**, then offers named
 ### 9.8 Ball / Table Physics: Pinball
 
 - Core authoring model: place a plunger/launch lane, flippers, bumpers, slingshots, rollover lanes, drop targets, gates, ramps, kickers, drains, outlanes, bonus inserts, and score rules on top of the cloned document.
+- Default authoring state: opening Pinball creates a native-resolution Starter Table Shell with side rails, lower returns, apron, drain sensor, plunger lane, launch point, correctly sloped flippers, posts, and starter rebound targets. The creator can reshape or clear only those generated parts; the source clone and its mutations are untouched.
 - Natural document mappings: paragraph gutters become lanes, heading blocks become bumpers, bullet lists become drop targets, icons/pillboxes become lit inserts, margins become outlanes, tables become rollover grids, and semantic words become missions or jackpot targets.
 - Table geometry rules: document/page bounds, gutters, detected text blocks, creator-painted rails, one-way gates, ramp splines, holes, kickers, lanes, outlanes, drain zones, safe launch lanes, and optional invisible guide walls.
 - Ball rules: ball count, launch force, gravity/table tilt, elasticity, friction, spin/english, max speed, stuck-ball rescue, multiball cap, and whether ball impacts deform the shared clone.
@@ -595,6 +606,7 @@ DACK needs a small, stable vocabulary of verbs that toolkits, AI behaviors, even
 | Racing/routes | steer, accelerate, brake, drift, checkpoint, lap, boost, go off-track | traction, turn rate, checkpoint order, lap count, best time, off-track penalty, ghost replay |
 | Pinball | launch, flip, bump, nudge, tilt, rollover, drain, lock, jackpot | table tilt, flipper arc/force, bumper force, lane state, tilt meter, ball save, bonus count |
 | Snake/maze | collect, grow, turn, wrap, tunnel, chase, scatter, flee, patrol, eat wall/text | grid size, turn buffer, pellet value, growth amount, route cost, power duration, enemy mode, tunnel endpoints |
+| Geometry / routing | generate maze, overlay grid, snap, find path, place point, draw polyline, draw Bezier, draw parabola | rectangular/hex topology, seed, cell size, entry/exit, route cost, control points, tangents, peak, gravity, sampled profile |
 | Combat | aim, shoot, burst, charge, melee, block, dodge, take cover | range, rate, spread, damage, ammo, cooldown, line of sight |
 | Projectile | travel, arc, home, bounce/ricochet, pierce, split, explode | velocity, lifetime, turn rate, bounce count, blast radius |
 | Terrain / mutation | dig, cut, build, repair, crumble, reveal, paint, transform, erase text, deform clone | material, hardness, health, support, replacement tile/state, source/current geometry delta |
@@ -609,6 +621,25 @@ DACK needs a small, stable vocabulary of verbs that toolkits, AI behaviors, even
 | Presentation | animate, emote, speak, highlight, shake, play sound | duration, layer, volume, accessibility alternative |
 
 Toolkits expose curated subsets. The underlying runtime uses the same verbs everywhere, so "bounce" can describe a Brickbat ball, a pinball bumper rebound, a Combat ricochet, or a thrown RPG object; "dig" can modify a tile dungeon, a spreadsheet grid, creator-painted terrain, or text-bearing regions in a cloned document. Mutation verbs publish source/current geometry deltas so later playsets can inherit, reset, undo, or save the deformed clone deliberately.
+
+### 10.6 Shared Geometry & Motion Authoring
+
+The engine must expose a reusable geometry layer before it grows more genre-specific shelves. These tools are creator-facing views over the same native-resolution `EnvironmentMap` and `SimulationWorld` services:
+
+- **Maze Generator:** deterministic, seeded rectangular or hexagonal mazes with entry/exit constraints, loops, difficulty controls, and a preview diff against the source clone.
+- **Path Finder:** explainable route queries over text, grids, placed solids, gates, and hazards. A* / breadth-first search is the baseline; flow-field output can serve large enemy waves.
+- **Grid Overlay:** non-destructive rectangular and hexagonal overlays with cell IDs, snap/inspect modes, coordinate transforms, and separate visual/collision state.
+- **Path / Point / Curve generation:** named points, polylines, Bezier handles, tangents, loops, branches, and arc-length sampling for patrols, conveyors, elevators, ropes, vines, racing lines, and projectile paths.
+- **Parabola Editor:** editable start/end/peak or angle/velocity controls with a live gravity preview, landing prediction, and reusable sampled motion profile.
+- **Inertia settings:** acceleration, drag, braking, reverse time, angular inertia, maximum speed, and control response with ground, vehicle, air, and space presets.
+
+Document blocks are first-class geometry, not a special-case texture. A creator can select a paragraph, heading, line band, table row, or word group and rotate or slant the DACK clone at arbitrary angles. The transform preserves a reversible mapping to source pixels and word/glyph IDs, so OCR, erasure, collision, and selection still agree. Collision/display policy is explicit: readable text, hybrid text-plus-art, or raster clone; glyph mask, oriented block, baseline, climb surface, or visual-only gameplay surface.
+
+The same local-space contract drives Donkey Kong-style recipes: slanted paragraph platforms, vertical ladders between them, and downhill rolling enemy spawn routes with bounded counts, speed, radar, and trigger settings. Attachments may inherit the block transform or be detached into world space, and all handles remain editable in Build mode while hidden in Play mode. See the [Document Geometry and Pagination Plan](docs/DACK-Document-Geometry-and-Pagination-Plan.md).
+
+Long Word/Writer/PDF/browser sources expose a `PageSequence`. Each page is an ordinary Level Card with its own Snapshot, environment map, OCR cache, objects, routes, and mutations; the sequence owns ordering, transitions, shared assets, and persistence rules. The default play flow is one native-resolution page at a time, with goal/portal/edge transitions and optional camera scrolling. Background capture, page-boundary detection, and lazy OCR reconcile changed scroll positions without requiring a native importer or touching the original document.
+
+Generated geometry is versioned, seeded where applicable, undoable, and saved as creator data; it never overwrites the captured source. Overlays may be hidden in Play mode while their paths, grids, and collision rules remain active. These tools are an optimization/refactoring dependency as much as a feature list: no toolkit should invent a second grid, path, curve, or inertia representation.
 
 ---
 
@@ -638,10 +669,13 @@ DACK should support an intentionally opaque **Textmode/BBS layer**: a rendered g
 Design target:
 
 - **Opaque layer, not transparent overlay by default.** When enabled, the layer can fully cover regions of the clone, producing a BBS/ANSI-board feel while the underlying clone remains safe and recoverable.
+- **Underlay/base composition.** Pinball Board Skin mode may place the full-color ANSI render beneath the playfield. The cached background map controls whether the source background is opaque, blended, or allowed to yield; native text, icons, and physical table parts stay above it and remain legible.
 - **Grid-aware renderer.** Fixed cell size, monospace layout, palette control, optional CP437/box-drawing characters, scanline/CRT treatment, and a readable fallback for modern Unicode/ASCII-only contexts.
+- **Native `.ANS` intake.** DACK should parse classic ANSI byte streams into a bounded terminal-cell buffer, honoring a safe subset of CSI/SGR color and cursor commands plus CP437-style glyphs. SAUCE metadata is displayed as provenance information but never treated as a license grant. The King Diamond fixture in the analysis matrix is the first parser/color-state test.
 - **Generated first, curated later.** The safest default path is generated textmode art: FIGlet/FIGfont banners, boxed panels, ANSI-style borders, procedural glyph sprites, and word/letter transformations created from DACK data. Curated external ASCII/ANSI art packs are admitted only with explicit provenance and compatible license terms.
 - **Skinnable display modes.** Quiet terminal, BBS neon, monochrome green/amber, IBM DOS CP437, ANSI color board, and "opaque dungeon map" presets.
 - **Two-way presentation.** A semantic object can display as plain text, textmode art, equivalent sprite, or hybrid. Example: `JACKPOT` can stay as readable text, become an ANSI backglass insert, or render as a flashing BBS banner while retaining the underlying word anchor.
+- **Pinball board-skin mode.** ANSI art can define the table's color/mood layer while a separate coordinate-aligned physics layer supplies rails, flippers, bumpers, drains, and launch lanes. Regions may suggest physical parts, but promotion always requires creator confirmation.
 
 Candidate open sources to evaluate:
 
@@ -666,6 +700,7 @@ The in-app art system is not "junior Aseprite." It has two complementary DACK-na
 
 - **Live-linked pad — the quick pixel path.** Selecting an entity can open a small constrained pad beside the playfield or inside Sprite Studio's Frame task. Every pixel edit updates that entity in the editor and running preview immediately—no export, refresh, or re-import step. This applies §10.4's instant-feedback principle to art.
 - **Sprite Studio — the primary DACK actor/animation assembly path.** The larger owned workspace handles picking/importing frames, source-specific slicing, action labels and sequences, preview/edit, origins/boxes, behavior cards, projectiles, explosions, sounds, effects, and reusable character profiles. It contains the pad; it does not turn the pad into a general-purpose image editor.
+- **Internal calibrated-grid import.** For development sheets that defeat automatic slicing, Sprite Studio exposes a draggable grid with live cell previews, gutters, skipped cells, baseline/origin overlays, and manual exclusions. Saving the calibration produces the same reviewed manifest used at runtime; the detector never silently overwrites it.
 - **Constraint is a feature.** Start with fixed profiles: C64-like 24×21, DACK 32×32, and a 64×64 compatibility profile for imported/RAD sheets. Each uses a small creator-selected palette, one transparent entry, and nearest-neighbor display zoom. These are aesthetic/product constraints, not an attempt to emulate Commodore hardware exactly.
 - **Small first toolset:** pencil, eraser, fill, line, picker, mirror, palette slots, transparent-color preview, undo/redo, clear, and duplicate. Animation timelines, layers, masks, scripting, and broad image manipulation stay out of the initial pad.
 - **Safe binding semantics:** the header always states whether the creator is editing the shared entity-type sprite or a per-instance fork. Choosing "Edit this one" clones the sprite before the first pixel change so a local tweak cannot silently alter every actor of that type.
@@ -859,6 +894,9 @@ The Boss Key is a separate safety budget: hiding/neutralizing DACK, muting audio
 - **Asset shelf / parts palette.** Every toolkit gets a shelf of draggable assets and tools. The shelf behaves like a construction-kit toybox: thumbnail, name, source/license badge, category, and drag preview. Dragging an item onto the playfield creates a placed object with immediate handles and a property sheet. Shelf contents include built-in primitives, curated third-party assets, user sprites, semantic word tools, invisible triggers, and generated objects from auto-detection.
 
 - **Shelf categories.** Suggested top-level categories: Actors, Terrain, Motion Tools, Hazards, Pickups, Triggers, Effects, Text/Semantic Tools, Invisible Logic, and Toolkit Parts. Pinball adds Flippers, Balls, Plungers, Bumpers, Ramps, Gates, Rollovers, Inserts, Drains, Nudges, and Score/Mission Logic. Brickbat adds Paddles, Ball Rules, Target Recipes, Powerups, Lasers, Scoring, and Persistence. Platformer adds Platforms, Ladders, Slides, Conveyors, Elevators, Checkpoints, Diggable Terrain, Enemies, and Projectiles. Snake/Maze adds Maze Walls, Pellets, Tunnels, Enemy Homes, Chase/Flee Presets, Power States, Wrap Edges, Route Heatmaps, and Growth Rules.
+- **Compact character picker.** The Player, Enemy, Spawn, Builder, Projectile, and effect surfaces use the same two-level picker: a top-level role/family pull-down followed by an individual asset pull-down. The selected card shows its name, preview, provenance, and recent/favorite state, keeping the shelf compact without hiding the available library.
+- **Single-key test loop.** `F6` toggles Build/Edit mode and Play mode while preserving the current level, selection, and toolkit state. `Esc` remains the menu/close/navigation command; text-entry fields temporarily consume `F6` so editing text is not interrupted.
+- **Palette profiles.** Sprite authoring starts from constrained, reversible profiles (C64 16, DOS/ANSI, DACK 32/64, Game Boy, monochrome/duotone) and can opt into a source-preserving full-color palette or a custom palette. Transparency is always explicit and palette changes never rewrite the source asset.
 
 - **Drag-create-edit loop.** Shelf interaction must be one fluid gesture: drag from shelf → preview snaps/aligns on playfield → release to place → handles appear → inspector opens. Handles are direct manipulation first (flipper sweep arcs, ramp splines, ladder endpoints, bumper radius, laser beam width, spawn range, patrol path) with numeric fields as backup.
 
@@ -917,6 +955,7 @@ Session-preserving navigation and explicit layer ownership are locked in ADR-001
 - **One-click Test Play**: launches the level immediately without a separate export step.
 - **Ruleset presets**: ready-made rulesets per toolkit ("Word War," "Grow a Garden," and the earlier static presets) so a new player gets a working game before touching a slider.
 - **Sprite workflow:** selecting an entity can open the constrained live-linked pad for quick pixels or Sprite Studio for frame/animation/actor-card work; edits appear in the bound preview immediately. Aseprite export-refresh is the advanced production path (§11.4).
+- **Sprite preview and shadow contract:** Sprite Studio and the running game must bind the same validated frame, facing, flip, origin, and scale. A missing preview is a binding error, not a silent blank canvas. Shadows reuse that transform, default to a subtle back/left page-light offset, and may switch to a facing-relative offset; the Dragon backwards-shadow case is a required regression test. A later showcase tier may derive shadow geometry from one shared scene light, with an automatic fallback to the cheap shadow path.
 - **Boss Key settings:** visible during onboarding and in the title bar/tray menu, configurable, conflict-checked, and testable. The escape route must never be hidden inside a game-only screen.
 - **Playset packaging wizard:** shows every cloned frame/source/asset, license/share tag, sanitization result, and a mandatory preview before export (§16).
 
@@ -998,11 +1037,12 @@ These are **proven mechanics**, not a finished architecture or publishable produ
 3. Make every editor surface responsive, scrollable, high-contrast, and recoverable through a consistent Esc/close ownership stack.
 4. Extract session, input, UI shell, selection, HUD, and command/undo boundaries from the root controller.
 5. Build one cached document-analysis product, stable region IDs, spatial environment queries, active/deleted state, and dirty-region mutations.
-6. Compile source-specific sprite imports into reviewed manifests and load curated actor defaults from data.
-7. Extract shared actor/projectile/damage/perception/goal systems and register the existing playsets through toolkit descriptors.
-8. Migrate level/animation persistence to versioned DTOs with atomic saves, stable IDs, migrations, and Snapshot caches.
-9. Complete one creator-authored office-document level end to end: choose source → detect/understand → place player/start/goal/enemies/tools → tune cards/animations/rules → play → save → reload.
-10. Keep Platformer and Brickbat as the primary acceptance loops; Pinball and Overhead remain architectural stress tests rather than parallel full-content productions.
+6. Complete the text-understanding/erasure overhaul and compile source-specific sprite imports into reviewed manifests; ambiguous mixed-content sheets must stop for creator correction.
+7. Define the shared geometry contracts for grids, mazes, paths/curves, parabolas, and inertia before adding more genre-specific editors.
+8. Extract shared actor/projectile/damage/perception/goal systems and register the existing playsets through toolkit descriptors.
+9. Migrate level/animation persistence to versioned DTOs with atomic saves, stable IDs, migrations, and Snapshot caches.
+10. Complete one creator-authored office-document level end to end: choose source → detect/understand → place player/start/goal/enemies/tools → tune cards/animations/rules → play → save → reload.
+11. Keep Platformer and Brickbat as the primary acceptance loops; Pinball and Overhead remain architectural stress tests rather than parallel full-content productions.
 
 **Exit criterion:** a casual PC user can turn a visible office page into a stable playable level, understand and correct what DACK detected, save/reload it, and exit instantly without the original being touched; the dense benchmark remains responsive and new content no longer requires another root-controller branch.
 
@@ -1013,6 +1053,7 @@ These are **proven mechanics**, not a finished architecture or publishable produ
 - Separate coordinated playfield and editor windows sharing one session, with multi-monitor focus and Boss Key teardown tested.
 - Ambient first-launch experience and intensity controls.
 - A polished Platformer/Document Runner construction loop using the now-stable terrain, actors, cards, goals, enemies, ladders, conveyors/elevators, semantic tools, and creator defaults.
+- Shared geometry authoring in that loop: rectangular/hex grid overlay, point/path/Bezier handles, parabola preview, and inertia presets for ground, vehicle, air, and space motion.
 - First compact **RPG/Roguelike Document Dungeon** using the 8-bit dungeon playset, glyph/text maps, keys, doors, hazards, monsters, inventory seed, and text/graphic toggle.
 - Embedded/local OCR provider work behind the existing optional Word Sense boundary; geometry-only play remains complete when it is off.
 - First semantic word-object tools: vertical `LADDER`, `TARPIT`, `BRIDGE`, `KEY`, and `DOOR`, with text/graphic/hybrid presentation and appropriate direct handles.
@@ -1023,6 +1064,7 @@ These are **proven mechanics**, not a finished architecture or publishable produ
 - UIA text/selection activity feed and the Activity Event Map—no Office add-in.
 - `Word War` (Engaged default), `Grow a Garden` (Ambient), and document-defense presets.
 - Deeper Pinball/Brickbat/Overhead, followed by Racing/Route, Snake/Maze, Tower Defense/Offense/Escort, Space/Air, and other presets composed from shared verbs.
+- Seeded Maze Generator and Path Finder over text/grid/source geometry, with explainable route overlays and creator-editable constraints.
 - Action squad orders and light worker/gather/build mechanics inspired by Cannon Fodder, Syndicate, and Age of Empires.
 - Rebuild/diff flow for recaptured frames and text maps.
 - Semantic word-object expansion across toolkits: literary bonuses, platformer hazards/tools, RPG glyph/word actors, route objectives, and word harvesting/protection.

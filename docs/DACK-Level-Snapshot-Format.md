@@ -181,6 +181,27 @@ The creator-facing rule is the same as for enemies:
 
 For implementation, `.dacklevel` becomes the saved Level Card format, while `.dackpack` becomes the Playset/Campaign Card format. A later `.dackworld` or world section inside `.dackpack` can group levels without forcing every project to become a campaign.
 
+### PageSequence: one document, many levels
+
+When the source is a multi-page Word, Writer, PDF, or browser document, DACK may create a `PageSequence`. The sequence preserves document order and owns shared assets, progression, transition, and persistence rules; each page remains an ordinary Level Card with its own immutable Snapshot, environment map, OCR cache, placed objects, routes, and mutations.
+
+```json
+{
+  "documentId": "doc-001",
+  "sourceVersion": "capture-0007",
+  "pages": [
+    { "pageId": "page-001", "ordinal": 1, "snapshotId": "snapshot-001", "nativeSize": [1920, 1080] },
+    { "pageId": "page-002", "ordinal": 2, "snapshotId": "snapshot-002", "nativeSize": [1920, 1080] }
+  ],
+  "transitionPolicy": { "default": "goal-or-portal", "allowEdgeExit": false },
+  "persistencePolicy": { "player": "sequence", "score": "sequence", "mutations": "page" }
+}
+```
+
+The default runtime shows one page at native resolution at a time. A page may also define a camera viewport for horizontal or vertical scrolling; scrolling changes the view transform, not Snapshot coordinates or source pixels. `Next Page`, `Previous Page`, goals, portals, and edge exits are all transition types. Page analysis and lazy OCR can preload the next page in the background.
+
+Stable page IDs are matched across scroll recaptures or re-snapshots using source hashes, page/layout signatures, text geometry, and ordinal hints. Uncertain matches are flagged for creator review. A page-local mutation (such as a Brickbat erase) stays on that page by default; a sequence-global rule (score, inventory, unlock, or shared objective) is explicit. The original document is never edited, and a published package remains playable from frozen page Snapshots alone.
+
 ## Manifest Fields
 
 `manifest.json` should answer the broad questions quickly:
@@ -319,7 +340,47 @@ Design rule: OCR can add meaning, but the level must still play without it.
 
 The same schema should cover platformer ladders, ramps, slides, conveyors, elevators, checkpoints, invisible triggers, enemy spawns, spline routes, pinball rails, flippers, bumpers, racing start lines, tower-defense paths, and RPG room markers.
 
+Toolkit starter geometry uses the same schema with `starterGenerated: true` and a toolkit/preset source. For Pinball this records the generated table shell, so **Clear Starter Shell** can remove only those objects and save/load can preserve the creator's decision not to regenerate them.
+
 Endpoint editing is central. A placed object can be moved as a body or reshaped by dragging endpoints, and its saved record should reflect that directly.
+
+## Generated Geometry and Motion Profiles
+
+Generated authoring data is creator geometry, not a rewrite of the captured source. It belongs in the level package so a maze, route, or motion profile can be edited, reset, and reused across playsets:
+
+```json
+{
+  "geometry": [
+    {
+      "id": "maze-001",
+      "kind": "maze",
+      "topology": "hex",
+      "seed": 18421,
+      "bounds": [120, 160, 980, 680],
+      "entry": "cell-0003",
+      "exit": "cell-0412",
+      "source": "creator-generated"
+    },
+    {
+      "id": "patrol-001",
+      "kind": "bezier-path",
+      "points": [[80, 640], [320, 420], [760, 500], [1100, 300]],
+      "closed": false,
+      "sampling": { "mode": "arc-length", "step": 8 }
+    },
+    {
+      "id": "jump-profile-001",
+      "kind": "parabola",
+      "start": [420, 700],
+      "end": [760, 500],
+      "gravity": 980,
+      "inertia": { "acceleration": 2200, "drag": 0.08, "braking": 1800 }
+    }
+  ]
+}
+```
+
+Rectangular and hexagonal grids share one cell/neighbor contract. Path Finder consumes either grid cells or continuous route geometry and reports costs/blockers for editor overlays and AI. Curves and parabolas store handles or their source parameters, not only a baked point list, so creators can continue tuning them. A generated maze or path may use text-derived obstacles, placed objects, or both; the underlying source remains immutable.
 
 ## Mutations and Variants
 
@@ -362,6 +423,8 @@ Recommended first controls:
 - **Re-snapshot:** capture the source again and attempt to preserve placed objects.
 - **Freeze Baseline:** lock the current clone as the pristine reset point.
 - **Run Word Sense:** start or resume background OCR.
+
+`Re-snapshot` is an explicit refresh transaction, not an automatic live update. DACK captures and analyzes a temporary candidate, shows a diff, and applies it only after the creator chooses `Apply as New Snapshot` or `Rebind and Apply`. Until then, the active Snapshot, clone, mutations, collision map, and gameplay remain unchanged. `Discard` removes the candidate without affecting the level.
 - **Save Variant:** package current deformations as a named variant.
 - **Show Understanding:** overlay detected letters, words, background regions, icons, boundaries, and OCR labels.
 - **Export Pack:** create a `.dackpack`.

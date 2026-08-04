@@ -3,6 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-07-30
 - **Decision owners:** DACK project
+- **Implementation companion:** [DACK Live Capture and Understanding Plan](../DACK-Live-Capture-and-Understanding-Plan.md)
 - **Supersedes implementation details in:** ADR-0008
 - **Related:** Desktop Arena Design Document §§5.1–5.2.1, 7.6, 13, 15, 17–18
 

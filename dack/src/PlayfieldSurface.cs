@@ -15,6 +15,7 @@ public partial class PlayfieldSurface : Control
     private CapturedPageFrame? _capturedPage;
     private readonly PsychedelicEffects _letterEffects = new();
     private readonly List<WorldObject> _placedWorldObjects = [];
+    private readonly RandomNumberGenerator _placementRandom = new();
     private Vector2[] _playerShotPositions = [];
     private Vector2[] _enemyShotPositions = [];
     private EffectVisual[] _impactEffects = [];
@@ -47,6 +48,7 @@ public partial class PlayfieldSurface : Control
     public override void _Ready()
     {
         MouseFilter = MouseFilterEnum.Pass;
+        _placementRandom.Randomize();
         _brick = LoadPng("res://assets/third_party/8-bit-dungeon/brick-solid.png");
         _platform = LoadPng("res://assets/third_party/8-bit-dungeon/platform.png");
         _window = LoadPng("res://assets/third_party/8-bit-dungeon/window-2.png");
@@ -361,7 +363,7 @@ public partial class PlayfieldSurface : Control
     {
         Rect2 bounds = PlayBounds;
         float unit = TextUnitPixels;
-        Vector2 center = bounds.GetCenter();
+        Vector2 center = GetRandomPlacementCenter(kind, bounds, unit);
 
         WorldObject placed = kind switch
         {
@@ -393,11 +395,69 @@ public partial class PlayfieldSurface : Control
         QueueRedraw();
     }
 
+    private Vector2 GetRandomPlacementCenter(WorldObjectKind kind, Rect2 bounds, float unit)
+    {
+        // Leave enough room for the longest default line objects and keep the
+        // first placement away from the exact center. The creator can then
+        // drag/rotate the new instance precisely; repeated clicks create new
+        // instances instead of reusing a single center slot.
+        float horizontalMargin = unit * (kind == WorldObjectKind.PinballPlunger ? 20f : 16f);
+        float verticalMargin = unit * (kind is WorldObjectKind.PinballPlunger or WorldObjectKind.PinballDrain ? 20f : 14f);
+        float minX = bounds.Position.X + horizontalMargin;
+        float maxX = bounds.End.X - horizontalMargin;
+        float minY = bounds.Position.Y + verticalMargin;
+        float maxY = bounds.End.Y - verticalMargin;
+
+        if (maxX <= minX || maxY <= minY)
+            return bounds.GetCenter();
+
+        for (int attempt = 0; attempt < 24; attempt++)
+        {
+            Vector2 candidate = new(
+                _placementRandom.RandfRange(minX, maxX),
+                _placementRandom.RandfRange(minY, maxY)
+            );
+
+            bool tooClose = false;
+            foreach (WorldObject existing in _placedWorldObjects)
+            {
+                if (existing.Center.DistanceTo(candidate) < unit * 5f)
+                {
+                    tooClose = true;
+                    break;
+                }
+            }
+
+            if (!tooClose)
+                return candidate;
+        }
+
+        // Crowded levels still get a predictable, usable fallback rather than
+        // stacking another object directly on the previous selection.
+        int fallbackIndex = _placedWorldObjects.Count;
+        Vector2 fallback = bounds.GetCenter() + new Vector2(
+            ((fallbackIndex % 5) - 2) * unit * 6f,
+            ((fallbackIndex / 5) % 4 - 1.5f) * unit * 5f
+        );
+        return new Vector2(
+            Mathf.Clamp(fallback.X, minX, maxX),
+            Mathf.Clamp(fallback.Y, minY, maxY)
+        );
+    }
+
     public void AddMarker(MarkerRole role, bool visibleInPlay)
     {
         Rect2 bounds = PlayBounds;
         float unit = TextUnitPixels;
-        Vector2 center = bounds.GetCenter() + new Vector2(unit * 8f, unit * 6f);
+        WorldObjectKind markerKind = role switch
+        {
+            MarkerRole.Switch => WorldObjectKind.HiddenSwitch,
+            MarkerRole.EnemySpawn => WorldObjectKind.EnemySpawnPoint,
+            MarkerRole.Start => WorldObjectKind.StartPoint,
+            MarkerRole.End => WorldObjectKind.GoalPoint,
+            _ => WorldObjectKind.Checkpoint
+        };
+        Vector2 center = GetRandomPlacementCenter(markerKind, bounds, unit);
         WorldObject marker = CreateMarker(center, unit, role, visibleInPlay);
         _placedWorldObjects.Add(marker);
         _selectedWorldObjectIndex = _placedWorldObjects.Count - 1;

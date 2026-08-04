@@ -1,0 +1,19 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://bh77gienrm5oj"
+
+[deps]
+
+files=["res://assets/third_party/kenney-audio/MANIFEST.source.translation", "res://assets/third_party/kenney-audio/MANIFEST.source.translation", "res://assets/third_party/kenney-audio/MANIFEST.semantic.translation", "res://assets/third_party/kenney-audio/MANIFEST.transformation.translation", "res://assets/third_party/kenney-audio/MANIFEST.license.translation", "res://assets/third_party/kenney-audio/MANIFEST.creator.translation", "res://assets/third_party/kenney-audio/MANIFEST.license.translation", "res://assets/third_party/kenney-audio/MANIFEST.bytes.translation", "res://assets/third_party/kenney-audio/MANIFEST.source.translation", "res://assets/third_party/kenney-audio/MANIFEST.runtime.translation"]
+
+source_file="res://assets/third_party/kenney-audio/MANIFEST.csv"
+dest_files=["res://assets/third_party/kenney-audio/MANIFEST.source.translation", "res://assets/third_party/kenney-audio/MANIFEST.source.translation", "res://assets/third_party/kenney-audio/MANIFEST.semantic.translation", "res://assets/third_party/kenney-audio/MANIFEST.transformation.translation", "res://assets/third_party/kenney-audio/MANIFEST.license.translation", "res://assets/third_party/kenney-audio/MANIFEST.creator.translation", "res://assets/third_party/kenney-audio/MANIFEST.license.translation", "res://assets/third_party/kenney-audio/MANIFEST.bytes.translation", "res://assets/third_party/kenney-audio/MANIFEST.source.translation", "res://assets/third_party/kenney-audio/MANIFEST.runtime.translation"]
+
+[params]
+
+compress=1
+delimiter=0
+unescape_keys=false
+unescape_translations=true

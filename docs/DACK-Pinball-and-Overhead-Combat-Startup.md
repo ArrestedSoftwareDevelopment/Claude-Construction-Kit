@@ -10,6 +10,8 @@ Pinball and the Overhead toolkit are good next reaches because they stress diffe
 
 Pinball proves curved/rotating handles, continuous ball physics, bouncy surfaces, scoring inserts, and spectacular reusable effects. It wants canvas-like sources: image editors, drawing apps, PowerPoint/Draw, desktop layouts, and opaque BBS/textmode boards.
 
+Source-fit default: a blank or nearly blank text file is an excellent Pinball canvas because the ANSI board skin can establish the color, logo, and table mood without competing with dense source content. On a busy document, DACK should recommend a quieter blend, smaller art card, or text-protected margins instead of forcing a full-bleed skin.
+
 The Overhead toolkit is a camera/control family, not one game. Its first preset can be Combat, but the same foundation also supports driving, planes, spaceships, RPG/adventure actors, animals, insects, office creatures, and swarm systems. It proves directional actors, rotation, steering, shooting or interacting, cover, line of sight, route following, flocking/swarming, and desktop/window geometry as rooms/roads/terrain.
 
 The first playable slices have now served their purpose: Pinball has a ball/flipper/plunger/text-clearing loop, and Overhead has begun proving its actor family. Further work follows the stabilization, profiling, and extraction gates in the optimization plan. The phases below remain capability checklists and acceptance tests, not an independent coding order.
@@ -66,6 +68,25 @@ Start with procedural/debug parts before imported art:
 - rollover / lit insert;
 - wall/rail;
 - jackpot target.
+
+### Default Starter Table Shell
+
+Opening the Pinball page should create a playable **Starter Table Shell** automatically. The creator should be able to play immediately and then replace, move, or delete the shell parts; an empty source document must not require hand-built containment before the ball can be tested.
+
+The shell is procedural, native-resolution, and saved as ordinary creator-authored objects with a `starterGenerated` flag:
+
+- left and right side rails following the usable playfield bounds;
+- short inward-sloping lower returns that guide the ball toward the flippers;
+- a bottom apron and centered drain mouth; the drain is a sensor, not a solid wall;
+- a clearly separated plunger/launch lane with a launch lock and ball spawn point;
+- a left/right flipper pair resting with their inner tips lower and pointed toward the drain;
+- two lower posts, one or two bumpers, and one rollover/insert so the table has physical feedback immediately;
+- a short launch ball-save grace period and a stuck-ball rescue default;
+- debug labels/handles in Build mode, hidden anchors and editor guides in Play mode.
+
+The shell adapts to the native playfield rectangle without scaling or cropping the source document. Its side rails and apron are the exterior containment; the document remains visible inside them and retains the default Pinball destructive text-plow behavior. If the creator chooses **Clear Starter Shell**, only generated shell objects are removed; source pixels, placed creator objects, and mutations remain untouched. Reopening a saved level never silently regenerates deleted shell parts.
+
+**Acceptance:** selecting Pinball on a fresh source produces a contained ball, a working launch lane, two correctly sloped flippers, a bottom drain, at least one rebound target, and a playable first launch without the creator placing a single physical part.
 
 These can initially draw as clean debug shapes. The VerzatileDev pinball asset pack should enter through a batch prep/scaler before it becomes runtime art:
 
@@ -468,15 +489,25 @@ Success test: the table feels like a deliberate DACK pinball kit, not just debug
 
 Pinball can use dim, glowing ANSI-style underlays as table art, especially for funny office-themed boards. The preferred Document Pinball stack is:
 
-1. captured/source document clone;
-2. dimmed ANSI/ASCII table art composited underneath or through low-opacity glow;
-3. readable native-looking document text;
+1. full-color ANSI/table base rendered from terminal cells at its authored/native aspect;
+2. captured/source document background, blended or masked according to background confidence;
+3. readable native-looking document text, icons, and mutable terrain;
 4. promoted physics parts: flippers, bumpers, rails, drains, inserts, gates;
 5. actors, balls, effects, HUD, and editor handles.
 
-The important rule: ANSI table art should support the document text, not bury it. The source document remains the legibility anchor. The table art behaves like a haunted backglass or phosphor glow bleeding up from beneath the page.
+The important rule: ANSI table art should support the document text, not bury it. The source document remains the legibility anchor. Board Skin mode uses the cached background mask to let the ANSI image sit visibly beneath the playfield while the source text and promoted objects remain crisp above it. If background confidence is weak, use a blend mode and warn rather than erasing or hiding source pixels.
 
 The target feel is old BBS / cracktro / ANSI art: chunky CP437 blocks, neon gradients, fake chrome, scroll-text attitude, and absurdly serious office words.
+
+The new `KingDiamongANSIFile.ANS` fixture is the first visual benchmark for this mode. Its composition should be treated as a **board skin**: the art establishes the table's mood, color language, and implied zones, while the generated Starter Table Shell and creator-placed physics parts establish what the ball actually collides with. A colored block or apparent border may suggest a bumper, rail, insert, or drain, but it is never promoted automatically without creator confirmation.
+
+Board Skin mode keeps three coordinate-aligned layers visible in Build mode:
+
+1. ANSI cell art and color state;
+2. optional guide/selection overlay showing the native cell grid and suggested regions;
+3. physical table geometry and sensors.
+
+The creator can fade each layer independently, promote a selected ANSI region into a physical part, and preserve the underlying art when that part is moved or deleted. This gives the finished table the authored look of the ANSI board while keeping physics editable and legible.
 
 Candidate table themes:
 
@@ -492,11 +523,30 @@ Underlay rules:
 - Treat the ANSI layer as art first, collision second.
 - Default opacity should be low, roughly 12-28%, with separate glow strength. In dark mode it can glow a little more; in light mode it must stay quieter.
 - Use blend/additive glow around ANSI strokes, but avoid washing document text. If the document text contrast drops below a legibility threshold, auto-dim or mask the underlay behind text.
-- Allow per-table controls: `underlayOpacity`, `glowStrength`, `scanlineStrength`, `textProtection`, and `themeFollowsSystem`.
+- Allow per-table controls: `ansiComposition` (`opaque`, `blend`, or `background-mask`), `underlayOpacity`, `glowStrength`, `scanlineStrength`, `textProtection`, and `themeFollowsSystem`.
 - Creators can promote visual regions from the underlay into bumpers, rails, drains, gates, or inserts.
 - A table can still use a live/captured office document as the playfield, but ANSI underlays provide authored “toy table” themes when a screenshot is too plain.
 - Boss Key must hide any flashy underlay instantly.
 - Licensing/provenance must be stored with imported ANSI art; built-in DACK originals can be generated as project assets.
+
+### Pinball art cards
+
+Pinball should have a dedicated art-card shelf so a creator can assemble a table's look without editing raw images in the physics inspector. Art cards are reusable, versioned definitions; placing one creates an instance with transform, opacity, blend, and source-region overrides.
+
+Starter card families:
+
+- **Board Skin:** ANSI/ASCII render, generated terminal board, gradient field, or licensed raster background.
+- **Logo / Marquee:** title, band/theme mark, table name, or large semantic word treatment.
+- **Backglass / Score Reel:** decorative panel, mission banner, score frame, or animated word display.
+- **Rail / Wall Skin:** visual treatment for side rails, lower returns, aprons, and launch lanes; collision remains a separate part card.
+- **Bumper / Insert Skin:** color, glyph, icon, logo, glow, lit/unlit state, and hit animation for an existing bumper or insert.
+- **Target / Drop Bank:** letter, word, icon, or graphic target appearance with optional destruction/effect profile.
+- **Apron / Drain Art:** lower-table framing, drain mouth, ball-save indicator, and outlane markings.
+- **Effects / Typography:** jackpot, multiball, tilt, hurry-up, and score-reel treatments shared with the reusable effects library.
+
+Each card records native dimensions/cell geometry, intended layer, anchor/pivot, palette or color policy, opacity/glow defaults, safe text-contrast behavior, source hash, provenance tier, and an optional physical-part binding. A visual card never silently creates collision; the creator explicitly links it to a rail, bumper, insert, target, or drain card.
+
+The first internal shelf should include generated/open cards for `COLLATE`, `INBOX ZERO`, `TONER LOW`, `MEETING CANCELED`, and a neutral `KING DIAMOND` test board. The last is a local development fixture until its redistribution rights are known.
 
 This is also a good home for animated score/reel text: large, rotating, strobing words that feel like the Brickbat haiku ticker grew a backglass.
 

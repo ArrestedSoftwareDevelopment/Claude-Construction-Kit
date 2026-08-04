@@ -55,10 +55,13 @@ If neither exists, procedural fallback terrain is used.
 | Action | Current RAD control |
 | --- | --- |
 | Open/close ordinary Cockpit or return from Sprite Studio | **Esc** |
+| Toggle Build/Play and back | **F6** (planned shared default; current RAD binding may not be wired yet) |
 | Toggle the thin RAD quick strip | **F1** |
 | Boss Key | **Ctrl+Alt+B** |
 
 `Ctrl+Alt+B` is the current test binding, not yet the settled production default. Esc is ordinary navigation; the Boss Key is the safety/privacy escape and should hide/neutralize all DACK surfaces.
+
+At cold launch, DACK shows only a translucent logo and the `Ctrl+Alt+B` show/hide hint. Press **Esc** or **F1** to reveal the ordinary workspace.
 
 ## Play Controls
 
@@ -139,11 +142,11 @@ The full Sprite Studio is transitional UI. The product target is a responsive, h
 | Pinball | Plunger, ball, flippers, bumpers/parts seed, drain, destructive text plow |
 | Overhead | Movement family and categorized actor-library seed |
 | Editor | Cockpit tabs, contextual pages, shelves, cards, Inspector, Understand seed, handles, edit/play split |
-| Actors | Stickmen, Dungeon Runner, Sunny Dragon, TGC characters including Green Snake, shooter/fleet seeds |
+| Actors | Stickmen, Dungeon Runner, Knight, Sunny Dragon, TGC characters including Green Snake, shooter/fleet seeds |
 | Animation | Source-aware import proofs, editable labels/sequences, preview, strobe, ping-pong, save/load |
 | OCR/Word Sense | Optional lazy local command-line Tesseract proof with geometry-only fallbacks |
 | Persistence | RAD JSON level and animation-manifest save/load |
-| Audio/effects | Shared sound hooks, projectile/explosion profiles, comic text and psychedelic effects |
+| Audio/effects | Live semantic sound routing, 18-card/50-source Kenney CC0 shelf with pooled random-no-repeat playback and legacy fallbacks, projectile/explosion profiles, comic text and psychedelic effects |
 | Multi-monitor | Monitor enumeration and move-window primitive |
 
 “Implemented” here means present in the RAD, not fully generalized, optimized, or cleared for public distribution.
@@ -153,13 +156,15 @@ The full Sprite Studio is transitional UI. The product target is a responsive, h
 1. Build the C# project successfully.
 2. Launch and confirm the source page is sharp at native resolution.
 3. Open/close the Cockpit and Sprite Studio with Esc; verify the pointer returns for editing.
-4. In Platformer, enter Play, move/jump, fall through a real gap, climb a ladder/text surface, ride a conveyor/elevator, shoot text/enemies, die with a named cause, and reach a Goal.
+4. In Platformer, enter Play, move/jump, fall through a real gap, then test ladder/text climbing only with a character profile whose climb capability and animation are enabled; ride a conveyor/elevator, shoot text/enemies, die with a named cause, and reach a Goal.
 5. Save the RAD level, move/delete something, load it, and verify actors/objects/markers/settings return.
 6. In Brickbat, verify letter and word clearing, three-ball reserve behavior, multiball cap/cooldown, laser deletion, word ticker, HUD dragging, and persistent deformation.
 7. Switch to Platformer and confirm Brickbat-created gaps remain until an explicit restore.
 8. In Pinball, charge/release the plunger, operate both flippers, and confirm the ball plows through letters.
-9. Select several actors in Sprite Studio, preview/edit labels, save/load an animation manifest, and confirm no blank/extra/wrapped frames appear.
-10. Trigger the Boss Key from play and editor surfaces; verify the game layer neutralizes and audio/input are released.
+9. Select several actors in Sprite Studio, including Knight; confirm Knight exposes 96 nonblank frames and named Idle/Run/Jump-Fall/Roll/Attack/Shield/Death ranges, then preview/edit labels, save/load an animation manifest, and confirm no blank/extra/wrapped frames appear.
+10. Open Cockpit → Sounds; filter by family, sample cards, use Next Variant to hear the three-source families, and confirm the visible event list matches the selected card. Confirm the Builder's Sounds slot opens the same page without changing the selected actor or playset.
+11. In play, verify jump/fire/hurt/defeat, Brickbat text/word/laser/drain, and Pinball launch/flipper/bumper/rollover/plow/drain produce varied but coherent cues. Temporarily remove one imported card only in a disposable test copy and confirm its legacy fallback still plays.
+12. Close the Cockpit during an audition and trigger the Boss Key during another; verify audition/game audio stops and input is released.
 
 ## Known RAD Limitations
 
@@ -170,8 +175,10 @@ The full Sprite Studio is transitional UI. The product target is a responsive, h
 - Several current UI strings contain visible encoding artifacts in place of bullets, multiplication signs, degrees, ellipses, and close gadgets.
 - Save Level currently targets a fixed RAD path and does not yet provide Save As, autosave/recovery, or a full Snapshot package.
 - OCR currently discovers an external Tesseract executable; embedded LibTesseract is the preferred optional product provider.
-- Live Desktop capture and coordinated editor/playfield windows are not implemented yet.
+- Live Desktop capture and coordinated editor/playfield windows are not implemented yet. The planned ingress is manual-refresh: capture once, build/play against the stable clone, and use an explicit `Refresh Source` transaction with diff/rebind/rollback; continuous source polling is not the default.
 - Source-specific sprite detectors are still authoring experiments. Runtime content must move to reviewed compiled manifests before the asset library is stable.
+- The new 8-bit player character has not yet been proven on ladders or text-crawl surfaces; its climb capability, climb animation binding, and text-surface policy remain an active implementation/test item.
+- Dragon shadow orientation/offset and occasional blank Sprite Studio previews remain active visual correctness fixes; expanded palettes and the shared two-level character picker are planned UI work.
 
 The active correction plan and measurable exit criteria are in [`../docs/DACK-Optimization-and-Refactoring-Plan.md`](../docs/DACK-Optimization-and-Refactoring-Plan.md).
 

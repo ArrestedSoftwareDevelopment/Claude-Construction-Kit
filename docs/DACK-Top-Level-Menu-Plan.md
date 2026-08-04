@@ -3,7 +3,7 @@
 - **Status:** Active menu taxonomy and Cockpit navigation specification
 - **Baseline:** Contextual RAD Cockpit, July 2026
 - **Authority:** View-family/preset taxonomy, top-strip responsibilities, and family-page structure
-- **Related:** [DACK GUI Architecture](DACK-GUI-Architecture.md), [DACK Sprite Studio Mini-App](DACK-Sprite-Studio-Mini-App.md), and [DACK Optimization and Refactoring Plan](DACK-Optimization-and-Refactoring-Plan.md)
+- **Related:** [DACK UI Redesign Proposal](DACK-UI-Redesign-Proposal.md), [DACK GUI Architecture](DACK-GUI-Architecture.md), [DACK Sprite Studio Mini-App](DACK-Sprite-Studio-Mini-App.md), and [DACK Optimization and Refactoring Plan](DACK-Optimization-and-Refactoring-Plan.md)
 
 ## Core decision
 
@@ -223,8 +223,11 @@ Important rules:
 
 - Text Terrain on/off
 - Text Crawl on/off
+- Text Surface Policy: ignore / solid-platform / solid-block / climbable / crawlable / hybrid
+- Line-spacing interpretation: detected / tight / loose / creator override
 - Text Destruction on/off
 - Per-actor/per-projectile text capability flags
+- Climb/crawl animation binding diagnostics
 - Gravity
 - Safety floor
 - Fall/death policy
@@ -330,6 +333,7 @@ Presets:
 
 Primary shelves:
 
+- Starter Table Shell (generated perimeter)
 - Ball spawn
 - Plunger lane
 - Flippers
@@ -342,10 +346,15 @@ Primary shelves:
 - Jackpot/multiball logic
 - Score reels/HUD
 - Nudge/tilt rules
+- ANSI Board Skin / cell promotion
+- Pinball Art Cards: skins, logos, backglass, rails, bumpers, inserts, aprons, typography
 
 Important rules:
 
+- New Pinball sessions start with a playable shell; clearing it removes only generated shell objects.
 - Table gravity/tilt
+- Art, guide, and physics layers remain independently visible/editable
+- Visual art cards never create collision unless explicitly linked to a physical-part card
 - Elasticity
 - Friction
 - Ball count
@@ -378,6 +387,8 @@ Primary shelves:
 - Score panels
 - Word ticker
 - Persistence/mutation policy
+- ANSI target-table skins
+- Logos, target-wall frames, paddle/ball skins, bonus banners, and score typography
 
 Important rules:
 
@@ -387,6 +398,8 @@ Important rules:
 - Deflection
 - Power-up deck
 - Text erasure policy
+- ANSI composition: opaque-art / text-over-art / background-mask / art-only
+- Explicit ANSI-cell promotion to target proxies
 - OCR priority
 - Clone damage persistence
 
@@ -418,6 +431,9 @@ Primary shelves:
 - Traps
 - Cells/mines/life rules
 - Inventory/rules
+- Maze Generator (rectangular / hexagonal)
+- Grid Overlay and cell inspector
+- Path Finder / route preview
 
 Important rules:
 
@@ -425,6 +441,8 @@ Important rules:
 - Text/graphic/hybrid presentation
 - Turn-based vs realtime
 - Pathfinding
+- Grid topology, cell size, seed, and maze constraints
+- Route overlay visibility versus active collision/path state
 - Word goals
 - Cellular birth/survival rules
 - Mine reveal / flag / detonation rules
@@ -459,6 +477,9 @@ Presets:
 Primary shelves:
 
 - Paths/splines
+- Point / polyline / Bezier curve editor
+- Parabola editor
+- Inertia and motion profile presets
 - Lane bands
 - Moving hazard streams
 - Moving platform streams
@@ -495,6 +516,8 @@ Important rules:
 - Dynamic path blocking
 - Objective health / convoy health / breach progress
 - Live document/desktop event triggers
+- Curve sampling, endpoint/tangent constraints, and parabola gravity
+- Acceleration, drag, braking, reverse time, and angular inertia
 
 ### 7. Ambient / Desktop Toybox
 

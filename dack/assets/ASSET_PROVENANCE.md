@@ -2,7 +2,7 @@
 
 > Document status: Active asset-governance record
 >
-> Last reviewed: 2026-07-30
+> Last reviewed: 2026-08-03
 >
 > Release posture: Development-only until the public-release gate passes
 >
@@ -37,11 +37,15 @@ files and importer caches inherit the tier of their source asset.
 | DACK procedural stick figure and other clearly project-created fallback art | PUBLIC-BUILD / HUB-EXPORT | Redistributable default; keep project authorship recorded. |
 | 8-Bit Dungeon Tile Set Free curated PNG subset | PUBLIC-BUILD / HUB-EXPORT | CC0 record and admitted subset are present. |
 | OctoPyte Stickman Pack v0.1/v0.2 admitted sheets | PUBLIC-BUILD / HUB-EXPORT | CC BY 4.0; attribution is retained even though the paid-download terms say it is unnecessary. |
+| Kenney 50-file / 18-card audio library under `third_party/kenney-audio/` | PUBLIC-BUILD / HUB-EXPORT | Exact source/runtime hashes, seven pack notices, CC0 1.0 terms, transformations, semantic roles, and preview exclusions are retained. The creator approved the 18-card baseline; 16 high-repetition cards now have three source variants. |
 | Creative Commons Sounds copied into `project/sounds/` | REPO/DEV-TEST | Folder names saying `CC0` are not sufficient provenance; exact pack pages, creators, license records, and file-to-source mapping are still required. |
 | The Game Creator's Pack files copied into `project/game-creators-pack/` | REPO/DEV-TEST | Owner reports usage rights, but the precise redistribution grant, credit language, and admitted-file list are not yet recorded. |
 | Legacy Collection files copied into `project/effects/` or used as actors | REPO/DEV-TEST | Local PDFs exist; each promoted subset still needs license interpretation, source mapping, and credit review. |
 | Explosion Pack files copied into `project/effects/` | REPO/DEV-TEST | Local pack/license material exists, but exact creator, public source, license terms, admitted-file mapping, and attribution must be recorded. |
+| Knight transparent animation strips copied into `project/knight/` | REPO/DEV-TEST | Seven named strips are integrated as the `knight-player` card; purchase/source URL, creator, license terms, and required credit are not yet recorded. |
 | VerzatileDev Pinball pack | RAW-LOCAL | Useful for design and importer testing; no runtime subset has been promoted. |
+| Kenney UI Pack | RAW-LOCAL; PUBLIC-BUILD / HUB-EXPORT eligible after curated admission | Complete local pack and bundle copy carry CC0 1.0 records. Use the bundle copy as canonical because it adds ten atlas files; do not import both duplicates. |
+| Kenney Game Assets All-in-One 3.6.0 | RAW-LOCAL; individual curated packs are PUBLIC-BUILD / HUB-EXPORT eligible after admission | Bundle and pack-local records state CC0 1.0. Never redistribute the complete purchased bundle; admit small files/pack slices with their license, source mapping, and voluntary Kenney credit. Audio is first priority; isometric/axonometric content is deferred. |
 | Unknown or incompletely documented packs | RAW-LOCAL | Design/reference use only. |
 
 This classification is the release authority. Phrases such as "cleared,"
@@ -127,6 +131,37 @@ regardless of version number or distribution channel.
 - Export decision: public-build and hub-export eligible when the credit is
   carried into the generated package credits.
 
+### Kenney audio Sound Card library
+
+- Creator/distributor: Kenney (`www.kenney.nl`).
+- Bundle source: <https://kenney.itch.io/kenney-game-assets>.
+- License: Creative Commons Zero 1.0 Universal (CC0 1.0).
+- Runtime root: `third_party/kenney-audio/`.
+- Admitted subset: exactly 50 OGG files from Desert Shooter Pack, New
+  Platformer Pack, Impact Sounds, Retro Sounds 2, Sci-Fi Sounds, UI Pack, and
+  RPG Audio. `third_party/kenney-audio/MANIFEST.csv` is the authoritative
+  one-row-per-file source/runtime mapping and positive allowlist.
+- Retained evidence: `third_party/kenney-audio/LICENSES.md` and seven complete
+  notices under `third_party/kenney-audio/licenses/`.
+- Transformations: byte-for-byte copies with semantic runtime filenames only;
+  no transcoding, resampling, trimming, normalization, channel conversion, or
+  metadata rewrite. All 50 source/runtime SHA-256 pairs match.
+- Selection state: the creator approved the original 18 Sound Card choices on
+  2026-08-03. Sixteen high-repetition cards contain three related recordings;
+  document/RPG interaction and racing remain one-source prototypes. A separate
+  semantic-routing pass established editable live defaults for current game
+  events; asset approval and event binding remain independent decisions.
+- Exclusions: all four `Preview*.ogg` reels and the other 1,292 audio files in
+  the all-in-one bundle. The complete purchased bundle remains RAW-LOCAL.
+- Intended use: the Sounds Cockpit audition shelf and live semantic Sound Cards
+  for UI, document/RPG actions, Platformer, Brickbat, Pinball, and
+  space/combat; racing remains an audition-only prototype until its loop exists.
+- Credit: optional under CC0; DACK should still display
+  `Audio assets by Kenney (CC0 1.0)` in consolidated acknowledgements.
+- Export decision: the exact manifest-listed subset is PUBLIC-BUILD and
+  HUB-EXPORT eligible. Card-to-event binding remains an explicit engine and
+  level-design decision; it does not change distribution rights.
+
 ### Project-created fallback
 
 The procedural stick figure generated by DACK is project-created test art. It
@@ -193,6 +228,34 @@ public packaging by the release allowlist.
 - Intended evaluation use: projectile, impact, explosion, and letter-shrapnel
   profile design.
 
+### Knight player strips
+
+- Local source: `raw base assets/Knight/Knight/`.
+- Intake record: supplied locally for DACK evaluation on 2026-08-03; no
+  purchase receipt, creator statement, or license record is present beside the
+  files.
+- Runtime test copies:
+  - `project/knight/knight-idle.png` from `noBKG_KnightIdle_strip.png`;
+  - `project/knight/knight-run.png` from `noBKG_KnightRun_strip.png`;
+  - `project/knight/knight-jump-fall.png` from `noBKG_KnightJumpAndFall_strip.png`;
+  - `project/knight/knight-roll.png` from `noBKG_KnightRoll_strip.png`;
+  - `project/knight/knight-attack.png` from `noBKG_KnightAttack_strip.png`;
+  - `project/knight/knight-shield.png` from `noBKG_KnightShield_strip.png`;
+  - `project/knight/knight-death.png` from `noBKG_KnightDeath_strip.png`.
+- Transformations: filenames normalized only; transparent source pixels and
+  strip dimensions are unchanged.
+- Runtime profile: `knight-player`, with 96 nonblank frames across Idle, Run,
+  Jump/Fall, Roll, Attack, Shield, and Death. The transparent Jump/Fall source
+  contains one trailing blank 144-pixel cell, which the profile deliberately
+  excludes.
+- Intended evaluation use: player-card selection, platformer/RPG melee,
+  roll/crawl, shield preview, death testing, and animation-label editing.
+- Missing release evidence: exact store/source URL, creator, pack title,
+  license text, redistribution terms, and required attribution.
+- Promotion action: retain the purchase/license evidence and exact source page,
+  then decide PUBLIC-BUILD/HUB-EXPORT eligibility. Until then, packaging must
+  exclude the entire `project/knight/` subset.
+
 ## RAW-LOCAL candidate assets
 
 ### PinBall_By_VerzatileDev
@@ -211,8 +274,62 @@ public packaging by the release allowlist.
 - Promotion caution: admit only small functional slices and confirm that the
   intended public/hub packaging complies with the additional terms.
 
+### Kenney UI Pack
+
+- Creator: Kenney
+- Public source: <https://kenney-assets.itch.io/ui-pack>
+- License: Creative Commons Zero 1.0 Universal (CC0 1.0)
+- License link: <https://creativecommons.org/publicdomain/zero/1.0/>
+- Official source statement checked 2026-08-03: over 400 UI sprites, commercial
+  use permitted, attribution not required but appreciated.
+- Local sources: `raw base assets/kenney_ui-pack/` and the matching
+  `raw base assets/Kenney Game Assets All-in-1 3.6.0/UI assets/UI Pack/`.
+- Local inventory: the standalone pack is complete at 1,315 files: 870 PNG,
+  434 SVG, 6 OGG, 2 TTF, 2 URL, and 1 license file. Blue, Green, Grey, Red, and
+  Yellow each contain 164 PNG files; Extra contains 48. The bundle copy is
+  byte-equal across those shared files and adds ten spritesheet PNG/XML files,
+  so the bundle copy is the canonical intake source.
+- Intended use: Cockpit and Sprite Studio buttons, compact card controls,
+  checkboxes, arrows, sliders, close gadgets, selected/active states, and an
+  optional arcade-display heading font.
+- Promotion plan: create a small allowlisted subset under
+  `third_party/kenney-ui-pack/`, retain a local license record, record every
+  copied file, and use Godot theme/style resources rather than loading the raw
+  vault or all variants at runtime. Do not admit both local copies.
+- Export decision: the CC0 license permits public-build and hub-export use once
+  the admitted subset and transformations are recorded. Attribution is
+  optional; DACK should still credit `Kenney UI Pack by Kenney (CC0 1.0)` in
+  its generated acknowledgements.
+
+### Kenney Game Assets All-in-One 3.6.0
+
+- Creator: Kenney.
+- Purchase/source page recorded by the local overview:
+  <https://kenney.itch.io/kenney-game-assets>.
+- License: Creative Commons Zero 1.0 Universal (CC0 1.0).
+- License link: <https://creativecommons.org/publicdomain/zero/1.0/>.
+- Local evidence: root `Readme.html` states that all bundle content is CC0,
+  permits personal/commercial use, makes credit optional, asks that the full
+  purchased bundle not be redistributed, and permits redistribution of
+  individual packs. Audio, UI, Icon, and nearly every immediate 2D pack also
+  retain a pack-local `License.txt`.
+- Local source:
+  `raw base assets/Kenney Game Assets All-in-1 3.6.0/`.
+- Inventory: 88,346 files, about 0.95 GiB. The dedicated Audio family contains
+  1,286 OGG files; 56 more occur in game/UI packs. Four preview reels are not
+  gameplay candidates.
+- Intake priority: audio first, then small non-isometric 2D/UI/Icon subsets.
+  Isometric/axonometric assets, broad 3D intake, archives, and bulk variants are
+  deferred.
+- Promotion rule: the complete bundle remains RAW-LOCAL. An exact admitted
+  subset may become PUBLIC-BUILD/HUB-EXPORT after its files, transformations,
+  pack license, source mapping, and optional Kenney credit are recorded. Never
+  package or hub-export the complete purchased bundle.
+- Detailed inventory, Sound Card contract, audition deck, and staged visual
+  queue: `../../docs/DACK-Kenney-All-in-One-Intake.md`.
+
 ### Other raw packs
 
-`Knight`, `Props`, `Sprites`, `MountainDuskGodot`, `all_64c`, `all_spr`, and
+`Props`, `Sprites`, `MountainDuskGodot`, `all_64c`, `all_spr`, and
 any pack absent from the classification table remain `RAW-LOCAL`. They may
 inform design and importer behavior, but they are not release inputs.

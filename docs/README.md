@@ -31,6 +31,7 @@ Every substantial future documentation pass should use these labels consistently
 
 | Document | Role | Current emphasis |
 | --- | --- | --- |
+| [DACK-UI-Redesign-Proposal.md](DACK-UI-Redesign-Proposal.md) | Proposed unified UI redesign | File menu, common family pages, cards, shelves, modals, session/window ownership |
 | [`../Desktop-Arena-Design-Doc.md`](../Desktop-Arena-Design-Doc.md) | Primary product design | Safe clone, office-native construction kits, semantic text, live desktop, delivery phases |
 | [`DACK-Optimization-and-Refactoring-Plan.md`](DACK-Optimization-and-Refactoring-Plan.md) | Engineering control document | Stabilization, UI shoring, profiling, decomposition, performance gates |
 | [`DACK-GUI-Architecture.md`](DACK-GUI-Architecture.md) | Product UI architecture | Play/Build/Understand, tabbed cockpit, shelf, inspector, responsive layout |
@@ -38,8 +39,13 @@ Every substantial future documentation pass should use these labels consistently
 | [`DACK-Sprite-Studio-Mini-App.md`](DACK-Sprite-Studio-Mini-App.md) | Character/asset authoring UX | Pick, slice, animate, bind, attack, effects, sounds, boxes |
 | [`DACK-Brickbat-Builder.md`](DACK-Brickbat-Builder.md) | Brickbat rules/builder contract | Three-ball state, targets, mutation, bonuses, laser, HUD |
 | [`DACK-Asset-Audit-and-Sprite-Animator.md`](DACK-Asset-Audit-and-Sprite-Animator.md) | Asset intake and importer plan | Provenance, source-specific import profiles, curated defaults |
+| [`DACK-Kenney-All-in-One-Intake.md`](DACK-Kenney-All-in-One-Intake.md) | Kenney bundle intake and priority map | Audio-first curation, non-isometric queue, Sound Card contract, CC0 packaging policy |
+| [`DACK-Document-Analysis-Fixture-Matrix.md`](DACK-Document-Analysis-Fixture-Matrix.md) | Screenshot/text/video analysis fixtures | Rectangle, icon, grid, background, OCR, mutation, and temporal test expectations |
+| [`DACK-Live-Capture-and-Understanding-Plan.md`](DACK-Live-Capture-and-Understanding-Plan.md) | Live Desktop and scene-understanding plan | Capture contracts, coordinate spaces, incremental updates, geometry/text passes, and safety gates |
+| [`DACK-Document-Geometry-and-Pagination-Plan.md`](DACK-Document-Geometry-and-Pagination-Plan.md) | Document-native transforms and page flow | Rotated/slanted text blocks, attached ladders and spawn routes, multi-page Word levels, scroll capture and reconciliation |
 | [`DACK-Level-Snapshot-Format.md`](DACK-Level-Snapshot-Format.md) | Level/package contract | Immutable source, Snapshot cache, placed objects, mutation variants |
 | [`DACK-Object-Attribute-Model.md`](DACK-Object-Attribute-Model.md) | Shared object vocabulary | Cards, common attributes, actor/enemy/toolkit extensions |
+| [`DACK-Construction-Kit-Inspiration.md`](DACK-Construction-Kit-Inspiration.md) | Reference analysis and design guardrails | SEUCK/ACK lessons, document-native mechanics, definitions vs placed instances |
 
 ## Toolkit and Concept Notes
 

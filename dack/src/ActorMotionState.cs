@@ -11,5 +11,7 @@ public enum ActorMotionState
     RunShoot,
     JumpShoot,
     Punch,
+    Roll,
+    Shield,
     Death
 }

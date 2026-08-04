@@ -3,7 +3,7 @@
 - **Status:** Active product architecture
 - **Baseline:** RAD prototype, July 2026
 - **Authority:** Shell state, workspace ownership, compositing layers, responsive behavior, and shared UI rules
-- **Related:** [DACK Sprite Studio Mini-App](DACK-Sprite-Studio-Mini-App.md), [DACK Top-Level Menu Plan](DACK-Top-Level-Menu-Plan.md), [DACK Optimization and Refactoring Plan](DACK-Optimization-and-Refactoring-Plan.md), and [ADR-0010](adr/ADR-0010-session-preserving-ui-navigation.md)
+- **Related:** [DACK UI Redesign Proposal](DACK-UI-Redesign-Proposal.md), [DACK Sprite Studio Mini-App](DACK-Sprite-Studio-Mini-App.md), [DACK Top-Level Menu Plan](DACK-Top-Level-Menu-Plan.md), [DACK Optimization and Refactoring Plan](DACK-Optimization-and-Refactoring-Plan.md), and [ADR-0010](adr/ADR-0010-session-preserving-ui-navigation.md)
 
 ## Purpose
 
@@ -43,6 +43,12 @@ The remaining UI debt is structural rather than conceptual:
 
 The implementation and optimization sequence is owned by the [DACK Optimization and Refactoring Plan](DACK-Optimization-and-Refactoring-Plan.md). This document defines how the resulting UI must behave.
 
+### Launch surface
+
+At cold launch, DACK intentionally presents almost nothing: the native playfield remains underneath, while a transparent, gently floating DACK logo sits above it with one line beneath: `Ctrl+Alt+B — Show / Hide DACK`. The toolbar, HUD, Cockpit, and ordinary editor chrome remain hidden. This establishes DACK as a secondary layer over the user's desktop rather than another dominant application window.
+
+`Ctrl+Alt+B` is the immediate desktop/app safety swap. `Esc` or `F1` dismisses the launch surface and reveals the ordinary DACK workspace. The logo is presentation-only: it never captures or mutates source content, and it must disappear atomically when Boss mode takes over.
+
 ## State and Ownership Invariants
 
 These rules are normative. No toolkit or editor page may invent a competing version of them.
@@ -57,6 +63,7 @@ These rules are normative. No toolkit or editor page may invent a competing vers
 8. **Mode and playset changes preserve work.** Switching modes, Cockpit tabs, view families, presets, monitors, or Studio does not replace the source or clear the mutated clone. Only explicit commands such as Reset Clone, Re-snapshot, Load Level, or New Source may do that, with an appropriate dirty-work confirmation.
 9. **One surface owns input at a time.** Safety/Boss outranks Studio; Studio outranks Cockpit; transient dialogs outrank their owner; pure Play owns input only when no editor surface is active. Pointer and keyboard events must not leak through an active editor into the simulation.
 10. **Selection survives context changes when valid.** Returning from test play, Understand, Studio, or another tab restores the prior selection, active tab, Inspector section, and scroll position. If the selected object no longer exists, the UI says so and falls back predictably.
+11. **Play/Build has a dedicated one-key toggle.** The default `F6` binding switches Build ↔ Play and back without opening a page, changing the playset, resetting the source, or discarding mutations. It is configurable, suppressed while text is being edited, and must restore the previous tab/selection/Inspector state on return.
 
 ## Three Working Modes
 
@@ -70,6 +77,7 @@ The playfield is sacred.
 - Minimal HUD placed in whitespace.
 - HUD fades or slides away when a ball, player, projectile, or selection handle approaches.
 - Esc toggles the normal DACK cockpit.
+- `F6` toggles Build/Play as the fast test loop; the visible mode badge changes immediately and the transition must not wait for OCR/import work.
 - Boss Key remains separate, instant, and safety-oriented.
 
 Play mode should feel like the document or desktop has become alive, not like a level is trapped inside a UI panel.
@@ -121,19 +129,30 @@ Logical data layers and visual draw layers must be explicit. A toolkit can contr
 From back to front:
 
 1. **Immutable source:** original capture/import reference, never edited.
-2. **Working clone:** the native-resolution playable image plus clone-only pixel mutations.
-3. **Environment interpretation:** text, word, line, icon, background, collision, and semantic records. Normally not drawn; Understand visualizes them.
-4. **Underlays and grounded decoration:** optional ANSI/table art, paper shadows, trails, and non-interactive atmosphere.
-5. **World objects:** platforms, ladders, conveyors, flippers, bumpers, triggers, pickups, and other placed construction parts.
-6. **Transient effects:** explosions, letter shrapnel, particles, ribbons, and score bursts.
-7. **Gameplay-critical actors:** players, enemies, balls, projectiles, objectives, and critical indicators remain legible above spectacle.
-8. **HUD:** score, lives, word ticker, missions, and status; it uses whitespace and approach fading rather than becoming collision.
-9. **Build overlays:** selection, handles, invisible objects, guides, paths, and drag previews.
-10. **Understand overlays:** engine interpretation, confidence, authority, collision, routes, mutations, and diagnostics.
-11. **Cockpit or Sprite Studio:** the editor workspace that currently owns interaction.
-12. **Safety:** Boss/clone-only/privacy state, always topmost and independent.
+2. **ANSI/table base:** optional full-color ANSI-rendered image or generated board skin, rasterized from terminal cells at its authored/native aspect and used as a visual base.
+3. **Working clone:** the native-resolution playable image plus clone-only pixel mutations. In Pinball Board Skin mode, the environment background mask may blend or yield to the ANSI base while source text/ink remains native and legible.
+4. **Environment interpretation:** text, word, line, icon, background, collision, and semantic records. Normally not drawn; Understand visualizes them.
+5. **Underlays and grounded decoration:** optional paper shadows, trails, and non-interactive atmosphere.
+6. **World objects:** platforms, ladders, conveyors, flippers, bumpers, triggers, pickups, and other placed construction parts.
+7. **Transient effects:** explosions, letter shrapnel, particles, ribbons, and score bursts.
+8. **Gameplay-critical actors:** players, enemies, balls, projectiles, objectives, and critical indicators remain legible above spectacle.
+9. **HUD:** score, lives, word ticker, missions, and status; it uses whitespace and approach fading rather than becoming collision.
+10. **Build overlays:** selection, handles, invisible objects, guides, paths, and drag previews.
+11. **Understand overlays:** engine interpretation, confidence, authority, collision, routes, mutations, and diagnostics.
+12. **Cockpit or Sprite Studio:** the editor workspace that currently owns interaction.
+13. **Safety:** Boss/clone-only/privacy state, always topmost and independent.
 
 The renderer may batch adjacent layers for speed, but their ownership and visible ordering must remain equivalent. Effects quality may degrade under load; gameplay-critical actors, input feedback, collision, and safety UI may not.
+
+### ANSI base / playfield composition policy
+
+The ANSI base is a presentation layer, not a collision layer. A toolkit chooses one source-background policy:
+
+- **Opaque source:** show the ANSI base only in margins or explicitly transparent source regions.
+- **Blend:** retain the source image while mixing the ANSI base beneath it at a controlled opacity.
+- **Background mask:** use the cached `EnvironmentMap` background zones to let the ANSI image show through while preserving native text, icons, and promoted gameplay regions. This is the default for Pinball Board Skin mode.
+
+All three policies preserve native source coordinates and avoid scaling the document to fit the ANSI canvas. If background confidence is too low, DACK falls back to Blend and warns the creator instead of guessing a destructive mask.
 
 ## The Cockpit Layout
 
@@ -151,6 +170,7 @@ Intent:
 - Switching the active playset selects its matching family tab without resetting the source, clone, mutations, or placed objects.
 - Each family page exposes the same session spine—Play/Test, Save/Load, Markers & Logic, rules/status, and family shelf—then supplies only its contextual differences.
 - Tabs, groups, cards, and actions should come from descriptors/registries so labels, capitalization, visibility, tooltips, shortcuts, and enabled states remain consistent.
+- Character and sprite selection uses one compact two-level picker everywhere: **top-level role/family pull-down → individual asset pull-down**. Player, Enemy, Spawn, Builder, Projectile, and effect pages reuse the same picker instead of repeating large sprite shelves.
 - Inapplicable controls collapse or disappear with a discoverable explanation; they do not occupy permanent dead columns.
 - Each tab remembers selection, expanded groups, and scroll position.
 - Long tab bodies, shelves, Inspectors, animation lists, and logs scroll inside their own bounds. The whole editor must not grow past the usable viewport.
@@ -168,6 +188,7 @@ This preserves the "big cockpit" feeling while keeping screen real estate under 
 - `Tab`/`Shift+Tab` traverse controls in reading order; arrow keys change tabs, lists, frame selections, and numeric steps where expected; `Enter`/`Space` activate the focused control.
 - Every mouse action that changes durable state needs a keyboard path. Visible focus rings are mandatory, and focus returns to the invoking control when a transient surface closes.
 - Tooltips supplement concise labels; they do not carry essential instructions that keyboard users cannot reach.
+- The two-level picker keeps the selected card's thumbnail, name, source/provenance badge, and a small preview beside the pull-downs; search, recent, and favorites are available inside the second list.
 
 ### UI Efficiency Rules
 
@@ -178,6 +199,18 @@ This preserves the "big cockpit" feeling while keeping screen real estate under 
 - OCR, sprite compilation, source analysis, save, and thumbnail generation must not block input. Their status appears asynchronously in the owning page and stale results are discarded by session/source identity.
 - Under load, reduce decorative preview rate, effects, glow, shadows, and distant animation before reducing pointer feedback, input, collision, or safety responsiveness.
 - Instrument page-open time, idle Cockpit cost, layout passes, active preview count, and list/card counts so efficiency work follows evidence.
+
+### Kenney UI theme seed
+
+The CC0 Kenney UI Pack is a useful seed for DACK's creator-facing chrome, but the current local extraction appears incomplete relative to the official listing and must be verified/re-downloaded before admission. Once complete, it should enter through one shared Godot theme rather than hundreds of per-button texture assignments.
+
+- Use neutral Grey for ordinary controls, Blue for selection/active state, and Green for Apply/Play/success. The local Red family contains only two arrow sprites, so destructive or stop/cancel actions keep DACK's high-contrast red style token instead of pretending the pack supplies a complete red control state.
+- Prefer content-sized rectangular controls, compact square icon buttons, checkboxes, arrows, slider parts, and close gadgets. The pack does not override the rule that buttons should not stretch across the screen by default.
+- Pair Default and Double assets as 1x/2x DPI variants. Use explicit texture/content margins or `StyleBoxTexture` nine-slicing so labels can grow without distorting corners.
+- Retain DACK's high-contrast text tokens and focus rings. A colorful skin cannot make disabled, selected, focused, or keyboard states ambiguous.
+- Keep the normal system-readable font for body labels and forms. `Kenney Future` may be an optional arcade/display heading; it is not the default small-text font.
+- Theme sprites belong to editor chrome and HUD cards. They do not become document geometry, playfield art, collision, or captured-source content unless a creator deliberately places an exported UI card as an object.
+- Admit only the reviewed subset used by the theme and load it once. Hidden pages should not create their own texture copies.
 
 ### Top Strip
 
@@ -190,6 +223,7 @@ Suggested controls:
 - View Family: Side View / Overhead / Ball-Table / Paddle-Clearing / Grid-Text / Route-Flow / Ambient.
 - Preset: changes by family, e.g. Platformer, Brickbat, Pinball, Combat/Tanks, RPG, Snake/Maze, Racing, Tower Defense.
 - Clone: Reset / Save Variant / Compare Source.
+- Source refresh: explicit `Refresh Source` action, candidate diff, Apply/Rebind/Discard; never an automatic capture while editing or playing.
 - Word Sense: Off / Lazy Local / Full Page Prep, plus status.
 - Safety: Boss Key hint and clone-only indicator.
 - Close gadget: visible `×` to hide the ordinary Cockpit; separate from Boss Key.
@@ -204,6 +238,8 @@ Button sizing rule:
 ### Left Shelf
 
 The shelf is where construction-kit identity lives. The shell stays consistent; the shelf changes by toolkit.
+
+Repeated placement is intentional: every shelf click or card drop creates a new instance with its own identity. The same enemy, ladder, bumper, pickup, or projectile may appear many times. Initial editor placement uses a randomized, overlap-avoiding candidate within the native playfield, then remains fully draggable and saveable; no asset button is consumed after the first placement.
 
 Global categories:
 
@@ -300,6 +336,13 @@ The Builder should think in cards. Small cards are ingredients; composed cards a
 Player deserves its own top-level tab rather than living inside the general Builder. The Player tab owns protagonist selection, player-card dragging, control/movement defaults, gun/no-gun, size/text ratio, and player-specific animation hooks. Builder remains the more general composition workbench for wiring selected actors and objects into reusable cards.
 
 Placed toolkit objects should follow the same principle: the playfield gives direct manipulation with A/B handles, while the Inspector gives precise nudges. Ramps, slides, conveyors, elevators, pinball parts, gates, and future line objects should be rotatable; line tools rotate by their endpoints and by Inspector rotate nudges. Ladders are the exception: they should remain vertical climb volumes, with width tuned against the player character rather than treated as angled ropes.
+
+Document-native geometry adds two compact tools to the same workspace:
+
+- **Transform Block:** select a paragraph, heading, line band, table row, or word group; rotate/slant the DACK clone; choose text-preserving, hybrid, or raster display; choose glyph-mask, oriented-block, baseline, climb-surface, or visual-only collision; and decide whether attached ladders, goals, routes, and spawn points inherit the transform or stay in world space.
+- **Page Navigator:** browse a multi-page Word/Writer/PDF/browser source as ordered Level Cards, open a page for editing, set the transition target, and distinguish page-local mutations from sequence-global progression. Thumbnails and page status stay in their own scroll region so they cannot push the Inspector offscreen.
+
+Understand mode exposes local axes, transformed bounds, source/page IDs, OCR confidence, and collision masks. Play mode hides transform handles, spawn markers, and invisible anchors while retaining their behavior. Page transitions preserve the active session, selection policy, and chosen persistence rules; they do not resample the source clone.
 
 ## Source Binding and Manual Authorship
 
@@ -429,13 +472,14 @@ Every visible gameplay object should be able to cast a cheap composited shadow o
 First rule:
 
 - Sprites draw a projected duplicate of their current frame before the real frame.
-- The duplicate is squashed vertically, slightly rotated/offset, tinted grayscale/black, and made semi-transparent.
+- The duplicate uses the exact current frame, facing, horizontal flip, origin, and scale before it is squashed vertically, slightly rotated/offset, tinted grayscale/black, and made semi-transparent. Editor and runtime must call the same shadow transform; a Dragon shadow that reads backwards in Studio is a correctness bug, not an art preference.
 - This creates a single-function "paper shadow" for players, enemies, animated targets, imported characters, and later pickups/projectiles.
 
 Second rule:
 
 - Vector/toolkit objects use the same concept with shape-specific helpers: line shadows for ramps/conveyors/flippers, ellipse shadows for bumpers/balls, soft rect shadows for panels and icons.
-- A Renderer/Theme service should expose shadow parameters: `shadowEnabled`, `shadowOpacity`, `shadowOffset`, `shadowSquash`, `shadowBlurStyle`, and `shadowFollowsTheme`.
+- Default lighting should cast a modest page shadow back/left (screen-space) with a relative offset, while an optional `behind-facing` mode derives the cast direction from the actor's facing. A Renderer/Theme service should expose shadow parameters: `shadowEnabled`, `shadowOpacity`, `shadowOffset`, `shadowSquash`, `shadowRotation`, `shadowSpace`, `shadowBlurStyle`, and `shadowFollowsTheme`.
+- Optional spectacle tier: a scene may define one shared `LightSource` with position, radius, height, color, and intensity. The renderer can derive each object's shadow direction, length, skew, and softness from that source. This is deliberately not the default: it is more expensive, must fall back to the cheap paper shadow under load, and should be reserved for showcase scenes such as Pinball or a dramatic boss encounter.
 - Dark mode and Boss Key can reduce or disable shadows if they harm legibility or office-safe presentation.
 
 ### Implementation sequencing

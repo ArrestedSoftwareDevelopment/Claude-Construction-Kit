@@ -12,6 +12,8 @@ public partial class PinballOverlay : Control
     private int _score;
     private int _ballsServed;
     private string _status = "SPACE CHARGES PLUNGER";
+    private bool _leftFlipperWasHeld;
+    private bool _rightFlipperWasHeld;
 
     public PlayfieldSurface? Playfield { get; set; }
     public bool Paused { get; set; } = true;
@@ -55,6 +57,8 @@ public partial class PinballOverlay : Control
         _charge = 0;
         _score = 0;
         _ballsServed = 0;
+        _leftFlipperWasHeld = false;
+        _rightFlipperWasHeld = false;
         _status = "SPACE CHARGES PLUNGER";
         ServeBall();
         QueueRedraw();
@@ -64,6 +68,13 @@ public partial class PinballOverlay : Control
     {
         if (_balls.Count == 0)
             ServeBall();
+
+        bool leftFlipperHeld = IsLeftFlipperHeld();
+        bool rightFlipperHeld = IsRightFlipperHeld();
+        if ((leftFlipperHeld && !_leftFlipperWasHeld) || (rightFlipperHeld && !_rightFlipperWasHeld))
+            SoundRequested?.Invoke("pinball-flipper");
+        _leftFlipperWasHeld = leftFlipperHeld;
+        _rightFlipperWasHeld = rightFlipperHeld;
 
         bool spaceHeld = Input.IsKeyPressed(Key.Space);
         if (_balls.Count > 0 && _balls[0].Captured)
@@ -115,7 +126,7 @@ public partial class PinballOverlay : Control
                 {
                     _balls.RemoveAt(i);
                     _status = "DRAIN";
-                    SoundRequested?.Invoke("brickbat-ball-lost");
+                    SoundRequested?.Invoke("pinball-drain");
                     continue;
                 }
             }
@@ -148,7 +159,7 @@ public partial class PinballOverlay : Control
         _balls[0] = ball;
         _status = "LIVE BALL";
         _charge = 0;
-        SoundRequested?.Invoke("brickbat-paddle");
+        SoundRequested?.Invoke("pinball-launch");
     }
 
     private void ResolveBounds(ref PinballBall ball, Rect2 bounds)
@@ -199,7 +210,7 @@ public partial class PinballOverlay : Control
             ball.Velocity += normal * flipper.Strength * tipBias;
             ball.Velocity += new Vector2(flipper.LeftSide ? 1f : -1f, -0.35f) * flipper.Strength * 0.18f;
             _status = "FLIP!";
-            SoundRequested?.Invoke("brickbat-paddle");
+            SoundRequested?.Invoke("pinball-flipper-hit");
         }
 
         ClampSpeed(ref ball.Velocity, 1120f);
@@ -221,7 +232,7 @@ public partial class PinballOverlay : Control
             ball.Velocity = normal * Mathf.Max(ball.Velocity.Length() * 1.08f, Mathf.Max(420f, Mathf.Abs(bumper.SpeedUnits) * 8f));
             _score += 100;
             _status = "POP +100";
-            SoundRequested?.Invoke("power-up");
+            SoundRequested?.Invoke("pinball-bumper");
         }
     }
 
@@ -235,7 +246,7 @@ public partial class PinballOverlay : Control
             {
                 _score += 250;
                 _status = "ROLLOVER +250";
-                SoundRequested?.Invoke("brickbat-text-hit");
+                SoundRequested?.Invoke("pinball-rollover");
             }
 
             index++;
@@ -284,7 +295,7 @@ public partial class PinballOverlay : Control
         _score += removed * 15;
         _status = $"INK PLOW +{removed * 15}";
         Playfield.ThrowRandomLetters(ball.Position, removed);
-        SoundRequested?.Invoke("brickbat-text-hit");
+        SoundRequested?.Invoke("pinball-text-plow");
     }
 
     private IEnumerable<WorldObject> PinballObjects(WorldObjectKind kind)

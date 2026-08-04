@@ -220,6 +220,8 @@ The working prototype already establishes:
 - `Stickman 2.0` is the default stickfigure card. It uses OctoPyte v0.2 sheets for Idle, Run, Jump, Melee/Punch, and Death.
 - `Classic Stickman` preserves the OctoPyte v0.1 thin-stick baseline.
 - `Dungeon Runner` is the first climb-native player card. It uses the CC0 8-Bit Dungeon player frames for idle, four-frame run, fall, rope/tool poses, and a real two-frame climb cycle. This is the right test body for Lode Runner-style ladders, ropes, gutters, text-crawl surfaces, and compact RPG/platformer hybrids.
+- `Knight` is the first player assembled from seven separately named transparent strips rather than one mixed sheet. Its 96-frame editor sequence preserves Idle, Run, Jump/Fall, Roll, Attack, Shield, and Death labels. Runtime maps Attack to the current Melee/Punch and shoot-animation hooks, and maps Roll to Crawl until dedicated dodge/roll rules exist; Shield remains available for focused preview and future defense binding. Action, jump, shield, roll, and death clips use one-shot/hold-last playback instead of wrapping unexpectedly. It is REPO/DEV-TEST until exact source/license evidence is recorded.
+- The current 8-bit player runtime profile has not yet proven that climb capability and the climb clip are wired together. Until that test passes, Studio should mark `canClimbText`, `canCrawlText`, and `canUseLadders` as explicit profile fields rather than implying them from the presence of climb frames.
 - Dungeon Runner imports recolor near-white source pixels to black at runtime so the white CC0 pixel art remains readable on white document playfields. The original asset files are not modified.
 - The full 8-Bit Dungeon PNG object set is admitted as the first total playset seed. The current shelf maps key pieces to existing behaviors; exact art binding belongs in the shared asset/rendering work rather than another one-off importer path.
 - Blue Guard, Green Crawler, and Green Snake are the current component-selection import tests from the irregular TGC platformer sheet. Their working selections must be compiled into explicit rectangles/order with a source hash before runtime profiles stop depending on detector indices.
@@ -255,6 +257,8 @@ Categories:
 - Imported Drafts
 - Project-Created
 
+Picker motif across the application: use a compact **top-level role/family pull-down → individual asset pull-down**. The first list answers "what kind of thing?" (Player, Enemy, Projectile, Effect, Object, Art Card); the second lists the individual assets for that role. Reuse this control in Player, Enemy, Spawn, Builder, Projectile, and effect pages instead of repeating tall shelves.
+
 Each card should show:
 
 - thumbnail;
@@ -283,6 +287,21 @@ Features:
 - baseline/bottom alignment;
 - onion skin previous/next;
 - live update on selected actor.
+
+### 2.1 Palette Profiles
+
+The small-palette principle remains the default, but the editor needs more than one palette family. Palette choice is a profile-level setting with a visible swatch strip, nearest-neighbor preview, and optional per-frame override:
+
+- C64-style 16-color;
+- DOS/ANSI 16-color plus bright variants;
+- DACK 32-color constrained;
+- DACK 64-color extended;
+- Game Boy-style 4/5-color;
+- monochrome/duotone;
+- full-color source-preserving mode for imported art and ANSI-derived graphics;
+- creator custom palette with a declared slot limit and saved provenance.
+
+Every profile retains a dedicated transparent entry, warns when an import exceeds the palette budget, and offers a reversible nearest-color preview before any conversion. This is palette selection, not full color-management software; advanced color grading remains out of scope.
 
 Non-goals for this stage:
 
@@ -319,6 +338,24 @@ Required controls:
 - common display box preview.
 
 Important lesson already learned: detection finds pictures, not meaning. The creator still labels actions.
+
+#### Internal tool: Calibrated Grid Import
+
+For development and asset triage, Sprite Studio should offer a fast manual calibration mode before asking the detector to infer anything. The creator drops a sheet into the stage, turns on a live grid, and drags the grid over the source until the cells match the intended frames. The rest of the importer then operates on that explicit geometry.
+
+The calibration surface should provide:
+
+- draggable grid origin, cell width/height, row/column count, margins, and horizontal/vertical gutters;
+- independent row/column guides, pixel nudging, numeric fields, and optional lock-aspect/lock-spacing controls;
+- live frame rectangles and a contact-strip preview as the grid moves;
+- row/column ordering, skipped cells, mirrored/reversed order, and a per-cell accept/reject toggle;
+- baseline/origin and transparent-color overlays so feet, projectiles, and effects can be checked before import;
+- immediate preview at native source scale and at the selected playfield scale;
+- a `Save Calibrated Profile` action that writes the source hash, exact geometry, accepted cells, order, origins, cleanup/recolor policy, and creator notes into the compiled import manifest.
+
+This is intentionally an internal development tool, not a promise that end users must understand sprite-sheet geometry. It is the quickest way to repair irregular or mixed sheets: use the grid for the regular portion, then apply manual rectangle overrides or exclusions to the exceptions. Automatic blob/component detection may suggest a draft, but it must never overwrite a saved calibration.
+
+**Acceptance:** a creator can drag a grid over a difficult sheet, see the correct frame strip update in real time, exclude the snake/green-blob or stray-fragment cells, save the profile, reload it, and obtain the identical frame rectangles without rerunning detection.
 
 ### 4. Animate
 
@@ -522,6 +559,26 @@ Object sound slots:
 - bump;
 - break;
 - deny/locked.
+
+The Kenney All-in-One audio families establish the Sound Card baseline. A card
+may contain several variants rather than one hardcoded file, with fixed,
+shuffle, random-no-repeat, or weighted selection. It also owns one-shot/loop
+mode, volume, pitch range, cooldown, voice cap, interrupt policy, spatial mode,
+material/genre tags, and provenance. This is required for convincing footsteps,
+weapon variants, engine loops, UI families, and collision-heavy Brickbat or
+pinball play without repetitive sound or unbounded overlapping voices. The
+audio-first intake and audition queue are documented in
+[`DACK-Kenney-All-in-One-Intake.md`](DACK-Kenney-All-in-One-Intake.md).
+
+**Implemented RAD checkpoint:** the Cockpit `Sounds` page exposes 18
+rights-cleared Kenney cards through a game-family → individual-card picker.
+Audition uses a bounded pooled player and stops on Cockpit close, Play, or Boss
+Key. The creator approved the baseline deck on 2026-08-03; 16
+high-repetition cards now carry three source variants while the document/RPG
+and racing seeds remain single-source. Platformer, Brickbat, Pinball, combat,
+restrained UI, and Cockpit-open events now resolve through an editable semantic
+binding table with legacy fallback. Card approval and card-to-event binding
+remain separate decisions.
 
 ### 9. Hitboxes, origins, and attachment points
 

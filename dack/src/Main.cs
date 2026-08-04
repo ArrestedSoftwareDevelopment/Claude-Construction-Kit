@@ -10,6 +10,8 @@ namespace Dack;
 public partial class Main : Control
 {
     private readonly List<ActorView> _actors = [];
+    private readonly DackUiState _uiState = new();
+    private readonly RandomNumberGenerator _enemyPlacementRandom = new();
     private readonly List<PlayerShot> _playerShots = [];
     private readonly List<EnemyShot> _enemyShots = [];
     private readonly List<ImpactEffect> _impactEffects = [];
@@ -19,6 +21,10 @@ public partial class Main : Control
     private readonly Dictionary<ActorView, int> _enemyHealth = [];
     private readonly HashSet<ActorView> _defeatedEnemies = [];
     private readonly Dictionary<string, AudioStreamPlayer> _soundPlayers = [];
+    private readonly Dictionary<string, string> _soundCardBindings = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> _legacySoundFallbacks = new(StringComparer.OrdinalIgnoreCase);
+    private SoundCardPlayer _soundCardPlayer = null!;
+    private int _kenneyAuditionSourcesLoaded;
     private readonly Vector2[] _actorAnchors =
     [
         new(0.16f, 0.66f),
@@ -47,6 +53,9 @@ public partial class Main : Control
     private PanelContainer _playsetToolbar = null!;
     private HBoxContainer _playsetToolbarRow = null!;
     private Button _playsetToolbarToggle = null!;
+    private Control _launchScreen = null!;
+    private TextureRect _launchLogo = null!;
+    private Label _launchHint = null!;
     private PanelContainer _cockpit = null!;
     private TabContainer _cockpitTabs = null!;
     private Control _platformerPanel = null!;
@@ -115,6 +124,8 @@ public partial class Main : Control
     private ActorView _player = null!;
     private EditableSpriteModel _initialModel = null!;
     private bool _bossMode;
+    private bool _launchScreenActive = true;
+    private double _launchScreenClock;
     private double _elapsed;
     private Vector2 _playerPosition;
     private Vector2 _playerVelocity;
@@ -124,6 +135,7 @@ public partial class Main : Control
     private bool _textDestructionEnabled = true;
     private bool _gunEnabled = true;
     private bool _editorMode = true;
+    private bool _simulationFrozen = true;
     private bool _enemyAiEnabled = true;
     private bool _enemyTracksPlayer = true;
     private bool _enemyProjectilesEnabled = true;
@@ -172,24 +184,29 @@ public partial class Main : Control
     {
         _elapsed += delta;
         _playfield.ElapsedSeconds = (float)_elapsed;
+        UpdateLaunchScreen((float)delta);
         if (_cockpit is not null && _cockpit.Visible)
         {
             FitCockpitToViewport();
             RefreshCockpitStatus();
         }
 
-        UpdatePlayer(delta);
-        UpdateOverheadPlayer(delta);
-        UpdateActorPresentation((float)delta);
-        UpdatePunchPreview(delta);
-
-        if (!_editorMode)
+        if (!_simulationFrozen)
         {
-            UpdateEnemies((float)delta);
-            UpdateEnemyShots((float)delta);
+            UpdatePlayer(delta);
+            UpdateOverheadPlayer(delta);
+            UpdateActorPresentation((float)delta);
+            UpdatePunchPreview(delta);
+
+            if (!_editorMode)
+            {
+                UpdateEnemies((float)delta);
+                UpdateEnemyShots((float)delta);
+            }
+
+            UpdateImpactEffects((float)delta);
         }
 
-        UpdateImpactEffects((float)delta);
         RefreshPlatformerHud();
     }
 
@@ -202,6 +219,7 @@ public partial class Main : Control
             && key.AltPressed
             && key.Keycode == Key.B)
         {
+            DismissLaunchScreen();
             ToggleBossMode();
             GetViewport().SetInputAsHandled();
         }
@@ -213,11 +231,30 @@ public partial class Main : Control
             TogglePlaysetToolbar();
             GetViewport().SetInputAsHandled();
         }
+        else if (@event is InputEventKey playModeKey
+                 && playModeKey.Pressed
+                 && !playModeKey.Echo
+                 && playModeKey.Keycode == Key.F6)
+        {
+            DismissLaunchScreen();
+            ToggleBuildPlayMode();
+            GetViewport().SetInputAsHandled();
+        }
+        else if (@event is InputEventKey freezeKey
+                 && freezeKey.Pressed
+                 && !freezeKey.Echo
+                 && freezeKey.Keycode == Key.F7)
+        {
+            DismissLaunchScreen();
+            ToggleSimulationFreeze();
+            GetViewport().SetInputAsHandled();
+        }
         else if (@event is InputEventKey escKey
                  && escKey.Pressed
                  && !escKey.Echo
                  && escKey.Keycode == Key.Escape)
         {
+            DismissLaunchScreen();
             if (_sidebar is not null && _sidebar.Visible)
                 CloseSpritePanel();
             else
@@ -302,9 +339,11 @@ public partial class Main : Control
         _playfield.WorldObjectSelectionObjectChanged += UpdateAttributeControls;
         _playfield.CardDroppedOnPlayfield += OnPlayfieldCardDropped;
         BuildAudioDeck();
+        BuildKenneySoundCardDeck();
         BuildPlaysetToolbar();
         BuildCockpit();
         BuildPlatformerHud();
+        BuildLaunchScreen();
 
         _sidebar = new PanelContainer();
         _sidebar.SizeFlagsHorizontal = SizeFlags.ExpandFill;
@@ -544,6 +583,15 @@ public partial class Main : Control
             ApplyTgcClipRanges();
         };
         characterPicker.AddChild(dungeonRunner);
+
+        Button knight = Button("Knight");
+        knight.TooltipText = "Use the discrete transparent Knight strips with Idle, Run, Jump/Fall, Roll, Attack, Shield, and Death animations.";
+        knight.Pressed += () =>
+        {
+            LoadKnightEditorDefaults();
+            ApplyTgcClipRanges();
+        };
+        characterPicker.AddChild(knight);
 
         Button sunnyDragon = Button("Sunny Dragon");
         sunnyDragon.TooltipText = "Add the Legacy Collection Sunny Dragon fly strip as the first animated enemy.";
@@ -810,6 +858,412 @@ public partial class Main : Control
         AddSound("brickbat-ball-lost", "res://assets/project/sounds/brickbat-ball-lost.ogg", -9f);
     }
 
+    private void BuildKenneySoundCardDeck()
+    {
+        const string root = "res://assets/third_party/kenney-audio";
+        _soundCardPlayer = new SoundCardPlayer { Name = "SoundCardPlayer" };
+        AddChild(_soundCardPlayer);
+
+        void Register(SoundCardDefinition card)
+        {
+            _kenneyAuditionSourcesLoaded += _soundCardPlayer.RegisterCard(card);
+        }
+
+        Register(new SoundCardDefinition(
+            "kenney.ui.accept",
+            "UI Accept",
+            "DACK UI",
+            "A compact confirmation click for Cockpit buttons and card activation.",
+            [
+                new($"{root}/ui-pack/ui-accept.ogg", "UI Pack / click-a"),
+                new($"{root}/ui-pack/ui-accept-v2.ogg", "UI Pack / click-b"),
+                new($"{root}/ui-pack/ui-accept-v3.ogg", "UI Pack / tap-a")
+            ]
+        )
+        {
+            Tags = ["interface", "accept", "click"],
+            SelectionMode = SoundVariantSelectionMode.RandomNoRepeat,
+            VolumeDb = -15f,
+            MaxVoices = 1
+        });
+
+        Register(new SoundCardDefinition(
+            "kenney.ui.toggle",
+            "UI Toggle",
+            "DACK UI",
+            "A physical switch sound for checkboxes, playset rules, and Inspector toggles.",
+            [
+                new($"{root}/ui-pack/ui-toggle.ogg", "UI Pack / switch-a"),
+                new($"{root}/ui-pack/ui-toggle-v2.ogg", "UI Pack / switch-b"),
+                new($"{root}/ui-pack/ui-toggle-v3.ogg", "UI Pack / tap-b")
+            ]
+        )
+        {
+            Tags = ["interface", "toggle", "switch"],
+            SelectionMode = SoundVariantSelectionMode.RandomNoRepeat,
+            VolumeDb = -15f,
+            MaxVoices = 1
+        });
+
+        Register(new SoundCardDefinition(
+            "kenney.document.book-open",
+            "Document / Book Open",
+            "Document / RPG",
+            "Document-native punctuation for opening a page level, book, Snapshot, or inventory panel.",
+            [new($"{root}/rpg-audio/document-rpg-interaction.ogg", "RPG Audio / bookOpen")]
+        )
+        {
+            Tags = ["document", "book", "page", "rpg"],
+            SelectionMode = SoundVariantSelectionMode.Fixed,
+            VolumeDb = -12f,
+            MaxVoices = 1
+        });
+
+        Register(new SoundCardDefinition(
+            "kenney.platformer.player-shot",
+            "Player Shot",
+            "Platformer",
+            "First candidate for the player projectile fire slot.",
+            [
+                new($"{root}/desert-shooter/player-shot.ogg", "Desert Shooter / shoot-a"),
+                new($"{root}/desert-shooter/player-shot-v2.ogg", "Desert Shooter / shoot-b"),
+                new($"{root}/desert-shooter/player-shot-v3.ogg", "Desert Shooter / shoot-c")
+            ]
+        )
+        {
+            Tags = ["platformer", "projectile", "fire"],
+            SelectionMode = SoundVariantSelectionMode.RandomNoRepeat,
+            VolumeDb = -11f,
+            PitchMin = 0.97f,
+            PitchMax = 1.03f,
+            MaxVoices = 3,
+            CooldownSeconds = 0.03f
+        });
+
+        Register(new SoundCardDefinition(
+            "kenney.platformer.contact-hit",
+            "Enemy / Contact Hit",
+            "Platformer",
+            "Short bump candidate for enemy contact, armor, or a nonlethal collision.",
+            [
+                new($"{root}/new-platformer/enemy-contact-hit.ogg", "New Platformer / sfx_bump"),
+                new($"{root}/new-platformer/enemy-contact-hit-v2.ogg", "Impact Sounds / generic light 000"),
+                new($"{root}/new-platformer/enemy-contact-hit-v3.ogg", "Impact Sounds / generic light 001")
+            ]
+        )
+        {
+            Tags = ["platformer", "enemy", "contact", "hit"],
+            SelectionMode = SoundVariantSelectionMode.RandomNoRepeat,
+            VolumeDb = -9f,
+            PitchMin = 0.96f,
+            PitchMax = 1.04f,
+            MaxVoices = 2,
+            CooldownSeconds = 0.05f
+        });
+
+        Register(new SoundCardDefinition(
+            "kenney.platformer.enemy-defeat",
+            "Enemy Defeat",
+            "Platformer",
+            "A clean disappearance cue for an enemy reaching zero toughness.",
+            [
+                new($"{root}/new-platformer/enemy-defeat.ogg", "New Platformer / sfx_disappear"),
+                new($"{root}/new-platformer/enemy-defeat-v2.ogg", "Desert Shooter / explosion-a"),
+                new($"{root}/new-platformer/enemy-defeat-v3.ogg", "Desert Shooter / explosion-b")
+            ]
+        )
+        {
+            Tags = ["platformer", "enemy", "defeat"],
+            SelectionMode = SoundVariantSelectionMode.RandomNoRepeat,
+            VolumeDb = -8f,
+            PitchMin = 0.96f,
+            PitchMax = 1.04f,
+            MaxVoices = 3
+        });
+
+        Register(new SoundCardDefinition(
+            "kenney.platformer.player-hurt",
+            "Player Hurt",
+            "Platformer",
+            "Damage cue for hearts or instant-death modes.",
+            [
+                new($"{root}/new-platformer/player-hurt.ogg", "New Platformer / sfx_hurt"),
+                new($"{root}/new-platformer/player-hurt-v2.ogg", "Desert Shooter / hurt-a"),
+                new($"{root}/new-platformer/player-hurt-v3.ogg", "Desert Shooter / hurt-b")
+            ]
+        )
+        {
+            Tags = ["platformer", "player", "hurt"],
+            SelectionMode = SoundVariantSelectionMode.RandomNoRepeat,
+            VolumeDb = -8f,
+            MaxVoices = 1
+        });
+
+        Register(new SoundCardDefinition(
+            "kenney.platformer.power-up",
+            "Power-Up / Magic",
+            "Platformer",
+            "Power-up candidate for player cards, pickups, and word bonuses.",
+            [
+                new($"{root}/new-platformer/power-up.ogg", "New Platformer / sfx_magic"),
+                new($"{root}/new-platformer/power-up-v2.ogg", "New Platformer / sfx_coin"),
+                new($"{root}/new-platformer/power-up-v3.ogg", "New Platformer / sfx_gem")
+            ]
+        )
+        {
+            Tags = ["platformer", "power-up", "magic", "pickup"],
+            SelectionMode = SoundVariantSelectionMode.RandomNoRepeat,
+            VolumeDb = -9f,
+            MaxVoices = 2
+        });
+
+        Register(new SoundCardDefinition(
+            "kenney.platformer.jump",
+            "Platformer Jump",
+            "Platformer",
+            "First jump-slot candidate for player movement cards.",
+            [
+                new($"{root}/new-platformer/platformer-jump.ogg", "New Platformer / sfx_jump"),
+                new($"{root}/new-platformer/platformer-jump-v2.ogg", "New Platformer / sfx_jump-high"),
+                new($"{root}/new-platformer/platformer-jump-v3.ogg", "Desert Shooter / jump-a")
+            ]
+        )
+        {
+            Tags = ["platformer", "player", "jump"],
+            SelectionMode = SoundVariantSelectionMode.RandomNoRepeat,
+            VolumeDb = -10f,
+            MaxVoices = 1
+        });
+
+        Register(new SoundCardDefinition(
+            "kenney.brickbat.text-hit",
+            "Brickbat Text Hit",
+            "Brickbat",
+            "Dry retro impact for a ball or projectile striking a letter target.",
+            [
+                new($"{root}/retro-sounds-2/brickbat-text-hit.ogg", "Retro Sounds 2 / hit1"),
+                new($"{root}/retro-sounds-2/brickbat-text-hit-v2.ogg", "Retro Sounds 2 / hit2"),
+                new($"{root}/retro-sounds-2/brickbat-text-hit-v3.ogg", "Retro Sounds 2 / hit3")
+            ]
+        )
+        {
+            Tags = ["brickbat", "text", "impact"],
+            SelectionMode = SoundVariantSelectionMode.RandomNoRepeat,
+            VolumeDb = -11f,
+            PitchMin = 0.97f,
+            PitchMax = 1.03f,
+            MaxVoices = 3,
+            CooldownSeconds = 0.025f
+        });
+
+        Register(new SoundCardDefinition(
+            "kenney.brickbat.word-break",
+            "Brickbat Word Break",
+            "Brickbat",
+            "Retro explosion candidate for a destroyed word or literary bonus target.",
+            [
+                new($"{root}/retro-sounds-2/brickbat-word-break.ogg", "Retro Sounds 2 / explosion1"),
+                new($"{root}/retro-sounds-2/brickbat-word-break-v2.ogg", "Retro Sounds 2 / explosion2"),
+                new($"{root}/retro-sounds-2/brickbat-word-break-v3.ogg", "Retro Sounds 2 / explosion3")
+            ]
+        )
+        {
+            Tags = ["brickbat", "word", "break", "explosion"],
+            SelectionMode = SoundVariantSelectionMode.RandomNoRepeat,
+            VolumeDb = -10f,
+            PitchMin = 0.96f,
+            PitchMax = 1.04f,
+            MaxVoices = 3,
+            CooldownSeconds = 0.04f
+        });
+
+        Register(new SoundCardDefinition(
+            "kenney.brickbat.ball-lost",
+            "Brickbat Ball Lost",
+            "Brickbat",
+            "Short lose cue for a drained ball or exhausted reserve.",
+            [
+                new($"{root}/retro-sounds-2/ball-lost.ogg", "Retro Sounds 2 / lose1"),
+                new($"{root}/retro-sounds-2/ball-lost-v2.ogg", "Retro Sounds 2 / lose2"),
+                new($"{root}/retro-sounds-2/ball-lost-v3.ogg", "Retro Sounds 2 / lose3")
+            ]
+        )
+        {
+            Tags = ["brickbat", "ball", "lost"],
+            SelectionMode = SoundVariantSelectionMode.RandomNoRepeat,
+            VolumeDb = -9f,
+            MaxVoices = 1
+        });
+
+        Register(new SoundCardDefinition(
+            "kenney.brickbat.laser",
+            "Brickbat Laser",
+            "Brickbat",
+            "Large sci-fi laser candidate for the percentage-strength text-clearing beam.",
+            [
+                new($"{root}/sci-fi-sounds/brickbat-laser.ogg", "Sci-Fi Sounds / laserLarge 000"),
+                new($"{root}/sci-fi-sounds/brickbat-laser-v2.ogg", "Sci-Fi Sounds / laserLarge 001"),
+                new($"{root}/sci-fi-sounds/brickbat-laser-v3.ogg", "Sci-Fi Sounds / laserLarge 002")
+            ]
+        )
+        {
+            Tags = ["brickbat", "laser", "power-up"],
+            SelectionMode = SoundVariantSelectionMode.RandomNoRepeat,
+            VolumeDb = -10f,
+            PitchMin = 0.98f,
+            PitchMax = 1.02f,
+            MaxVoices = 2
+        });
+
+        Register(new SoundCardDefinition(
+            "kenney.pinball.light-rail",
+            "Paddle / Light Rail",
+            "Pinball",
+            "Light metal impact for Brickbat paddles, pinball rails, gates, or small flipper contact.",
+            [
+                new($"{root}/impact-sounds/paddle-light-rail.ogg", "Impact Sounds / metal light 000"),
+                new($"{root}/impact-sounds/paddle-light-rail-v2.ogg", "Impact Sounds / metal light 001"),
+                new($"{root}/impact-sounds/paddle-light-rail-v3.ogg", "Impact Sounds / metal light 002")
+            ]
+        )
+        {
+            Tags = ["pinball", "brickbat", "metal", "rail", "paddle"],
+            SelectionMode = SoundVariantSelectionMode.RandomNoRepeat,
+            VolumeDb = -13f,
+            PitchMin = 0.98f,
+            PitchMax = 1.02f,
+            MaxVoices = 4,
+            CooldownSeconds = 0.02f
+        });
+
+        Register(new SoundCardDefinition(
+            "kenney.pinball.bumper",
+            "Pinball Bell Bumper",
+            "Pinball",
+            "Bell-like heavy impact for a pop bumper, score target, or bonus insert.",
+            [
+                new($"{root}/impact-sounds/pinball-bumper.ogg", "Impact Sounds / bell heavy 000"),
+                new($"{root}/impact-sounds/pinball-bumper-v2.ogg", "Impact Sounds / bell heavy 001"),
+                new($"{root}/impact-sounds/pinball-bumper-v3.ogg", "Impact Sounds / bell heavy 002")
+            ]
+        )
+        {
+            Tags = ["pinball", "bumper", "bell", "score"],
+            SelectionMode = SoundVariantSelectionMode.RandomNoRepeat,
+            VolumeDb = -11f,
+            PitchMin = 0.98f,
+            PitchMax = 1.02f,
+            MaxVoices = 4,
+            CooldownSeconds = 0.025f
+        });
+
+        Register(new SoundCardDefinition(
+            "kenney.space.projectile",
+            "Space / Actor Projectile",
+            "Space / Combat",
+            "Small laser candidate for ships, turrets, guards, and compact enemy fire.",
+            [
+                new($"{root}/sci-fi-sounds/space-actor-projectile.ogg", "Sci-Fi Sounds / laserSmall 000"),
+                new($"{root}/sci-fi-sounds/space-actor-projectile-v2.ogg", "Sci-Fi Sounds / laserSmall 001"),
+                new($"{root}/sci-fi-sounds/space-actor-projectile-v3.ogg", "Sci-Fi Sounds / laserSmall 002")
+            ]
+        )
+        {
+            Tags = ["space", "combat", "projectile", "laser"],
+            SelectionMode = SoundVariantSelectionMode.RandomNoRepeat,
+            VolumeDb = -11f,
+            PitchMin = 0.97f,
+            PitchMax = 1.03f,
+            MaxVoices = 4,
+            CooldownSeconds = 0.025f
+        });
+
+        Register(new SoundCardDefinition(
+            "kenney.combat.explosion",
+            "Projectile Explosion",
+            "Space / Combat",
+            "Crunchy sci-fi explosion for projectile impact, enemy defeat, and letter-shrapnel blasts.",
+            [
+                new($"{root}/sci-fi-sounds/projectile-explosion.ogg", "Sci-Fi Sounds / explosionCrunch 000"),
+                new($"{root}/sci-fi-sounds/projectile-explosion-v2.ogg", "Sci-Fi Sounds / explosionCrunch 001"),
+                new($"{root}/sci-fi-sounds/projectile-explosion-v3.ogg", "Sci-Fi Sounds / explosionCrunch 002")
+            ]
+        )
+        {
+            Tags = ["space", "combat", "projectile", "explosion"],
+            SelectionMode = SoundVariantSelectionMode.RandomNoRepeat,
+            VolumeDb = -9f,
+            PitchMin = 0.96f,
+            PitchMax = 1.04f,
+            MaxVoices = 3,
+            CooldownSeconds = 0.04f
+        });
+
+        Register(new SoundCardDefinition(
+            "kenney.racing.engine",
+            "Retro Racing Engine",
+            "Racing",
+            "First low-cost engine candidate for track-builder and vehicle prototypes; not yet a seamless loop.",
+            [new($"{root}/retro-sounds-2/racing-engine.ogg", "Retro Sounds 2 / engine1")]
+        )
+        {
+            Tags = ["racing", "vehicle", "engine"],
+            SelectionMode = SoundVariantSelectionMode.Fixed,
+            VolumeDb = -12f,
+            MaxVoices = 1
+        });
+
+        BindApprovedSoundCards();
+    }
+
+    private void BindApprovedSoundCards()
+    {
+        _soundCardBindings.Clear();
+
+        _soundCardBindings["ui-accept"] = "kenney.ui.accept";
+        _soundCardBindings["ui-toggle"] = "kenney.ui.toggle";
+        _soundCardBindings["document-book-open"] = "kenney.document.book-open";
+
+        _soundCardBindings["player-shot"] = "kenney.platformer.player-shot";
+        _soundCardBindings["enemy-shot"] = "kenney.space.projectile";
+        _soundCardBindings["enemy-contact"] = "kenney.platformer.contact-hit";
+        _soundCardBindings["enemy-hit"] = "kenney.platformer.contact-hit";
+        _soundCardBindings["enemy-defeat"] = "kenney.platformer.enemy-defeat";
+        _soundCardBindings["player-hurt"] = "kenney.platformer.player-hurt";
+        _soundCardBindings["power-up"] = "kenney.platformer.power-up";
+        _soundCardBindings["platformer-jump"] = "kenney.platformer.jump";
+        _soundCardBindings["combat-explosion"] = "kenney.combat.explosion";
+
+        _soundCardBindings["brickbat-paddle"] = "kenney.pinball.light-rail";
+        _soundCardBindings["brickbat-text-hit"] = "kenney.brickbat.text-hit";
+        _soundCardBindings["brickbat-word-break"] = "kenney.brickbat.word-break";
+        _soundCardBindings["brickbat-enemy-defeat"] = "kenney.combat.explosion";
+        _soundCardBindings["brickbat-laser"] = "kenney.brickbat.laser";
+        _soundCardBindings["brickbat-ball-lost"] = "kenney.brickbat.ball-lost";
+
+        _soundCardBindings["pinball-launch"] = "kenney.pinball.light-rail";
+        _soundCardBindings["pinball-flipper"] = "kenney.pinball.light-rail";
+        _soundCardBindings["pinball-flipper-hit"] = "kenney.pinball.light-rail";
+        _soundCardBindings["pinball-bumper"] = "kenney.pinball.bumper";
+        _soundCardBindings["pinball-rollover"] = "kenney.ui.toggle";
+        _soundCardBindings["pinball-text-plow"] = "kenney.brickbat.text-hit";
+        _soundCardBindings["pinball-drain"] = "kenney.brickbat.ball-lost";
+
+        _legacySoundFallbacks.Clear();
+        _legacySoundFallbacks["enemy-shot"] = "player-shot";
+        _legacySoundFallbacks["enemy-contact"] = "enemy-hit";
+        _legacySoundFallbacks["combat-explosion"] = "enemy-defeat";
+        _legacySoundFallbacks["platformer-jump"] = "power-up";
+        _legacySoundFallbacks["brickbat-enemy-defeat"] = "brickbat-word-break";
+        _legacySoundFallbacks["pinball-launch"] = "brickbat-paddle";
+        _legacySoundFallbacks["pinball-flipper"] = "brickbat-paddle";
+        _legacySoundFallbacks["pinball-flipper-hit"] = "brickbat-paddle";
+        _legacySoundFallbacks["pinball-bumper"] = "power-up";
+        _legacySoundFallbacks["pinball-rollover"] = "brickbat-text-hit";
+        _legacySoundFallbacks["pinball-text-plow"] = "brickbat-text-hit";
+        _legacySoundFallbacks["pinball-drain"] = "brickbat-ball-lost";
+    }
+
     private void AddSound(string key, string resourcePath, float volumeDb)
     {
         AudioStream? stream = GD.Load<AudioStream>(resourcePath);
@@ -828,12 +1282,31 @@ public partial class Main : Control
 
     private void PlaySound(string key)
     {
-        if (!_soundEnabled || !_soundPlayers.TryGetValue(key, out AudioStreamPlayer? player))
+        if (!_soundEnabled)
+            return;
+
+        if (_soundCardBindings.TryGetValue(key, out string? cardId)
+            && _soundCardPlayer.AvailableVariantCount(cardId) > 0)
+        {
+            _soundCardPlayer.TryPlayCard(cardId, out _);
+            return;
+        }
+
+        string legacyKey = _legacySoundFallbacks.TryGetValue(key, out string? fallbackKey) ? fallbackKey : key;
+        if (!_soundPlayers.TryGetValue(legacyKey, out AudioStreamPlayer? player))
             return;
 
         if (player.Playing)
             player.Stop();
         player.Play();
+    }
+
+    private void StopAllAudio()
+    {
+        if (_soundCardPlayer is not null)
+            _soundCardPlayer.StopAll();
+        foreach (AudioStreamPlayer player in _soundPlayers.Values)
+            player.Stop();
     }
 
     private void BuildCockpit()
@@ -908,6 +1381,7 @@ public partial class Main : Control
         AddCockpitTab(_cockpitTabs, "Assets", BuildLegacyLibraryPanel());
         AddCockpitTab(_cockpitTabs, "Enemies", BuildEnemiesPanel());
         AddCockpitTab(_cockpitTabs, "Projectiles", BuildProjectilesPanel());
+        AddCockpitTab(_cockpitTabs, "Sounds", BuildSoundsPanel());
         AddCockpitTab(_cockpitTabs, "Objects", BuildObjectsPanel());
         AddCockpitTab(_cockpitTabs, "Builder", BuildCharacterWorkbenchPanel());
         AddCockpitTab(_cockpitTabs, "Understand", BuildUnderstandingPanel());
@@ -1224,6 +1698,191 @@ public partial class Main : Control
         VBoxContainer overhead = PanelVBox(panel);
         overhead.AddChild(CockpitHeading("OVERHEAD PAGE"));
         AddGameTypeSessionBlock(overhead, PlaysetMode.Overhead, "Enter Overhead");
+        return panel;
+    }
+
+    private Control BuildSoundsPanel()
+    {
+        PanelContainer panel = CockpitPanel(360);
+        VBoxContainer sounds = PanelVBox(panel);
+        sounds.AddChild(CockpitHeading("SOUND CARDS / AUDITION SHELF"));
+        sounds.AddChild(CockpitNote(
+            $"Kenney CC0 deck: {_soundCardPlayer.Cards.Count} approved cards • {_kenneyAuditionSourcesLoaded} sources loaded. "
+            + "Choose a game family, then a semantic card. The same cards now drive live gameplay through editable event bindings."
+        ));
+
+        sounds.AddChild(CockpitHeading("PICKER"));
+        OptionButton familyPicker = SoundPicker("Game family");
+        OptionButton cardPicker = SoundPicker("Sound Card");
+        sounds.AddChild(familyPicker);
+        sounds.AddChild(cardPicker);
+
+        Label details = CockpitNote("");
+        details.CustomMinimumSize = new Vector2(0, 132);
+        sounds.AddChild(details);
+
+        Button audition = Button("Audition");
+        Button nextVariant = Button("Next Variant");
+        Button stop = Button("Stop");
+        Button soundToggle = Button(_soundEnabled ? "Sound: On" : "Sound: Off");
+        sounds.AddChild(ButtonRow(audition, nextVariant, stop, soundToggle));
+
+        Label auditionStatus = CockpitNote("Ready. Auditions stop when the Cockpit closes or the Boss Key is used.");
+        sounds.AddChild(auditionStatus);
+
+        sounds.AddChild(CockpitHeading("CARD POLICY"));
+        sounds.AddChild(CockpitNote(
+            "Sound Cards own variants, shuffle/random policy, gain, pitch range, cooldown, voice cap, loop intent, semantic tags, and provenance. "
+            + "Approved cards now drive live game events; closely matched source variants can be admitted without changing those event bindings."
+        ));
+
+        sounds.AddChild(CockpitHeading("LIVE BINDINGS"));
+        sounds.AddChild(CockpitNote(
+            "Platformer jump, player/enemy fire, contact, hurt, defeat and power-up; Brickbat paddle, text, word, laser and drain; "
+            + "and pinball launch, flipper, bumper, rollover, text plow and drain now route through semantic Sound Card bindings."
+        ));
+
+        List<SoundCardDefinition> visibleCards = [];
+        int auditionVariantIndex = 0;
+
+        string[] familyOrder =
+        [
+            "All",
+            "DACK UI",
+            "Document / RPG",
+            "Platformer",
+            "Brickbat",
+            "Pinball",
+            "Space / Combat",
+            "Racing"
+        ];
+        foreach (string family in familyOrder)
+        {
+            if (family == "All" || _soundCardPlayer.Cards.Any(card => card.Family == family))
+                familyPicker.AddItem(family);
+        }
+
+        SoundCardDefinition? SelectedCard()
+        {
+            int selected = cardPicker.Selected;
+            return selected >= 0 && selected < visibleCards.Count ? visibleCards[selected] : null;
+        }
+
+        void RefreshDetails()
+        {
+            SoundCardDefinition? selected = SelectedCard();
+            if (selected is null)
+            {
+                details.Text = "No Sound Card is available for this family.";
+                audition.Disabled = true;
+                nextVariant.Disabled = true;
+                return;
+            }
+
+            int available = _soundCardPlayer.AvailableVariantCount(selected.Id);
+            string boundEvents = string.Join(", ", _soundCardBindings
+                .Where(binding => binding.Value.Equals(selected.Id, StringComparison.OrdinalIgnoreCase))
+                .Select(binding => binding.Key)
+                .OrderBy(eventKey => eventKey));
+            string sourceSummary = selected.Variants.Count <= 1
+                ? selected.Variants[0].DisplayName
+                : $"{selected.Variants[0].DisplayName} (+{selected.Variants.Count - 1} variants)";
+            details.Text = $"{selected.DisplayName}  //  {selected.Family}\n"
+                + $"{selected.Description}\n\n"
+                + $"Variants {available}/{selected.Variants.Count}  •  gain {selected.VolumeDb:0.#} dB  •  voices {selected.MaxVoices}  •  "
+                + $"{selected.SelectionMode}\n"
+                + $"Tags: {string.Join(", ", selected.Tags)}\n"
+                + $"Events: {(string.IsNullOrWhiteSpace(boundEvents) ? "audition only" : boundEvents)}\n"
+                + $"Source: {sourceSummary}  •  Kenney CC0 1.0";
+            audition.Disabled = available == 0;
+            nextVariant.Disabled = available == 0;
+        }
+
+        void RefreshCards()
+        {
+            string family = familyPicker.Selected >= 0 ? familyPicker.GetItemText(familyPicker.Selected) : "All";
+            visibleCards = _soundCardPlayer.Cards
+                .Where(card => family == "All" || card.Family == family)
+                .OrderBy(card => card.DisplayName)
+                .ToList();
+            cardPicker.Clear();
+            foreach (SoundCardDefinition card in visibleCards)
+                cardPicker.AddItem(card.DisplayName);
+            if (visibleCards.Count > 0)
+                cardPicker.Select(0);
+            auditionVariantIndex = 0;
+            RefreshDetails();
+        }
+
+        familyPicker.ItemSelected += _ => RefreshCards();
+        cardPicker.ItemSelected += _ =>
+        {
+            auditionVariantIndex = 0;
+            RefreshDetails();
+        };
+
+        audition.Pressed += () =>
+        {
+            SoundCardDefinition? selected = SelectedCard();
+            if (selected is null)
+                return;
+            if (!_soundEnabled)
+            {
+                auditionStatus.Text = "Sound is off. Turn it on to audition this card.";
+                return;
+            }
+
+            _soundCardPlayer.StopAll();
+            bool played = _soundCardPlayer.TryPlayCard(selected.Id, out string variantName);
+            auditionStatus.Text = played
+                ? $"Playing {selected.DisplayName} — {variantName}."
+                : $"Could not play {selected.DisplayName}: {variantName}.";
+            _inspectorText.Text = $"Sound Card audition\n\n{selected.DisplayName}\n{selected.Description}\n\n{variantName}\nKenney / CC0 1.0.";
+        };
+
+        nextVariant.Pressed += () =>
+        {
+            SoundCardDefinition? selected = SelectedCard();
+            if (selected is null)
+                return;
+            if (!_soundEnabled)
+            {
+                auditionStatus.Text = "Sound is off. Turn it on to audition variants.";
+                return;
+            }
+
+            int available = _soundCardPlayer.AvailableVariantCount(selected.Id);
+            if (available == 0)
+                return;
+            auditionVariantIndex = (auditionVariantIndex + 1) % available;
+            _soundCardPlayer.StopAll();
+            bool played = _soundCardPlayer.TryPlayCard(selected.Id, out string variantName, auditionVariantIndex);
+            auditionStatus.Text = played
+                ? $"Variant {auditionVariantIndex + 1}/{available}: {variantName}."
+                : $"Could not play {selected.DisplayName}: {variantName}.";
+        };
+
+        stop.Pressed += () =>
+        {
+            _soundCardPlayer.StopAll();
+            auditionStatus.Text = "Audition stopped.";
+        };
+
+        soundToggle.Pressed += () =>
+        {
+            _soundEnabled = !_soundEnabled;
+            soundToggle.Text = _soundEnabled ? "Sound: On" : "Sound: Off";
+            if (!_soundEnabled)
+            {
+                _soundCardPlayer.StopAll();
+                foreach (AudioStreamPlayer player in _soundPlayers.Values)
+                    player.Stop();
+            }
+            auditionStatus.Text = _soundEnabled ? "Sound enabled." : "All sound disabled.";
+        };
+
+        familyPicker.Select(0);
+        RefreshCards();
         return panel;
     }
 
@@ -1732,6 +2391,12 @@ public partial class Main : Control
             "Jamie Cross CC0 dungeon player with Idle, Run, Fall, Rope, and real two-frame Climb animation. Very Lode Runner / office-dungeon friendly."
         ));
         player.AddChild(PlayerCharacterCard(
+            "knight-player",
+            "Knight",
+            "Melee / shield platformer",
+            "Transparent discrete strips with Idle, Run, Jump/Fall, Roll, Attack, Shield, and Death. Attack supplies the current Melee/Punch hooks; Roll supplies text-crawl until a dedicated dodge rule is wired."
+        ));
+        player.AddChild(PlayerCharacterCard(
             "battle-fleet-red-ship-01",
             "Battle Ship Player",
             "Overhead / space pilot card",
@@ -1838,7 +2503,8 @@ public partial class Main : Control
         workbench.AddChild(CharacterSlotShelf(
             "Sounds",
             "Current: starter sound deck",
-            "Assign jump, land, fire, hurt, defeat, pickup, alert, and ambient/idle sounds."
+            "Assign jump, land, fire, hurt, defeat, pickup, alert, and ambient/idle sounds.",
+            "Sounds"
         ));
         workbench.AddChild(CharacterSlotShelf(
             "Text Rules",
@@ -1917,6 +2583,15 @@ public partial class Main : Control
                 );
                 LoadDungeonRunnerEditorDefaults();
                 break;
+            case "knight-player":
+                SetPlayerCharacter(
+                    "Knight",
+                    SpriteAnimationSet.TryLoadKnight(),
+                    "Knight Player Card applied. Melee, roll/crawl, shield, jump/fall, and death strips are available in the animation editor.",
+                    "knight-player"
+                );
+                LoadKnightEditorDefaults();
+                break;
             case "battle-fleet-red-ship-01":
                 SetPlayerCharacter(
                     "Battle Ship 01",
@@ -1968,11 +2643,16 @@ public partial class Main : Control
         enter.Pressed += () =>
         {
             SetPlaysetMode(mode);
+            PlaySound("ui-accept");
             _inspectorText.Text = $"{PlaysetModeLabel(mode)} toolkit selected.";
         };
 
         Button play = Button(_editorMode ? "Enter Play Mode" : "Return to Editor");
-        play.Pressed += () => SetEditorMode(!_editorMode);
+        play.Pressed += () =>
+        {
+            SetEditorMode(!_editorMode);
+            PlaySound("ui-toggle");
+        };
         _editorPlayButtons.Add(play);
 
         page.AddChild(ButtonRow(enter, play));
@@ -2301,6 +2981,82 @@ public partial class Main : Control
         _playsetToolbarRow.AddChild(boss);
     }
 
+    private void BuildLaunchScreen()
+    {
+        _launchScreen = new Control
+        {
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+            ZIndex = 200
+        };
+        _launchScreen.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+        AddChild(_launchScreen);
+
+        CenterContainer center = new();
+        center.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+        _launchScreen.AddChild(center);
+
+        VBoxContainer stack = new()
+        {
+            CustomMinimumSize = new Vector2(360, 0),
+            Alignment = BoxContainer.AlignmentMode.Center
+        };
+        stack.AddThemeConstantOverride("separation", 16);
+        center.AddChild(stack);
+
+        _launchLogo = new TextureRect
+        {
+            Texture = GD.Load<Texture2D>("res://icon.svg"),
+            CustomMinimumSize = new Vector2(168, 168),
+            ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+            StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+            Modulate = new Color(1f, 1f, 1f, 0.42f),
+            PivotOffset = new Vector2(84, 84),
+            MouseFilter = Control.MouseFilterEnum.Ignore
+        };
+        stack.AddChild(_launchLogo);
+
+        _launchHint = new Label
+        {
+            Text = "CTRL+ALT+B  —  SHOW / HIDE DACK",
+            HorizontalAlignment = HorizontalAlignment.Center,
+            CustomMinimumSize = new Vector2(360, 30),
+            MouseFilter = Control.MouseFilterEnum.Ignore
+        };
+        _launchHint.AddThemeColorOverride("font_color", new Color(0.95f, 0.96f, 0.98f, 0.72f));
+        _launchHint.AddThemeFontSizeOverride("font_size", 15);
+        stack.AddChild(_launchHint);
+
+        _playsetToolbar.Visible = false;
+        _platformerHud.Visible = false;
+    }
+
+    private void UpdateLaunchScreen(float delta)
+    {
+        if (!_launchScreenActive || _launchScreen is null || !_launchScreen.Visible)
+            return;
+
+        _launchScreenClock += delta;
+        float breathe = Mathf.Sin((float)_launchScreenClock * 1.35f) * 0.018f;
+        _launchLogo.Scale = Vector2.One * (1f + breathe);
+        _launchLogo.Rotation = Mathf.Sin((float)_launchScreenClock * 0.72f) * 0.012f;
+        float alpha = 0.38f + Mathf.Sin((float)_launchScreenClock * 1.1f) * 0.05f;
+        _launchLogo.Modulate = new Color(1f, 1f, 1f, alpha);
+    }
+
+    private void DismissLaunchScreen()
+    {
+        if (!_launchScreenActive)
+            return;
+
+        _launchScreenActive = false;
+        if (_launchScreen is not null)
+            _launchScreen.Visible = false;
+        if (_playsetToolbar is not null)
+            _playsetToolbar.Visible = true;
+        RefreshPlatformerHud();
+        UpdateCursorMode();
+    }
+
     private void BuildBossOverlay()
     {
         _bossOverlay = new ColorRect
@@ -2336,6 +3092,7 @@ public partial class Main : Control
 
     private void CreateActors()
     {
+        _enemyPlacementRandom.Randomize();
         _initialModel = EditableSpriteModel.CreateInitial(out bool loadedThirdPartyAsset);
 
         for (int i = 0; i < 8; i++)
@@ -2429,6 +3186,9 @@ public partial class Main : Control
             case "8-bit-dungeon-runner":
                 LoadDungeonRunnerEditorDefaults();
                 break;
+            case "knight-player":
+                LoadKnightEditorDefaults();
+                break;
             case "sunny-dragon-fly":
                 LoadSunnyDragonEditorDefaults();
                 break;
@@ -2459,6 +3219,8 @@ public partial class Main : Control
     private static string GuessAnimationSourceId(string actorName, bool playable)
     {
         string name = actorName.ToLowerInvariant();
+        if (name.Contains("knight"))
+            return "knight-player";
         if (name.Contains("sunny") || name.Contains("dragon"))
             return "sunny-dragon-fly";
         if (name.Contains("orange"))
@@ -2553,7 +3315,21 @@ public partial class Main : Control
                 return _actors[i];
         }
 
-        return _actors.Count > 1 ? _actors[1] : _player;
+        return CreateEnemySlot();
+    }
+
+    private ActorView CreateEnemySlot()
+    {
+        ActorView enemy = new()
+        {
+            ActorName = $"Enemy {_actors.Count}",
+            Model = _initialModel,
+            Visible = false
+        };
+        enemy.SelectionRequested += SelectActor;
+        _actors.Add(enemy);
+        _playfield.AddChild(enemy);
+        return enemy;
     }
 
     private Vector2 EnemyDefaultSize()
@@ -2565,17 +3341,48 @@ public partial class Main : Control
     private Vector2 EnemySpawnPosition(int slotIndex, Vector2 size)
     {
         Rect2 bounds = _playfield.PlayBounds;
+        float horizontalMargin = Mathf.Min(bounds.Size.X * 0.12f, _textUnitPixels * 18f);
+        float verticalMargin = Mathf.Min(bounds.Size.Y * 0.12f, _textUnitPixels * 12f);
+        float minX = bounds.Position.X + horizontalMargin;
+        float maxX = bounds.End.X - horizontalMargin - size.X;
+        float minY = bounds.Position.Y + verticalMargin;
+        float maxY = bounds.End.Y - verticalMargin - size.Y;
+
+        if (maxX <= minX || maxY <= minY)
+            return new Vector2(bounds.Position.X, bounds.Position.Y);
+
+        for (int attempt = 0; attempt < 24; attempt++)
+        {
+            Vector2 candidate = new(
+                _enemyPlacementRandom.RandfRange(minX, maxX),
+                _enemyPlacementRandom.RandfRange(minY, maxY)
+            );
+            Rect2 candidateRect = new(candidate, size);
+            bool overlaps = false;
+            foreach (ActorView actor in _actors)
+            {
+                if (!actor.Visible || actor == _player || actor.Size == Vector2.Zero)
+                    continue;
+
+                if (candidateRect.Grow(_textUnitPixels * 1.5f).Intersects(new Rect2(actor.Position, actor.Size)))
+                {
+                    overlaps = true;
+                    break;
+                }
+            }
+
+            if (!overlaps)
+                return candidate;
+        }
+
         int index = Mathf.Max(1, slotIndex);
         int column = (index - 1) % 4;
         int row = (index - 1) / 4;
-        Vector2 position = new(
-            bounds.Position.X + bounds.Size.X * (0.55f + column * 0.09f),
-            bounds.Position.Y + bounds.Size.Y * (0.30f + row * 0.14f)
+        Vector2 fallback = new(
+            minX + (column * Mathf.Max(_textUnitPixels * 8f, (maxX - minX) / 4f)),
+            minY + (row * Mathf.Max(_textUnitPixels * 7f, (maxY - minY) / 4f))
         );
-        return new Vector2(
-            Mathf.Clamp(position.X, bounds.Position.X, Mathf.Max(bounds.Position.X, bounds.End.X - size.X)),
-            Mathf.Clamp(position.Y, bounds.Position.Y, Mathf.Max(bounds.Position.Y, bounds.End.Y - size.Y))
-        );
+        return new Vector2(Mathf.Clamp(fallback.X, minX, maxX), Mathf.Clamp(fallback.Y, minY, maxY));
     }
 
     private void LoadTgcEditorDefaults()
@@ -2653,6 +3460,36 @@ public partial class Main : Control
         AddTgcClipRow("Run Shoot", Mathf.Min(8, maxFrame), Mathf.Min(10, maxFrame), maxFrame);
         AddTgcClipRow("Jump Shoot", Mathf.Min(9, maxFrame), Mathf.Min(9, maxFrame), maxFrame);
         AddTgcClipRow("Death", Mathf.Min(7, maxFrame), Mathf.Min(7, maxFrame), maxFrame);
+        TryLoadAnimationClipLabels(showFeedback: false);
+        UpdateTgcStripPreview();
+    }
+
+    private void LoadKnightEditorDefaults()
+    {
+        _animationEditorName = "Knight";
+        _animationEditorSource = "assets/project/knight/knight-*.png";
+        _animationEditorSourceKind = "repo-dev-test";
+        _animationEditorSourceId = "knight-player";
+        _animationEditorFolder = "knight-player-prep";
+        _animationEditorFileName = "knight-player.dackanim.json";
+
+        SpriteFrame[] frames = SpriteAnimationSet.TryLoadKnightFrames(out SpriteFrame[] loaded) ? loaded : [];
+        SetAnimationEditorFrames(frames);
+        int maxFrame = Mathf.Max(0, _animationEditorFrameCount - 1);
+        ClearTgcClipRows();
+        AddTgcClipRow("Idle", 0, Mathf.Min(14, maxFrame), maxFrame);
+        AddTgcClipRow("Run", Mathf.Min(15, maxFrame), Mathf.Min(22, maxFrame), maxFrame);
+        AddTgcClipRow("Jump Anticipation", Mathf.Min(23, maxFrame), Mathf.Min(25, maxFrame), maxFrame);
+        AddTgcClipRow("Jump Up", Mathf.Min(26, maxFrame), Mathf.Min(29, maxFrame), maxFrame);
+        AddTgcClipRow("Jump Down", Mathf.Min(30, maxFrame), Mathf.Min(32, maxFrame), maxFrame);
+        AddTgcClipRow("Fall", Mathf.Min(30, maxFrame), Mathf.Min(32, maxFrame), maxFrame);
+        AddTgcClipRow("Land / Recovery", Mathf.Min(33, maxFrame), Mathf.Min(36, maxFrame), maxFrame);
+        AddTgcClipRow("Roll / Crawl", Mathf.Min(37, maxFrame), Mathf.Min(51, maxFrame), maxFrame);
+        AddTgcClipRow("Attack / Melee", Mathf.Min(52, maxFrame), Mathf.Min(73, maxFrame), maxFrame);
+        AddTgcClipRow("Run Shoot", Mathf.Min(52, maxFrame), Mathf.Min(73, maxFrame), maxFrame);
+        AddTgcClipRow("Jump Shoot", Mathf.Min(52, maxFrame), Mathf.Min(73, maxFrame), maxFrame);
+        AddTgcClipRow("Shield", Mathf.Min(74, maxFrame), Mathf.Min(80, maxFrame), maxFrame);
+        AddTgcClipRow("Death", Mathf.Min(81, maxFrame), Mathf.Min(95, maxFrame), maxFrame);
         TryLoadAnimationClipLabels(showFeedback: false);
         UpdateTgcStripPreview();
     }
@@ -2914,6 +3751,8 @@ public partial class Main : Control
         _focusedClipFrameIndex = -1;
         RefreshFocusedClipLabel();
         _tgcStripPreview?.SetFrames(frames);
+        if (_tgcStripPreview is not null)
+            _tgcStripPreview.FacingRight = _selectedActor?.FacingRight ?? true;
         if (_spriteEditorPreview is not null)
             _spriteEditorPreview.Actor = _selectedActor;
     }
@@ -2936,9 +3775,11 @@ public partial class Main : Control
         AnimationFrameRange jumpUp = FindTgcClipRange(new AnimationFrameRange(15, 15), "jump up", "jump", "rise");
         AnimationFrameRange jumpDown = FindTgcClipRange(new AnimationFrameRange(16, 16), "jump down", "land");
         AnimationFrameRange fall = FindTgcClipRange(jumpDown, "fall", "falling");
-        AnimationFrameRange runShoot = FindTgcClipRange(run, "run shoot", "run shooting");
-        AnimationFrameRange jumpShoot = FindTgcClipRange(jumpUp, "jump shoot", "air shoot", "jump shooting");
+        AnimationFrameRange runShoot = FindTgcClipRange(run, "run shoot", "run shooting", "attack / melee", "attack", "melee", "punch");
+        AnimationFrameRange jumpShoot = FindTgcClipRange(jumpUp, "jump shoot", "air shoot", "jump shooting", "attack / melee", "attack", "melee", "punch");
         AnimationFrameRange death = FindTgcClipRange(new AnimationFrameRange(16, 17), "death", "die");
+        AnimationFrameRange roll = FindTgcClipRange(run, "roll / crawl", "roll", "crawl", "dodge");
+        AnimationFrameRange shield = FindTgcClipRange(idle, "shield", "block", "defend");
         bool idlePingPong = FindTgcClipPingPong("idle");
         bool runPingPong = FindTgcClipPingPong("run", "walk");
         bool jumpUpPingPong = FindTgcClipPingPong("jump up", "jump", "rise");
@@ -2947,6 +3788,8 @@ public partial class Main : Control
         bool runShootPingPong = FindTgcClipPingPong("run shoot", "run shooting");
         bool jumpShootPingPong = FindTgcClipPingPong("jump shoot", "air shoot", "jump shooting");
         bool deathPingPong = FindTgcClipPingPong("death", "die");
+        bool rollPingPong = FindTgcClipPingPong("roll / crawl", "roll", "crawl", "dodge");
+        bool shieldPingPong = FindTgcClipPingPong("shield", "block", "defend");
         ApplyDeathStrobeSettings();
         UpdateTgcStripPreview();
 
@@ -2961,6 +3804,13 @@ public partial class Main : Control
                 break;
             case "8-bit-dungeon-runner":
                 animationSet = SpriteAnimationSet.TryLoadDungeonRunner();
+                break;
+            case "knight-player":
+                animationSet = SpriteAnimationSet.TryLoadKnight(
+                    idle, run, jumpUp, jumpDown, fall, runShoot, jumpShoot, death, roll, shield,
+                    idlePingPong, runPingPong, jumpUpPingPong, jumpDownPingPong, fallPingPong,
+                    runShootPingPong, jumpShootPingPong, deathPingPong, rollPingPong, shieldPingPong
+                );
                 break;
             case "sunny-dragon-fly":
                 animationSet = SpriteAnimationSet.TryLoadSunnyDragon(idle, run, jumpUp, jumpDown, fall, runShoot, jumpShoot, death, idlePingPong, runPingPong, jumpUpPingPong, jumpDownPingPong, fallPingPong, runShootPingPong, jumpShootPingPong, deathPingPong);
@@ -2992,7 +3842,7 @@ public partial class Main : Control
         }
 
         string note = $"{_animationEditorName} labels applied.\n\n"
-            + $"Idle {idle.Start}-{idle.End}; Run {run.Start}-{run.End}; Jump-up {jumpUp.Start}-{jumpUp.End}; Jump-down {jumpDown.Start}-{jumpDown.End}; Fall {fall.Start}-{fall.End}; Run-shoot {runShoot.Start}-{runShoot.End}; Jump-shoot {jumpShoot.Start}-{jumpShoot.End}; Death {death.Start}-{death.End}.\n\n"
+            + $"Idle {idle.Start}-{idle.End}; Run {run.Start}-{run.End}; Jump-up {jumpUp.Start}-{jumpUp.End}; Jump-down {jumpDown.Start}-{jumpDown.End}; Fall {fall.Start}-{fall.End}; Run-shoot/attack {runShoot.Start}-{runShoot.End}; Jump-shoot/attack {jumpShoot.Start}-{jumpShoot.End}; Roll {roll.Start}-{roll.End}; Shield {shield.Start}-{shield.End}; Death {death.Start}-{death.End}.\n\n"
             + "Run Shoot and Jump Shoot now bind while firing. Death can be tested from the strip editor. PingPong turns short ranges into forward/back sequences.";
 
         if (_selectedActor is not null && !_selectedActor.IsPlayable)
@@ -3055,6 +3905,7 @@ public partial class Main : Control
             "stickman-v0.2" => SpriteAnimationSet.TryLoadStickmanV2(),
             "stickman-v0.1" => SpriteAnimationSet.TryLoadStickman(),
             "8-bit-dungeon-runner" => SpriteAnimationSet.TryLoadDungeonRunner(),
+            "knight-player" => SpriteAnimationSet.TryLoadKnight(),
             "sunny-dragon-fly" => SpriteAnimationSet.TryLoadSunnyDragon(),
             "tgc-player" => SpriteAnimationSet.TryLoadGameCreatorPlayer(),
             "tgc-orange-worker" => SpriteAnimationSet.TryLoadTgcOrangeWorker(),
@@ -3072,7 +3923,7 @@ public partial class Main : Control
     private void TriggerDeathAnimation()
     {
         ApplyDeathStrobeSettings();
-        _deathTestSeconds = 1.35;
+        _deathTestSeconds = 1.55;
         _playerVelocity = Vector2.Zero;
         _player.MotionState = ActorMotionState.Death;
         _player.AnimationClock = 0;
@@ -3082,7 +3933,7 @@ public partial class Main : Control
     private void TriggerPunchPreview()
     {
         SelectActor(_player);
-        _punchPreviewSeconds = 0.85;
+        _punchPreviewSeconds = 1.25;
         _player.AnimationClock = 0;
         _player.MotionState = ActorMotionState.Punch;
         _player.QueueRedraw();
@@ -3095,7 +3946,6 @@ public partial class Main : Control
             return;
 
         _punchPreviewSeconds -= delta;
-        _player.AnimationClock += delta;
         _player.MotionState = ActorMotionState.Punch;
         _player.QueueRedraw();
     }
@@ -3383,8 +4233,11 @@ public partial class Main : Control
 
         foreach (LevelActor saved in actors)
         {
-            if (saved.index < 0 || saved.index >= _actors.Count)
+            if (saved.index < 0)
                 continue;
+
+            while (saved.index >= _actors.Count)
+                CreateEnemySlot();
 
             ActorView actor = _actors[saved.index];
             actor.ActorName = string.IsNullOrWhiteSpace(saved.name) ? actor.ActorName : saved.name;
@@ -3403,6 +4256,7 @@ public partial class Main : Control
                 "stickman-v0.1" => SpriteAnimationSet.TryLoadStickman(),
                 "stickman-v0.2" => SpriteAnimationSet.TryLoadStickmanV2(),
                 "8-bit-dungeon-runner" => SpriteAnimationSet.TryLoadDungeonRunner(),
+                "knight-player" => SpriteAnimationSet.TryLoadKnight(),
                 "sunny-dragon-fly" => SpriteAnimationSet.TryLoadSunnyDragon(),
                 "tgc-player" => SpriteAnimationSet.TryLoadGameCreatorPlayer(),
                 "tgc-orange-worker" => SpriteAnimationSet.TryLoadTgcOrangeWorker(),
@@ -3489,6 +4343,7 @@ public partial class Main : Control
         }
 
         _tgcStripPreview.NumberBase = Mathf.RoundToInt((float)_tgcNumberBase.Value);
+        _tgcStripPreview.FacingRight = _selectedActor?.FacingRight ?? true;
         _tgcStripPreview.SetLabels(GetTgcClipLabels());
     }
 
@@ -3851,14 +4706,19 @@ public partial class Main : Control
 
     private void ToggleBossMode()
     {
+        DismissLaunchScreen();
         _bossMode = !_bossMode;
+        if (_bossMode)
+            StopAllAudio();
         _workspace.Visible = !_bossMode;
         _bossOverlay.Visible = _bossMode;
+        RefreshUiState();
         UpdateCursorMode();
     }
 
     private void ToggleSpritePanel()
     {
+        DismissLaunchScreen();
         bool opening = !_sidebar.Visible;
         _sidebar.Visible = opening;
         if (_playfieldFrame is not null)
@@ -3867,6 +4727,7 @@ public partial class Main : Control
 
         if (opening && _cockpit is not null && _cockpit.Visible)
         {
+            _soundCardPlayer.StopAll();
             _cockpit.Visible = false;
             _resumePlayWhenCockpitCloses = false;
             _brickbatOverlay.HudEditable = false;
@@ -3887,15 +4748,18 @@ public partial class Main : Control
             _playfieldFrame.Visible = true;
         if (_spritePanelButton is not null)
             _spritePanelButton.Text = "Show Sprite Pad";
+        RefreshUiState();
         UpdateCursorMode();
     }
 
     private void ToggleCockpit()
     {
+        DismissLaunchScreen();
         if (_cockpit.Visible)
         {
             bool resumePlay = _resumePlayWhenCockpitCloses;
             _resumePlayWhenCockpitCloses = false;
+            _soundCardPlayer.StopAll();
             _cockpit.Visible = false;
             if (resumePlay)
                 SetEditorMode(false);
@@ -3908,12 +4772,55 @@ public partial class Main : Control
 
             _cockpit.Visible = true;
             FitCockpitToViewport();
+            PlaySound("document-book-open");
         }
 
         _brickbatOverlay.HudEditable = _cockpit.Visible;
         SyncEditorModeToScene();
         _playfield.QueueRedraw();
         RefreshCockpitStatus();
+        RefreshUiState();
+        UpdateCursorMode();
+    }
+
+    private void ToggleBuildPlayMode()
+    {
+        if (_editorMode)
+        {
+            _resumePlayWhenCockpitCloses = false;
+            SetEditorMode(false);
+            return;
+        }
+
+        _resumePlayWhenCockpitCloses = true;
+        SetEditorMode(true);
+        _cockpit.Visible = true;
+        FitCockpitToViewport();
+        _brickbatOverlay.HudEditable = true;
+        PlaySound("document-book-open");
+        SyncEditorModeToScene();
+        RefreshCockpitStatus();
+        UpdateCursorMode();
+    }
+
+    private void ToggleSimulationFreeze()
+    {
+        if (_editorMode)
+        {
+            _simulationFrozen = true;
+            _inspectorText.Text = "Simulation is already frozen in Build mode.";
+        }
+        else
+        {
+            _simulationFrozen = !_simulationFrozen;
+            _inspectorText.Text = _simulationFrozen
+                ? "Simulation frozen. Press F7 to resume."
+                : "Simulation resumed.";
+        }
+
+        SyncEditorModeToScene();
+        RefreshCockpitStatus();
+        RefreshPlatformerHud();
         UpdateCursorMode();
     }
 
@@ -3939,6 +4846,7 @@ public partial class Main : Control
     private void SetEditorMode(bool enabled)
     {
         _editorMode = enabled;
+        _simulationFrozen = enabled;
         SyncEditorModeToScene();
         if (_editorMode)
         {
@@ -3955,7 +4863,7 @@ public partial class Main : Control
         else
         {
             _resumePlayWhenCockpitCloses = false;
-            SetPlaysetMode(PlaysetMode.Platformer);
+            _soundCardPlayer.StopAll();
             _cockpit.Visible = false;
             CloseSpritePanel();
             _platformerLives = Mathf.Max(1, _platformerLives);
@@ -3984,18 +4892,59 @@ public partial class Main : Control
     {
         _playfield.EditorMode = _editorMode;
         _playfield.ShowEditorOnlyObjects = _editorMode;
+        _playfield.SimulationPaused = _simulationFrozen;
+        _brickbatOverlay.Paused = _editorMode || _simulationFrozen || _playsetMode != PlaysetMode.Brickbat;
         if (_pinballOverlay is not null)
-            _pinballOverlay.Paused = _editorMode || _playsetMode != PlaysetMode.Pinball;
+            _pinballOverlay.Paused = _editorMode || _simulationFrozen || _playsetMode != PlaysetMode.Pinball;
 
         foreach (ActorView actor in _actors)
+        {
             actor.EditorMode = _editorMode;
+            actor.AnimationPaused = _simulationFrozen && !_editorMode;
+        }
 
         if (_player is not null)
             _player.CanDragPlayableInEditor = _editorMode && !_playfield.HasStartMarker();
+
+        RefreshUiState();
+    }
+
+    private void RefreshUiState()
+    {
+        if (_workspace is null)
+            return;
+
+        DackOwnedSurface surface = _sidebar is not null && _sidebar.Visible
+            ? DackOwnedSurface.SpriteStudio
+            : _cockpit is not null && _cockpit.Visible
+                ? DackOwnedSurface.Cockpit
+                : DackOwnedSurface.Canvas;
+
+        DackSimulationState simulation = _simulationFrozen
+            ? DackSimulationState.Frozen
+            : DackSimulationState.Running;
+
+        _uiState.Set(
+            simulation,
+            _editorMode ? DackAuthoringMode.Build : DackAuthoringMode.Play,
+            surface,
+            _bossMode ? DackSafetyState.Boss : DackSafetyState.Normal);
     }
 
     private void TogglePlaysetToolbar()
     {
+        bool launchWasActive = _launchScreenActive;
+        DismissLaunchScreen();
+        if (launchWasActive)
+        {
+            for (int i = 1; i < _playsetToolbarRow.GetChildCount(); i++)
+                _playsetToolbarRow.GetChild<Control>(i).Visible = true;
+
+            _playsetToolbarToggle.Text = "-";
+            UpdateCursorMode();
+            return;
+        }
+
         bool collapsed = _playsetToolbarRow.GetChildCount() > 1 && _playsetToolbarRow.GetChild<Button>(1).Visible;
 
         for (int i = 1; i < _playsetToolbarRow.GetChildCount(); i++)
@@ -4036,6 +4985,14 @@ public partial class Main : Control
             PlaysetMode.Overhead => "Overhead",
             _ => "Platformer"
         };
+
+        SelectCockpitTab(target);
+    }
+
+    private void SelectCockpitTab(string target)
+    {
+        if (_cockpitTabs is null)
+            return;
 
         for (int i = 0; i < _cockpitTabs.GetTabCount(); i++)
         {
@@ -4274,7 +5231,6 @@ public partial class Main : Control
         if (_deathTestSeconds > 0)
         {
             _deathTestSeconds -= delta;
-            _player.AnimationClock += delta;
             _player.MotionState = ActorMotionState.Death;
             _player.QueueRedraw();
             if (_deathTestSeconds <= 0)
@@ -4334,7 +5290,10 @@ public partial class Main : Control
         else
         {
             if (jumpPressed && (_playerOnGround || onLadder))
+            {
                 _playerVelocity.Y = -jumpSpeed;
+                PlaySound("platformer-jump");
+            }
 
             _playerVelocity.Y += gravity * dt;
         }
@@ -4385,6 +5344,7 @@ public partial class Main : Control
 
         if (TryPlayerEnemyContact())
         {
+            PlaySound("enemy-contact");
             KillPlayer(PlayerContactDeathReason());
             return;
         }
@@ -4468,6 +5428,7 @@ public partial class Main : Control
             else if (TryHitTextObject(shotBounds, out Vector2 textImpact))
             {
                 AddImpactEffect(textImpact);
+                PlaySound("combat-explosion");
                 _playerShots.RemoveAt(i);
             }
             else
@@ -4678,6 +5639,7 @@ public partial class Main : Control
         float shotSpeed = Mathf.Max(_textUnitPixels * 28f, 190f);
         float shotLife = Mathf.Clamp(maxRange / shotSpeed, 0.45f, 2.8f);
         _enemyShots.Add(new EnemyShot(origin, direction * shotSpeed, shotLife, 0f, enemy.ActorName));
+        PlaySound("enemy-shot");
         _platformerStatus = $"{enemy.ActorName.ToUpperInvariant()} FIRED";
         RefreshPlatformerHud();
         PushEnemyShotPositionsToPlayfield();
@@ -4816,6 +5778,7 @@ public partial class Main : Control
             else if (shot.Age > 0.32f && shotBounds.Intersects(playerBounds))
             {
                 AddImpactEffect(playerBounds.GetCenter());
+                PlaySound("combat-explosion");
                 _enemyShots.RemoveAt(i);
                 DamagePlayer($"{shot.OwnerName.ToUpperInvariant()} SHOT", _enemyShotDamage);
             }
@@ -5212,7 +6175,7 @@ public partial class Main : Control
         if (!string.IsNullOrWhiteSpace(status))
             _platformerStatus = status;
 
-        _platformerHud.Visible = _playsetMode == PlaysetMode.Platformer;
+        _platformerHud.Visible = !_launchScreenActive && _playsetMode == PlaysetMode.Platformer;
         int visibleEnemies = _actors.Skip(1).Count(actor => actor.Visible && actor.AnimationSet is not null);
         _platformerHudText.Text =
             $"SCORE  {_platformerScore}\n"
@@ -5223,8 +6186,6 @@ public partial class Main : Control
 
     private void UpdatePlayerAnimation(float inputX, bool crawlingText)
     {
-        _player.AnimationClock = _elapsed;
-
         if (crawlingText)
         {
             _player.MotionState = ActorMotionState.Crawl;
@@ -5645,6 +6606,25 @@ public partial class Main : Control
         return button;
     }
 
+    private static OptionButton SoundPicker(string tooltip)
+    {
+        OptionButton picker = new()
+        {
+            TooltipText = tooltip,
+            CustomMinimumSize = new Vector2(280, 36),
+            FocusMode = FocusModeEnum.None,
+            SizeFlagsHorizontal = SizeFlags.ShrinkBegin
+        };
+        picker.AddThemeFontSizeOverride("font_size", 12);
+        picker.AddThemeColorOverride("font_color", new Color("#202A34"));
+        picker.AddThemeColorOverride("font_hover_color", new Color("#101820"));
+        picker.AddThemeColorOverride("font_pressed_color", new Color("#101820"));
+        picker.AddThemeStyleboxOverride("normal", FlatStyle("#FFFFFF", 6));
+        picker.AddThemeStyleboxOverride("hover", FlatStyle("#EAF2FF", 6));
+        picker.AddThemeStyleboxOverride("pressed", FlatStyle("#D9E8FF", 6));
+        return picker;
+    }
+
     private static HBoxContainer ButtonRow(params Button[] buttons)
     {
         HBoxContainer row = new();
@@ -5778,13 +6758,15 @@ public partial class Main : Control
         return button;
     }
 
-    private Control CharacterSlotShelf(string title, string current, string description)
+    private Control CharacterSlotShelf(string title, string current, string description, string? targetTab = null)
     {
         Button shelf = Button($"{title}\n{current}");
         shelf.CustomMinimumSize = new Vector2(0, 54);
         shelf.TooltipText = description;
         shelf.Pressed += () =>
         {
+            if (!string.IsNullOrWhiteSpace(targetTab))
+                SelectCockpitTab(targetTab);
             _inspectorText.Text = $"{title} shelf\n\n{description}\n\nNext pass: drag a card here from Projectiles, Effects, Sounds, AI, or Text Rules. For now, use the matching Cockpit page and the selected actor.";
         };
         shelf.AddThemeFontSizeOverride("font_size", 11);

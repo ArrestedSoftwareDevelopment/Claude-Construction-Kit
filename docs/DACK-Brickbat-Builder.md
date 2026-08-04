@@ -57,6 +57,19 @@ Target sources:
 - semantic label or category;
 - target group/bank.
 
+### ANSI Target-Table Mode
+
+Brickbat may use an ANSI/ASCII/CP437 render as a visual target-wall or table skin, especially on a blank or nearly blank text document. The art supplies color, framing, logos, and atmosphere; the active target model still comes from accepted letters, words, icons, cells, or creator-painted regions.
+
+Composition policies:
+
+- `opaque-art`: ANSI art is the visible wall/table and only explicitly promoted cells/regions are targets;
+- `text-over-art`: native text/target regions remain legible above a dimmed ANSI image;
+- `background-mask`: the shared background map lets ANSI color show through while target ink remains native;
+- `art-only`: no destruction targets are inferred until the creator adds a target recipe.
+
+Brickbat art cards should include board skins, logos, target-wall frames, bonus banners, paddle/ball skins, score typography, and letter-shard palettes. A visual card never creates a target or collision rule by itself. The creator may promote selected ANSI cells or color regions into letter/word proxies, but the promotion is explicit and reversible. This keeps the King Diamond-style ANSI look compatible with exact one-letter/one-word clearing and with cross-playset mutation.
+
 Each target can define:
 
 - presentation and authority;
@@ -196,7 +209,8 @@ Suggested collapsible sections:
 7. **Laser:** strength range, aim, delay, deletion/scoring rule.
 8. **Scoring:** values, combos, word/line/bank completion, multipliers.
 9. **Word Sense:** Off/Lazy/Prepared, goal/bonus categories, fallbacks.
-10. **HUD / Effects / Sound:** layout, fade, theme, intensity, profiles.
+10. **Board Skin / Art Cards:** ANSI composition, board/logo/target-wall cards, cell promotion, palette and text protection.
+11. **HUD / Effects / Sound:** layout, fade, theme, intensity, profiles.
 
 Controls are descriptors feeding the shared Inspector/session state. Brickbat does not own global source capture, Boss Key, save implementation, effects drawing, OCR process management, or document analysis.
 

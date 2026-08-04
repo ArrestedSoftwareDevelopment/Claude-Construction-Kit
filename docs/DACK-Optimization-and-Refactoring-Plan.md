@@ -47,6 +47,10 @@ Refactoring is authorized when it protects a proven loop or removes a measured b
 - Image mutations update the full texture even when only a small dirty rectangle changed.
 - OCR work has a useful queue, but no session cancellation, bounded lifetime, persisted cache, or embedded provider yet.
 - Level persistence is a RAD manifest nested inside `Main.cs`, not yet the versioned Snapshot/package contract.
+- A mixed-content sprite sheet can still be admitted as one character (for example, a snake and a green blob combined into one profile); the importer has no reliable ambiguity gate or creator-review artifact yet.
+- Maze/grid generation, path finding, reusable point/curve paths, parabola authoring, and motion-profile/inertia editing do not yet have shared engine services; they are still scattered toolkit ideas.
+- The Dragon shadow can be mirrored/back-projected incorrectly, and Sprite Studio can fail to show the selected sprite even when the profile/frame data exists; editor and runtime currently lack one verified shadow/preview path.
+- Palette handling is still centered on a small default strip, and repeated character shelves consume more space than a shared two-level picker.
 - There is no automated test project or repeatable performance scene suite.
 
 These limitations are normal for a successful RAD. They are now explicit exit criteria rather than invisible debt.
@@ -146,6 +150,53 @@ Toolkit-specific shapes should be views over that shared analysis, not independe
 
 **Acceptance:** importing one source performs one primary pixel-analysis pass; switching playsets does not repeat it.
 
+#### 6.2.1 Complete text-understanding and erasure overhaul
+
+The current black-pixel/rectangle assumptions are no longer sufficient. A useful source may contain anti-aliased body text, light sub-headings, colored labels, icons, pillboxes, gutters, margins, and large regions of near-white background. The same source can also be damaged over time by Brickbat, Pinball, projectiles, explosions, and platformer gaps. Discovery, OCR, collision, and erasure must therefore become one versioned pipeline rather than separate heuristics.
+
+The named development fixtures and their expected behaviors are recorded in [DACK Document-Analysis Fixture Matrix](DACK-Document-Analysis-Fixture-Matrix.md). The folder includes sparse desktop icons, Git-style nested panels, spreadsheet and Gantt grids, ASCII text maps, and a temporal browser capture; these are the baseline corpus for rectangle/icon discovery rather than optional examples.
+
+Deliver it in five explicit layers:
+
+1. **Appearance model:** derive luminance, chroma, local background, ink likelihood, anti-alias fringe, and connected-component maps at native resolution. Do not require true black or assume that white is the background. Store confidence and the sampled background model with each region.
+2. **Region graph:** group components into glyphs, words, lines, paragraphs, headings, icons, pillboxes, cells, panels, gutters, and background zones. Keep candidate regions even when they are not yet understood; collision and geometry-only play must work from those candidates.
+3. **Meaning service:** queue small, prioritized OCR regions near the next likely interaction. Bind LibTesseract or another local provider to stable region IDs, cache by source/region hash plus provider version, cancel stale work, and retain geometry-only fallbacks. OCR must never be required to start or continue play.
+4. **Mutation service:** make the region mask used for collision the same mask used for letter/word erasure, scoring, and effects. Expand a hit by a small configurable fringe, include adjacent anti-alias pixels, fill from the cached local background model, mark only intersecting regions dirty, and record a reversible mutation. Exact word mode must deactivate one selected word, not every overlapping candidate.
+5. **Verification and correction:** show a creator-facing Understand overlay with accepted/rejected regions, OCR confidence, background samples, and the current mutation mask. Golden fixtures must cover light text, anti-aliasing, icons, pillboxes, sub-headings, dense paragraphs, already-erased pages, and repeated word shapes.
+
+The output is a single `EnvironmentMap`/Snapshot analysis product consumed by Platformer, Brickbat, Pinball, Snake/Maze, RPG, and future route tools. It is acceptable for OCR to arrive late; it is not acceptable for a later playset to use a different definition of the same text object.
+
+**Acceptance:** the supplied difficult document remains legible at 1:1; light and anti-aliased text is discoverable; collision and erasure agree; a one-letter/one-word hit changes only its bounded dirty region; a blast cannot leave a visible fringe outside its configured tolerance; OCR may be disabled without breaking geometry play; and the same stable region survives a playset switch and reload.
+
+### 6.2.2 Shared geometry and motion authoring services
+
+The following creator tools are a planned shared layer, not separate one-off features in each genre page:
+
+| Tool | Shared contract | First consumers |
+| --- | --- | --- |
+| Maze Generator | Seeded rectangular or hexagonal topology, wall/floor masks, entry/exit constraints, difficulty/loop controls, and a preview diff against the source clone | RPG/Roguelike, Snake/Maze, Minefield, tower/escort routes |
+| Path Finder | Grid- and graph-based route queries over text, placed solids, gates, and hazards; A*/BFS baseline with optional flow-field output; explainable blocked/cost overlays | Enemies, escorts, racing, tower defense/offense, Snake/Maze |
+| Grid Overlay | Non-destructive rectangular and hexagonal snapping/inspection overlay with cell IDs, coordinate transforms, and per-cell source/creator/runtime state | Grid/Text, RPG, Snake/Maze, spreadsheets, cellular experiments |
+| Point/Path/Curve Generator | Named points, polylines, Bezier curves, tangents, loop/branch controls, arc-length sampling, and draggable handles | Patrols, conveyors, elevators, ropes/vines, racing, projectile paths |
+| Parabola Editor | Start/end/peak or angle/velocity controls, gravity preview, landing prediction, sampled collision path, and export to a reusable motion profile | Jump arcs, artillery, pinball launch previews, thrown objects, Lunar Lander tuning |
+| Inertia Settings | Acceleration, drag, braking, reverse time, angular inertia, max speed, and control response with ground/vehicle/air/space presets | Platformer, driving, aircraft, spacecraft, tanks, overhead combat |
+
+All six tools use the same native-resolution coordinate contract and emit serializable creator geometry. A visible overlay is optional presentation; the underlying grid/path/curve remains usable when the overlay is hidden. Generated geometry is versioned, seeded where applicable, undoable, and queryable by `EnvironmentMap` and `SimulationWorld`.
+
+**Acceptance:** a creator can generate a seeded maze, inspect or edit its grid, ask an actor for a route, drag a curve or parabola handle while seeing the preview update immediately, and save/reload the result without baking it into the source image. No toolkit is allowed to invent a second path, grid, or inertia representation.
+
+### 6.2.3 Make source refresh explicit
+
+The active playfield must not be invalidated every time the underlying desktop or document changes. Separate the source/session layers:
+
+- immutable `SourceFrame` and versioned `SnapshotAnalysis`;
+- mutable DACK `WorkingClone` and reversible mutation log;
+- transient `RefreshCandidate` that is invisible to gameplay until approved.
+
+Initial capture runs one full analysis. Editing, Play, playset switching, OCR naming, and clone mutations reuse the cached Snapshot and do not recapture the source. A lightweight OS/window signal may set `Refresh available`, but only the creator's `Refresh Source` command can capture and analyze a candidate. Apply/Rebind/Discard is one transaction; rejected or superseded candidates cancel their OCR and analysis work.
+
+**Acceptance:** ten minutes of idle Editing/Playing performs no source capture or full-image analysis; switching playsets performs no capture; applying a refresh creates a new Snapshot and preserves the previous one; discarding a candidate leaves the active clone byte-for-byte unchanged.
+
 ### 6.3 Add a spatial environment index
 
 Actors, balls, projectiles, OCR prioritizers, and HUD placement currently iterate broad lists. Add a uniform grid or quadtree-like index over:
@@ -174,7 +225,7 @@ Maintain an active/deleted state per derived text object and a dirty-rectangle q
 
 ### 6.5 Compile sprite imports once
 
-Runtime spawning should load a curated manifest, not rediscover how a sheet is sliced. The importer may use fixed grids, explicit rectangles, component seeds, or a draft detector, but it should write a reviewable compiled result:
+Runtime spawning should load a curated manifest, not rediscover how a sheet is sliced. The importer may use fixed grids, an interactively calibrated grid, explicit rectangles, component seeds, or a draft detector, but it should write a reviewable compiled result. The calibrated-grid tool is an internal development path: it lets a creator repair a difficult sheet once, then hands deterministic geometry to the same compiler used by runtime.
 
 - source hash and importer-profile version;
 - frame rectangles/origins/display boxes;
@@ -251,6 +302,13 @@ Godot scenes and resources should define stable visual composition. C# controlle
 - Entering play collapses the editor automatically; returning restores the prior tab, selection, scroll position, and deformed clone.
 - Entering Play preserves the active playset/preset. No UI navigation command is allowed to select Platformer, recapture a source, reset a run, or clear mutations as a side effect.
 
+### P0: Repair sprite visibility and shadow correctness
+
+- Make Sprite Studio's selected-label preview and editable-frame preview share one explicit texture/frame binding; a loaded profile with valid frames must never render an empty stage.
+- Route editor and runtime shadows through the same `ShadowRenderer` transform. The shadow must use the current frame, facing, flip, origin, and scale; the Dragon's backwards shadow is a regression fixture.
+- Default the shared page-light vector to a modest relative back/left offset, with an optional facing-relative mode and per-profile override.
+- Add a visual smoke test that opens Dragon in Studio, previews Idle/Run/Fly, toggles facing, and compares sprite/shadow orientation and offset in editor and Play.
+
 ### P0: Make layer ownership explicit
 
 Use named layer roots in this order:
@@ -279,6 +337,8 @@ Define tabs, shelf groups, cards, inspector properties, and toolkit actions as d
 - provenance/export badge where applicable;
 - keyboard access and help text.
 
+The descriptor registry also owns the shared two-level character picker and the single `F6` Play/Build toggle, so these behaviors do not diverge across Player, Enemy, Spawn, Builder, Projectile, and effect pages.
+
 This removes repeated button-building code and makes capitalization, spacing, button width, and disabled states consistent.
 
 ### P1: Establish a small design system
@@ -288,6 +348,8 @@ Create shared tokens/components for:
 - compact button, primary action, toggle/chip, card, shelf group, property row, warning, status badge, and close gadget;
 - spacing, minimum hit size, font size/contrast, border, focus, selected, disabled, and error states;
 - light/dark/high-contrast/Quiet Office/Arcade Neon/Terminal themes.
+
+Palette selectors are part of the design system: expose named constrained profiles (C64, DOS/ANSI, DACK 32/64, Game Boy, monochrome, full-color) and a creator custom-palette path without expanding every card into a permanent swatch wall.
 
 Buttons size to content unless a primary action explicitly deserves full width. Faint dark-gray labels and low-contrast toggles are defects, not theme flavor.
 
@@ -317,6 +379,10 @@ The target two-monitor model is:
 
 Do not clone application state into two independent controllers.
 
+### P2: Optional dynamic-light spectacle
+
+Keep the shared projected-paper shadow as the baseline path. As an opt-in rendering tier, allow one scene light to drive shadow direction, length, skew, softness, and tint for all eligible objects. Cache the light/object relationship, update it only when the light or object transform changes, and shed back to the cheap shadow when frame time or office-safe presentation requires it. Validate this first in a Pinball showcase scene; it is not a prerequisite for ordinary document playfields.
+
 ## 9. Refactoring Sequence
 
 ### R0 — Safety Net and Baselines
@@ -334,6 +400,7 @@ Do not clone application state into two independent controllers.
 - Add transition tests first, then remove the forced-Platformer side effect from Play/Build navigation.
 - Extract `InputRouter`, `UiShellController`, `SelectionService`, and `HudManager`.
 - Move tab/shelf/button definitions into registries/descriptors.
+- Register one two-level character/asset picker (role/family → individual asset) and one configurable `F6` Build/Play command.
 - Replace frame-loop UI polling with signals/events.
 - Preserve existing visual behavior while splitting `Main.cs`.
 
@@ -342,7 +409,8 @@ Do not clone application state into two independent controllers.
 ### R2 — Snapshot, Analysis, and Environment Map
 
 - Implement `SnapshotImageSource` behind `SourceProvider`.
-- Build one cached document-analysis result with stable region IDs.
+- Build one cached document-analysis result with stable region IDs, adaptive background/ink/anti-alias maps, and explicit icon/pillbox/background candidates.
+- Replace the current separate discovery/OCR/erasure heuristics with the staged text-understanding and mutation pipeline in §6.2.1; preserve geometry-only play when OCR is unavailable.
 - Introduce `EnvironmentMap` layers and spatial queries.
 - Move text collisions, current/deleted state, background regions, and mutation events out of `PlayfieldSurface`.
 - Add dirty-rectangle mutation and reversible deltas.
@@ -353,6 +421,8 @@ Do not clone application state into two independent controllers.
 
 - Define versioned asset/import/profile manifests.
 - Move curated factories and source rules out of `SpriteAnimationSet`.
+- Add the internal calibrated-grid sheet tool: live origin/cell/gutter handles, accepted-cell exclusions, baseline preview, and profile save/reload.
+- Add reusable visual-card manifests for Pinball board skins, logos, backglass, rails, bumpers, inserts, aprons, and typography, plus Brickbat ANSI target tables, target-wall frames, paddle/ball skins, and bonus banners; keep visual bindings separate from collision/target-part cards.
 - Generate diagnostic previews and explicit accepted frame lists.
 - Cache compiled textures/atlases and reuse them across actor instances.
 - Promote creator-tested animation defaults without hardcoding new switch branches in `Main`.
@@ -363,6 +433,7 @@ Do not clone application state into two independent controllers.
 
 - Extract actor movement, perception/radar, damage, weapons, projectiles, spawns, and goals into reusable systems.
 - Use a fixed simulation step where construction-kit predictability benefits.
+- Add shared `GeometryToolService` capabilities: rectangular/hex grids, seeded maze generation, path finding, point/polyline/Bezier paths, parabola previews, and serialized inertia/motion profiles.
 - Define toolkit descriptors/modules for Platformer, Brickbat, Pinball, and Overhead.
 - Move toolkit-specific preflight, HUD, scoring, win/lose, and shelf declarations behind those modules.
 - Add transient-object pools and effects quality tiers if profiling justifies them.
@@ -402,13 +473,20 @@ Do not clone application state into two independent controllers.
 
 - geometry transforms and DPI mapping;
 - AABB/line/ramp/ladder/support calculations;
+- text-surface policies (ignore, solid-platform, solid-block, climbable, crawlable, hybrid), line-spacing classification, gap tolerance, and actor capability gating;
 - stable region IDs and spatial-index queries;
 - animation label parsing, dashed actions, reverse/ping-pong/strobe expansion;
+- shadow transform invariants (frame/facing/flip/origin/scale), palette-profile validation, and two-level picker selection state;
 - importer manifests and profile validation;
 - damage, ball reserve, cooldown, range, and goal rules;
 - level migrations and source/mutation separation.
 
 ### Golden-data tests
+
+- Light, anti-aliased, colored, icon, pillbox, sub-heading, and already-erased source fixtures â†’ expected region masks and background classifications.
+- One-letter, one-word, blast, laser, and overlapping-word mutations â†’ expected bounded dirty rectangles and active/deleted IDs.
+- Mixed-content sprite sheets, including the snake/green-blob failure case â†’ expected separated candidates, ambiguity warning, and explicit creator acceptance before runtime admission.
+- Seeded maze/grid/path/Bezier/parabola generation â†’ stable geometry hashes and route results.
 
 - known screenshot → expected text/word/line/icon region summaries;
 - known sprite sheet → expected frame rectangles/order/origins;
@@ -419,7 +497,9 @@ Do not clone application state into two independent controllers.
 
 - source opens at 1:1 and unused monitor space is non-physical;
 - Esc/editor/play/Boss paths always recover;
+- `F6` toggles Build/Play and returns to the prior tab/selection without resetting the session;
 - selection/drag/resize/Inspector edits survive test play;
+- repeated shelf placement creates multiple same-type actors/objects at separated initial positions and preserves them through save/load;
 - Platformer can start, reach a goal, die by named cause, and reload;
 - Brickbat respects three-ball reserves, letter/word deletion, and cooldowns;
 - Pinball launches, flips, clears text, and exits cleanly;
@@ -431,14 +511,20 @@ Do not clone application state into two independent controllers.
 The stabilization/refactor plateau is complete when:
 
 - no ordinary editor page or Inspector can render offscreen at supported window sizes;
+- Sprite Studio previews the selected valid frame/animation, including the Dragon smoke fixture;
+- editor/runtime shadows agree on orientation and use the shared back/left default offset;
 - the Cockpit adds negligible idle cost when open;
 - dense text queries use an index and do not scan every text object for each actor/projectile/ball;
 - small mutations update bounded regions and immediately change collision state;
+- text discovery, OCR labels, collision, and erasure use one stable region/mask model across playsets;
 - admitted sprites load from compiled manifests without runtime detection;
+- mixed-content sheets cannot silently become a single actor profile;
+- grid, maze, path, curve, parabola, and inertia data round-trip through the level contract;
 - background work is cancelable, bounded, observable, and never blocks play;
 - Platformer, Brickbat, Pinball, and Overhead consume shared source/environment/session services;
 - the current RAD level format migrates into a versioned Snapshot-aware save;
 - benchmark scenes meet the agreed 60 FPS target or record an explicit, evidence-backed exception;
 - a new actor, shelf object, Inspector property, or toolkit action can be added mostly through data/registration rather than another root-controller branch.
+- Player/Enemy/Projectile/Builder pages use the shared two-level asset picker, and expanded palette profiles load without permanent shelf sprawl.
 
 At that point, Live Desktop work can proceed without multiplying the prototype’s current coupling.

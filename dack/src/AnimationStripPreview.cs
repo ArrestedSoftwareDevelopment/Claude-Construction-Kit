@@ -7,9 +7,27 @@ public partial class AnimationStripPreview : Control
 {
     private SpriteFrame[] _frames = [];
     private readonly List<AnimationClipLabel> _labels = [];
+    private bool _facingRight = true;
 
     public int Columns { get; set; } = 8;
     public int NumberBase { get; set; }
+    /// <summary>
+    /// Keeps the contact strip in the same facing as the selected actor preview.
+    /// Source sheets are kept in their authoring orientation; this is only a
+    /// display transform and never rewrites the imported frame.
+    /// </summary>
+    public bool FacingRight
+    {
+        get => _facingRight;
+        set
+        {
+            if (_facingRight == value)
+                return;
+
+            _facingRight = value;
+            QueueRedraw();
+        }
+    }
     public int FrameCount => _frames.Length;
 
     public override void _Ready()
@@ -68,7 +86,7 @@ public partial class AnimationStripPreview : Control
             float scale = Mathf.Min((cell.Size.X - 8f) / displaySize.X, 25f / displaySize.Y);
             Vector2 drawSize = displaySize * scale;
             Vector2 drawPosition = cell.Position + new Vector2((cell.Size.X - drawSize.X) * 0.5f, 4f);
-            DrawTextureRectRegion(frame.Texture, new Rect2(drawPosition, drawSize), source);
+            DrawFrame(frame.Texture, source, drawPosition, drawSize);
 
             DrawString(
                 ThemeDB.FallbackFont,
@@ -93,6 +111,21 @@ public partial class AnimationStripPreview : Control
                 );
             }
         }
+    }
+
+    private void DrawFrame(Texture2D texture, Rect2 source, Vector2 drawPosition, Vector2 drawSize)
+    {
+        if (FacingRight)
+        {
+            DrawTextureRectRegion(texture, new Rect2(drawPosition, drawSize), source);
+            return;
+        }
+
+        // Mirror only the sprite pixels around the frame cell's center. The
+        // cell, frame number, and range overlays must remain in reading order.
+        DrawSetTransform(new Vector2(drawPosition.X + drawSize.X, drawPosition.Y), 0f, new Vector2(-1f, 1f));
+        DrawTextureRectRegion(texture, new Rect2(Vector2.Zero, drawSize), source);
+        DrawSetTransform(Vector2.Zero, 0f, Vector2.One);
     }
 
     private Color RangeColorForFrame(int frame)

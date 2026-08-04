@@ -9,13 +9,26 @@ public partial class ActorView : Control
     private bool _selected;
     private bool _isPlayable;
     private bool _facingRight = true;
+    private ActorMotionState _motionState = ActorMotionState.Idle;
     private bool _dragging;
     private static readonly Color SpriteShadowModulate = new(0.08f, 0.09f, 0.10f, 0.24f);
 
     public string ActorName { get; set; } = "Actor";
     public string AnimationSourceId { get; set; } = "";
     public SpriteAnimationSet? AnimationSet { get; set; }
-    public ActorMotionState MotionState { get; set; } = ActorMotionState.Idle;
+    public ActorMotionState MotionState
+    {
+        get => _motionState;
+        set
+        {
+            if (_motionState == value)
+                return;
+
+            _motionState = value;
+            AnimationClock = 0;
+            QueueRedraw();
+        }
+    }
     public int? DirectionFrameIndex { get; set; }
     public double AnimationClock { get; set; }
     public bool StrobeEnabled { get; set; }

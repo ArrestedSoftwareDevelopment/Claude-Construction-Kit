@@ -31,6 +31,8 @@ Cards can be small ingredients:
 - text rule card;
 - spawn rule card;
 - source-binding card.
+- pinball art card (board skin, logo, backglass, rail, bumper, insert, apron, or typography).
+- Brickbat art card (ANSI target table, target-wall frame, logo, paddle/ball skin, bonus banner, or score typography).
 
 Cards can also be finished composites:
 
@@ -128,6 +130,8 @@ Rules:
 - preset / behavior template
 - tags
 - source/provenance
+- creation source: creator / imported / toolkit-starter
+- starterGenerated flag and starter preset ID
 
 ### 2. Presentation
 
@@ -285,6 +289,24 @@ Examples:
 
 This lets a spider climb text, a ghost ignore it, a drill destroy it, a tank ricochet off it, and a player treat it as optional terrain.
 
+### Text-surface policy
+
+Text interaction is two-sided: the actor declares what it can do, and the source/text region declares what kind of surface it is. Neither side should infer a universal rule from the fact that pixels look like letters.
+
+Surface policy options:
+
+- `ignore`: no collision or climb support;
+- `solid-platform`: the text block behaves as a platform, normally colliding on its top/support edge while preserving its visual text;
+- `solid-block`: the full text-region hull is a solid obstacle;
+- `climbable`: an actor with `canClimbText` may attach and move along the detected text surface;
+- `crawlable`: dense/single-spaced rows permit the dedicated crawl animation and vertical text traversal;
+- `destructible`: projectiles/tools can mutate the text but actors do not climb it unless separately enabled;
+- `hybrid`: creator-defined combinations, such as solid top edge plus climbable face.
+
+Line spacing is a classification signal, not an automatic gameplay law. A preset may suggest `single/tight` rows as a continuous crawl or fence face and `double/loose` rows as separated ledges or ladder-required gaps, but the creator can override the result per block or region. The Inspector should expose detected spacing, confidence, gap tolerance, and the chosen policy in plain language.
+
+The player/enemy profile must also expose `canClimbText`, `canCrawlText`, `canUseLadders`, and the required animation labels independently. A character with climb frames but a disabled capability must remain grounded; a capability without a mapped animation should show a diagnostic rather than silently failing.
+
 ## Player attributes
 
 Common:
@@ -309,6 +331,9 @@ Side View:
 - coyote time
 - climb speed
 - ladder/text crawl behavior
+- text surface policy: ignore / solid-platform / solid-block / climbable / crawlable / hybrid
+- line-spacing mode: detected / tight / loose / creator override
+- text-block support edge and gap tolerance
 - slope handling
 - fall/death policy
 - projectile/dig verbs

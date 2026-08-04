@@ -357,7 +357,11 @@ public partial class BrickbatOverlay : Control
             _effects.ComicImpact(hitPosition, RandomBrickbatImpactWord(), 1.55f);
 
         RememberDestroyedWord(label);
-        RequestSound(actorTarget || BrickGranularity == TextObjectGranularity.Word ? "brickbat-word-break" : "brickbat-text-hit");
+        RequestSound(actorTarget
+            ? "brickbat-enemy-defeat"
+            : BrickGranularity == TextObjectGranularity.Word
+                ? "brickbat-word-break"
+                : "brickbat-text-hit");
 
         if (_hits % _bonusEvery == 0)
             TriggerBonus(hitPosition);

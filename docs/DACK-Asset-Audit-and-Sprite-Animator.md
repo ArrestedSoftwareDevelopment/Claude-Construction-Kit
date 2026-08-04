@@ -2,7 +2,7 @@
 
 > Document status: Active architecture and optimization plan
 >
-> Last reviewed: 2026-07-30
+> Last reviewed: 2026-08-03
 >
 > Implementation status: RAD features exist; release packaging and compiled
 > importer manifests are planned
@@ -45,6 +45,7 @@ The complete decision record lives in `dack/assets/ASSET_PROVENANCE.md`.
 | The Game Creator's Pack runtime copies | REPO/DEV-TEST | Owner reports rights; exact redistribution record missing | Importer, actors, and shelf tests |
 | Legacy Collection runtime copies | REPO/DEV-TEST | Local license PDFs exist; subset review incomplete | Actors and effects tests |
 | Explosion Pack runtime copies | REPO/DEV-TEST | Local material exists; exact source/license/file mapping incomplete | Projectile and explosion profiles |
+| Knight transparent strips | REPO/DEV-TEST | Supplied locally; exact rights/source/license/credit record missing | `knight-player` card, 96-frame named-strip and melee/roll/shield test |
 | VerzatileDev Pinball pack | RAW-LOCAL | Local license record present; no curated promotion | Pinball taxonomy and scaling research |
 
 ### Quarantine
@@ -68,8 +69,10 @@ Top-level raw packs observed:
 | all_64c | 615 | <1 MB | `.64c` | Retro/source research; needs format understanding |
 | all_spr | 47 | <1 MB | `.spr` | Retro sprite research; needs format understanding |
 | explosion pack 1 | 263 | 1.6 MB | PNG, GIF, PDF | REPO/DEV-TEST effects source; exact public provenance and file map pending |
+| kenney_ui-pack | 1,315 | about 1.35 MiB | PNG, SVG, OGG, TTF, URL | Complete CC0 source; exact duplicate exists inside the All-in-One bundle, whose copy adds ten atlas files and is canonical |
+| Kenney Game Assets All-in-One 3.6.0 | 88,346 | about 0.95 GiB | PNG, SVG, OGG, 3D formats, XML, fonts | Complete CC0 bundle source; audio-first and non-isometric curation plan lives in `DACK-Kenney-All-in-One-Intake.md` |
 | explosion tutorial files | 16 | tiny | PNG, GIF, ASE | Candidate effect animation learning set, license present |
-| Knight | 14 | tiny | PNG | Candidate character/motion reference; license unknown from local audit |
+| Knight | 14 | tiny | PNG | Seven transparent strips promoted to REPO/DEV-TEST as `knight-player`; exact creator/source/license still required before public packaging |
 | Legacy Collection | 5,055 | 33 MB | PNG, GIF, PSD, ASE | Huge animation/effects/reference trove; license PDFs present |
 | MountainDuskGodot | 384 | 9 MB | Godot import/cache files, PNG | Likely imported sample project; needs cleanup/intent review |
 | PinBall_By_VerzatileDev | 64 | ~1 GB | PNG, TXT | Pinball kit reference; very large sheets; CC BY 4.0 + no standalone redistribution |
@@ -81,6 +84,31 @@ Top-level raw packs observed:
 | Warped shooting fx files | 276 | 16 MB | PNG, ASEPRITE, GIF, PDF, MP3 | Candidate projectile/effects animation source, license present |
 
 ## Important Observations
+
+### Kenney UI Pack is a theme source, not an actor import
+
+The standalone local pack is now complete: 870 PNG, 434 SVG, 6 OGG, two fonts,
+and its source/license records. Blue, Green, Grey, Red, and Yellow each provide
+82 Default sprites with exact 2x Double partners; Extra provides 24 pairs. The
+All-in-One copy is byte-equal for all 1,315 shared files and adds ten
+spritesheet PNG/XML files, so use that copy as canonical and never import both.
+
+Promote only manifest-listed controls into a shared Godot Theme. Prefer the
+bundle's atlases and one resolution tier, while retaining vector and high-DPI
+sources in the raw vault. Do not run these assets through actor/frame detection
+or import every loose variant into every page.
+
+### Kenney All-in-One is an audio-first catalog
+
+The completed 3.6.0 extraction contains 88,346 files and about 0.95 GiB. Its
+1,342 OGG files have exceptionally clean local CC0 evidence, while the visual
+catalog includes deterministic XML/TSX metadata for many high-value
+non-isometric packs. The first pass is now an approved 18-card/50-source Sound
+Card library with audition controls and live semantic routing,
+followed by UI/icons, document-friendly Generic/Scribble/Letter assets,
+pinball/physics/effects, platformer, overhead, space, racing, and RPG slices.
+Isometric/axonometric packs are indexed but deferred. See
+[`DACK-Kenney-All-in-One-Intake.md`](DACK-Kenney-All-in-One-Intake.md).
 
 ### 1. The raw vault is animation-heavy
 
@@ -168,6 +196,7 @@ useful stress test rather than a huge runtime burden:
 This argues that the first importer should not assume square frames or perfect grids. It should support:
 
 - fixed grid slicing when the sheet is regular;
+- interactively calibrated grid slicing for internal development and difficult sheets;
 - automatic non-transparent blob detection for loose strips/sheets;
 - manual frame rectangles for anything the detector gets wrong;
 - clip grouping after detection, because detection finds pictures, not meaning.
@@ -180,7 +209,7 @@ publicly admitted assets.
 
 ### 6. Unknown-license packs stay design-only
 
-`Knight`, `Props`, `Sprites`, `MountainDuskGodot`, `all_64c`, and `all_spr` need explicit provenance before any curated runtime admission. They may still inform editor/animator design locally.
+`Props`, `Sprites`, `MountainDuskGodot`, `all_64c`, and `all_spr` need explicit provenance before any curated runtime admission. The seven transparent Knight strips have moved to REPO/DEV-TEST with an exact filename mapping, but still need creator/source/license evidence before public admission.
 
 ### 7. Legacy Collection deep pass: sorted animation vault
 
@@ -219,6 +248,21 @@ Importer implications:
 - Do not ship the raw collection. Runtime copies under `dack/assets/project/`
   are REPO/DEV-TEST fixtures. Promote only curated DACK presets after explicit
   provenance review; changing directories alone is not promotion.
+
+### Importer failure case: mixed-content sheets
+
+The current importer is not flawless. A sheet containing a snake and a green blob was admitted as one character because the draft detector treated nearby/related pixel components as one actor. This is a correctness issue, not merely a presentation issue: an incorrect frame set contaminates animation labels, collision bounds, scale defaults, and enemy/player behavior.
+
+The replacement contract is reviewable and fail-closed:
+
+- detect candidate components, rows, cells, and whitespace gaps separately;
+- propose frame rectangles and component groupings with confidence, source hash, and a contact-sheet preview;
+- warn when candidates have incompatible dimensions, baselines, palettes, motion silhouettes, or disconnected clusters;
+- require an explicit creator acceptance/correction for ambiguous groups;
+- compile accepted rectangles, exclusions, origins, and action order into a versioned manifest;
+- never rerun blob detection when the actor is spawned or when a level is loaded.
+
+The snake/green-blob sheet is now a required regression fixture. It must produce two reviewable candidates (or an explicit “manual split required” result), never one silent character. The same profile pipeline should support the irregular TGC sheets, Dungeon Runner sequences, effects/projectiles, and individual frame files.
 
 Current import process decision:
 
@@ -604,8 +648,8 @@ The source-specific profile records:
 - stable asset and provenance IDs plus distribution tier;
 - source path and content hash;
 - importer/profile schema version;
-- slicing mode: fixed grid, regular strip, explicit rectangles, metadata, or
-  draft component detection;
+- slicing mode: fixed grid, regular strip, calibrated grid, explicit rectangles,
+  metadata, or draft component detection;
 - exact cell size or confirmed frame rectangles and deterministic frame order;
 - transparent-color/background policy and optional hairline-preservation pass;
 - common display box, baseline/origin, pivots, and per-frame visual bounds;

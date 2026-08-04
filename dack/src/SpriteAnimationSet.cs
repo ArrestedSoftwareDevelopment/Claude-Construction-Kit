@@ -13,6 +13,7 @@ public sealed class SpriteAnimationSet
     private const string StickmanV1Root = "res://assets/third_party/stickman-pack-v0.1";
     private const string StickmanV2Root = "res://assets/third_party/stickman-pack-v0.2";
     private const string DungeonRoot = "res://assets/third_party/8-bit-dungeon";
+    private const string KnightRoot = "res://assets/project/knight";
     private const string SunnyDragonRelativePath = "raw base assets/Legacy Collection/Legacy Collection/Assets/Misc/Characters/sunny-dragon/spritesheets/sunny-dragon-fly.png";
     private const string TgcPlatformerRuntimePath = "res://assets/project/game-creators-pack/platformer-spritesheet.png";
     private const string TgcShooterBossRuntimePath = "res://assets/project/game-creators-pack/shooter-boss-sprite.png";
@@ -28,11 +29,19 @@ public sealed class SpriteAnimationSet
     private static readonly AnimationFrameRange DefaultGameCreatorDeath = new(16, 17);
 
     private readonly Dictionary<ActorMotionState, SpriteFrame[]> _frames;
+    private readonly Dictionary<ActorMotionState, float> _frameRates;
+    private readonly HashSet<ActorMotionState> _oneShotStates;
     private delegate bool SpriteFrameLoader(out SpriteFrame[] frames);
 
-    private SpriteAnimationSet(Dictionary<ActorMotionState, SpriteFrame[]> frames)
+    private SpriteAnimationSet(
+        Dictionary<ActorMotionState, SpriteFrame[]> frames,
+        Dictionary<ActorMotionState, float>? frameRates = null,
+        HashSet<ActorMotionState>? oneShotStates = null
+    )
     {
         _frames = frames;
+        _frameRates = frameRates ?? [];
+        _oneShotStates = oneShotStates ?? [];
     }
 
     public static SpriteAnimationSet? TryLoadStickman()
@@ -129,6 +138,94 @@ public sealed class SpriteAnimationSet
         }
 
         return new SpriteAnimationSet(frames);
+    }
+
+    public static SpriteAnimationSet? TryLoadKnight()
+    {
+        return TryLoadKnight(
+            new AnimationFrameRange(0, 14),
+            new AnimationFrameRange(15, 22),
+            new AnimationFrameRange(26, 29),
+            new AnimationFrameRange(30, 32),
+            new AnimationFrameRange(30, 32),
+            new AnimationFrameRange(52, 73),
+            new AnimationFrameRange(52, 73),
+            new AnimationFrameRange(81, 95),
+            new AnimationFrameRange(37, 51),
+            new AnimationFrameRange(74, 80),
+            false, false, false, false, false,
+            false, false, false, false, false
+        );
+    }
+
+    public static SpriteAnimationSet? TryLoadKnight(
+        AnimationFrameRange idle,
+        AnimationFrameRange run,
+        AnimationFrameRange jumpUp,
+        AnimationFrameRange jumpDown,
+        AnimationFrameRange fall,
+        AnimationFrameRange runShoot,
+        AnimationFrameRange jumpShoot,
+        AnimationFrameRange death,
+        AnimationFrameRange roll,
+        AnimationFrameRange shield,
+        bool idlePingPong,
+        bool runPingPong,
+        bool jumpUpPingPong,
+        bool jumpDownPingPong,
+        bool fallPingPong,
+        bool runShootPingPong,
+        bool jumpShootPingPong,
+        bool deathPingPong,
+        bool rollPingPong,
+        bool shieldPingPong
+    )
+    {
+        if (!TryLoadKnightFrames(out SpriteFrame[] all))
+            return null;
+
+        Dictionary<ActorMotionState, SpriteFrame[]> frames = [];
+        frames[ActorMotionState.Idle] = SliceFrames(all, idle, idlePingPong);
+        frames[ActorMotionState.Run] = SliceFrames(all, run, runPingPong);
+        frames[ActorMotionState.JumpUp] = SliceFrames(all, jumpUp, jumpUpPingPong);
+        frames[ActorMotionState.JumpDown] = SliceFrames(all, jumpDown, jumpDownPingPong);
+        frames[ActorMotionState.Fall] = SliceFrames(all, fall, fallPingPong);
+        frames[ActorMotionState.RunShoot] = SliceFrames(all, runShoot, runShootPingPong);
+        frames[ActorMotionState.JumpShoot] = SliceFrames(all, jumpShoot, jumpShootPingPong);
+        frames[ActorMotionState.Punch] = frames[ActorMotionState.RunShoot];
+        frames[ActorMotionState.Roll] = SliceFrames(all, roll, rollPingPong);
+        frames[ActorMotionState.Crawl] = frames[ActorMotionState.Roll];
+        frames[ActorMotionState.Shield] = SliceFrames(all, shield, shieldPingPong);
+        frames[ActorMotionState.Death] = SliceFrames(all, death, deathPingPong);
+        return new SpriteAnimationSet(
+            frames,
+            new Dictionary<ActorMotionState, float>
+            {
+                [ActorMotionState.Run] = 12f,
+                [ActorMotionState.Crawl] = 12f,
+                [ActorMotionState.Roll] = 12f,
+                [ActorMotionState.JumpUp] = 12f,
+                [ActorMotionState.JumpDown] = 12f,
+                [ActorMotionState.Fall] = 12f,
+                [ActorMotionState.Punch] = 18f,
+                [ActorMotionState.RunShoot] = 18f,
+                [ActorMotionState.JumpShoot] = 18f,
+                [ActorMotionState.Shield] = 8f,
+                [ActorMotionState.Death] = 10f
+            },
+            new HashSet<ActorMotionState>
+            {
+                ActorMotionState.JumpUp,
+                ActorMotionState.JumpDown,
+                ActorMotionState.Fall,
+                ActorMotionState.Punch,
+                ActorMotionState.RunShoot,
+                ActorMotionState.JumpShoot,
+                ActorMotionState.Roll,
+                ActorMotionState.Shield,
+                ActorMotionState.Death
+            }
+        );
     }
 
     public static SpriteAnimationSet? TryLoadStickman(
@@ -1036,6 +1133,21 @@ public sealed class SpriteAnimationSet
         return frames.Length > 0;
     }
 
+    public static bool TryLoadKnightFrames(out SpriteFrame[] frames)
+    {
+        List<SpriteFrame> loaded = [];
+        Vector2 displaySize = new(64, 64);
+        AppendHorizontalStripFrames(loaded, $"{KnightRoot}/knight-idle.png", 64, 15, displaySize);
+        AppendHorizontalStripFrames(loaded, $"{KnightRoot}/knight-run.png", 96, 8, displaySize);
+        AppendHorizontalStripFrames(loaded, $"{KnightRoot}/knight-jump-fall.png", 144, 14, displaySize);
+        AppendHorizontalStripFrames(loaded, $"{KnightRoot}/knight-roll.png", 180, 15, displaySize);
+        AppendHorizontalStripFrames(loaded, $"{KnightRoot}/knight-attack.png", 144, 22, displaySize);
+        AppendHorizontalStripFrames(loaded, $"{KnightRoot}/knight-shield.png", 96, 7, displaySize);
+        AppendHorizontalStripFrames(loaded, $"{KnightRoot}/knight-death.png", 96, 15, displaySize);
+        frames = loaded.ToArray();
+        return frames.Length == 96;
+    }
+
     public static bool TryLoadSunnyDragonFrames(out SpriteFrame[] frames)
     {
         frames = [];
@@ -1070,8 +1182,13 @@ public sealed class SpriteAnimationSet
             ? stateFrames
             : _frames[ActorMotionState.Idle];
 
-        float framesPerSecond = state is ActorMotionState.Run or ActorMotionState.Crawl ? 12f : 6f;
-        int index = Mathf.FloorToInt((float)clock * framesPerSecond) % frames.Length;
+        float framesPerSecond = _frameRates.TryGetValue(state, out float profileRate)
+            ? profileRate
+            : state is ActorMotionState.Run or ActorMotionState.Crawl or ActorMotionState.Roll ? 12f : 6f;
+        int rawIndex = Mathf.Max(0, Mathf.FloorToInt((float)clock * framesPerSecond));
+        int index = _oneShotStates.Contains(state)
+            ? Mathf.Min(rawIndex, frames.Length - 1)
+            : rawIndex % frames.Length;
         return frames[index];
     }
 
@@ -1488,6 +1605,35 @@ public sealed class SpriteAnimationSet
 
                 frames.Add(new SpriteFrame(texture, new Rect2(source.Position, source.Size), displaySize));
             }
+        }
+    }
+
+    private static void AppendHorizontalStripFrames(
+        List<SpriteFrame> frames,
+        string resourcePath,
+        int frameWidth,
+        int frameCount,
+        Vector2 displaySize
+    )
+    {
+        string filePath = ProjectSettings.GlobalizePath(resourcePath);
+        if (!File.Exists(filePath) || frameWidth <= 0 || frameCount <= 0)
+            return;
+
+        Image strip = Image.LoadFromFile(filePath);
+        if (strip.IsEmpty() || strip.GetWidth() < frameWidth * frameCount || strip.GetHeight() <= 0)
+            return;
+
+        strip.Convert(Image.Format.Rgba8);
+        ImageTexture texture = ImageTexture.CreateFromImage(strip);
+        int frameHeight = strip.GetHeight();
+        for (int i = 0; i < frameCount; i++)
+        {
+            Rect2I source = new(i * frameWidth, 0, frameWidth, frameHeight);
+            if (IsTransparentFrame(strip, source))
+                continue;
+
+            frames.Add(new SpriteFrame(texture, new Rect2(source.Position, source.Size), displaySize));
         }
     }
 
