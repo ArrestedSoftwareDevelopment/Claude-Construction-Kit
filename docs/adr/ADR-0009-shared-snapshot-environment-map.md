@@ -5,6 +5,7 @@
 - **Decision owners:** DACK project
 - **Implementation companion:** [DACK Live Capture and Understanding Plan](../DACK-Live-Capture-and-Understanding-Plan.md)
 - **Supersedes implementation details in:** ADR-0008
+- **Ownership refinement:** [ADR-0012](ADR-0012-snapshot-analysis-clone-state-separation.md) preserves this shared-map decision while separating immutable analysis evidence from mutable region/run state.
 - **Related:** Desktop Arena Design Document §§5.1–5.2.1, 7.6, 13, 15, 17–18
 
 ## Context
@@ -15,14 +16,14 @@ The first dark-horizontal-band detector is too narrow for the product. Real scre
 
 ## Decision
 
-DACK will create one cached **Snapshot Analysis** and one shared **Environmental Map** for every captured/static source.
+DACK will create one cached **Analysis Revision** (called “Snapshot Analysis” in the original prototype vocabulary) and expose it through one shared **Environmental Map** for every captured/static source.
 
 1. Snapshot sources render at native 1:1 pixels by default. Spare display area is nonphysical UI/HUD margin unless explicitly authored.
 2. A primary analysis pass builds reusable luminance/chroma, local-background, ink/component, and region evidence from a managed pixel buffer.
 3. Text/glyphs, words, lines, background/whitespace regions, icons, pillboxes, UI rectangles, and other candidates become stable records with IDs, bounds or masks, type, authority, confidence, source evidence, and background model.
 4. UIA, OCR, manual painting, and later structured importers enrich or correct those same records; they do not create incompatible parallel worlds.
-5. Source-derived, creator-authored, and runtime-mutated geometry remain separate layers in one environment.
-6. Each mutable record has explicit active/deleted/damaged state. Erasure updates that state immediately and records a reversible mutation against the clone.
+5. Source-derived analysis, accepted creator corrections, and runtime mutation state remain separate products that the Environmental Map resolves into one query view.
+6. Immutable region evidence has no current gameplay state. A separate `RegionRuntimeState`, keyed by stable region ID, carries active/deleted/damaged state; erasure updates that overlay immediately and records a reversible mutation against the Working Clone.
 7. Spatial indexing lets actors, balls, projectiles, AI, HUD placement, and OCR prioritizers query nearby candidates rather than scan the full page.
 8. Collision and visual erasure reference the same region identities so a destroyed letter cannot remain as an invisible platform.
 9. Pixel mutation is batched into bounded dirty regions. No full-image scan or blocking OCR/import work belongs in the gameplay frame loop.
@@ -38,12 +39,12 @@ OCR remains optional. It attaches meaning to geometry but is not required for co
 - Colored text, local backgrounds, icons, pillboxes, and dark-mode sources can evolve without toolkit-specific detectors.
 - Cross-playset deformation is natural because every toolkit sees the same active region state.
 - Dense documents become tractable through cached records and local spatial queries.
-- Snapshot caches can avoid re-analysis when the source hash and algorithm version are unchanged.
+- Analysis caches can avoid re-analysis when the baseline/recipe hashes and algorithm version are unchanged.
 - Creator corrections are visible, durable, and reusable.
 
 ### Tradeoffs
 
-- The Snapshot format must version its analysis algorithm and region records.
+- The analysis format must version its algorithm and region records independently of the Snapshot Baseline.
 - Stable IDs, reconciliation, split/merge behavior, and recapture diffs require deliberate design.
 - Local-background and anti-alias classification will still make mistakes; Understand mode and manual correction remain required.
 - Live Desktop mode needs bounded incremental updates and debounce policies rather than rebuilding the entire map on every changed pixel.

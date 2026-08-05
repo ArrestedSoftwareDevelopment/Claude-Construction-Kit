@@ -202,8 +202,8 @@ This argues that the first importer should not assume square frames or perfect g
 - clip grouping after detection, because detection finds pictures, not meaning.
 
 `tools/prep_game_creator_graphics.py` is the local prototype for this path. It
-writes frame candidates and a draft manifest to ignored quarantine, giving us
-real data for the future animation editor. Selected images currently copied
+writes frame candidates and a draft manifest to ignored quarantine, giving the
+current Sprite Studio and importer workbench real calibration data. Selected images currently copied
 under `dack/assets/project/game-creators-pack/` are development fixtures, not
 publicly admitted assets.
 
@@ -357,9 +357,13 @@ Scope:
 
 This module should not turn the live pad into Aseprite. It sits beside the pad as the organizer/importer/previewer.
 
-### Bigger character editor page
+### Sprite Studio character workspace
 
-The current sidebar strip editor is useful for RAD work, but it is already brushing against the limits of a sidebar. The next UI step should be a full Character page, opened from the Cockpit/Inspector, with the sprite-frame editor as one panel inside it rather than the whole experience.
+The current sidebar strip editor is useful for RAD work, but it has reached the
+limits of a sidebar. The accepted home for serious character work is the full-screen
+[Sprite Studio](DACK-Sprite-Studio-Mini-App.md), opened from the selected asset/card
+and returned to its caller with selection and scroll state intact. The sprite-frame
+editor is one Studio workspace, not the whole character experience.
 
 Recommended page structure:
 
@@ -371,7 +375,10 @@ Recommended page structure:
 - **Attachment points:** muzzle, hands, head, feet/baseline, hitbox, hurtbox, pickup/interaction point.
 - **Rule cards:** movement, AI, projectile, sounds, effects, text interaction, stats.
 
-This keeps the sidebar as the quick live toy while giving serious character setup a room of its own. It also lets future importer modes—grid, tight rectangles, seeded components, metadata, Aseprite JSON—expose their assumptions without crowding the playfield.
+This keeps the live-linked pad as the quick in-context toy while giving serious
+character setup a room of its own. It also lets future importer modes—grid, tight
+rectangles, seeded components, metadata, Aseprite JSON—expose their assumptions
+without crowding the playfield.
 
 ### Character builder: paper-doll plus rule cards
 
@@ -437,11 +444,14 @@ AnimationFrame
 
 Key rule: **sprite pixels and gameplay geometry remain separate.** Editing art never silently changes collision.
 
-## Animator UI Proposal
+## Superseded Animator UI Proposal (Historical RAD Note)
 
-The animator belongs in the right inspector / bottom tray, not as a permanent large window.
+The early proposal placed the animator in the right Inspector/bottom tray. That
+placement is superseded by the full-screen Sprite Studio specification. The shared
+Inspector may show a compact animation summary, current binding, and **Edit in
+Sprite Studio** action; it must not attempt to host the complete animator.
 
-Recommended panes:
+The following pane requirements remain valid and now belong inside Sprite Studio:
 
 - **Asset browser:** filterable by Player, Enemy, Object, Projectile, Effect,
   Sound, and Playset, with tier badges for RAW-LOCAL, DEV-TEST, PUBLIC, and HUB.
@@ -466,8 +476,8 @@ The UI should prevent status ambiguity:
 - group importer warnings beside the affected source and frame rather than in a
   distant log;
 - show draft versus compiled state and whether the preview is stale; and
-- keep rebuild, relink, fork, and provenance actions in the inspector so they
-  do not add more permanent top-level buttons.
+- keep rebuild, relink, fork, and provenance actions in Sprite Studio's contextual
+  properties pane so they do not add permanent top-level buttons to the main shell.
 
 ## Character Picker / Action Label Flow
 
@@ -548,7 +558,7 @@ Current RAD test:
   It remains REPO/DEV-TEST pending subset-level provenance review.
 - The selected actor can be renamed in the sidebar. Names should be saved as creator metadata, not inferred permanently from filenames; this is how imported assets become reusable characters.
 - The current mapping starts rough, but the prototype exposes a visual 8-column frame strip plus editable label names, numeric endpoints, ping-pong toggles, strobe toggles, and strobe counts. Recognized labels like idle/run/jump-up/jump-down drive the current player animation; extra labels such as run-shoot, jump-shoot, climb-up/down, dig-up/down, shoot-up/down, bounce, and death can be added and highlighted ahead of full engine binding.
-- `SAVE ANIM LABELS` writes a source-aware local-only manifest: TGC currently saves to `dack/assets/quarantine/game-creators-pack-graphics-prep/tgc-player.dackanim.json`; Stickman currently saves to `dack/assets/quarantine/stickman-pack-v0.1/stickman-thin.dackanim.json`. `LOAD ANIM LABELS` reads the current source's manifest back into the editor. This is the debugging lens for numbering/range mistakes and the seed of the eventual character picker format.
+- `SAVE ANIM LABELS` writes a source-aware local-only manifest: TGC currently saves to `dack/assets/quarantine/game-creators-pack-graphics-prep/tgc-player.dackanim.json`; Stickman currently saves to `dack/assets/quarantine/stickman-pack-v0.1/stickman-thin.dackanim.json`. `LOAD ANIM LABELS` reads the current source's manifest back into the editor. This is the debugging lens for numbering/range mistakes and the seed of the canonical Character Card format.
 - Saved working labels should graduate into curated per-character defaults once
   the mappings are good. The intended flow is: tune frames locally, save
   `.dackanim.json`, test in play, then compile the confirmed manifest into a

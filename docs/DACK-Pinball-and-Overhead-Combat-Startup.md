@@ -2,6 +2,7 @@
 
 - **Status:** Active domain blueprint; first Pinball and Overhead RAD slices exist
 - **Execution authority:** [DACK Optimization and Refactoring Plan](DACK-Optimization-and-Refactoring-Plan.md)
+- **Physics authority:** [ADR-0015](adr/ADR-0015-simulation-clock-and-physics-authority.md)
 - **Scope:** Toolkit behavior, physics vocabulary, editor handles, and acceptance criteria—not a competing implementation schedule
 
 ## Why These Two Matter
@@ -48,14 +49,14 @@ Responsibilities:
 - emit score/effect events;
 - publish mutation events later.
 
-### First controls
+### Pinball first controls
 
 - Left flipper: `A` or Left arrow.
 - Right flipper: `D` or Right arrow.
 - Plunger / launch: Space.
 - Nudge: light keyboard/mouse nudge later.
 
-### First parts
+### Pinball first parts
 
 Start with procedural/debug parts before imported art:
 
@@ -69,11 +70,23 @@ Start with procedural/debug parts before imported art:
 - wall/rail;
 - jackpot target.
 
-### Default Starter Table Shell
+### Explicit Starter Table Shell Recipe
 
-Opening the Pinball page should create a playable **Starter Table Shell** automatically. The creator should be able to play immediately and then replace, move, or delete the shell parts; an empty source document must not require hand-built containment before the ball can be tested.
+Selecting Ball/Table, choosing the Pinball preset, or opening a Pinball-related
+workspace must never create or change level content. Navigation is inert.
 
-The shell is procedural, native-resolution, and saved as ordinary creator-authored objects with a `starterGenerated` flag:
+The creator starts from an explicit **New Pinball Level** recipe or **Create Starter
+Table** action. Before applying it, DACK shows a ghost preview and a short inventory
+of the objects it will add. Applying the action creates a playable **Starter Table
+Shell** so an empty source document does not require hand-built containment before
+the ball can be tested.
+
+If the level already contains authored objects, the action offers **Add**, **Replace
+Generated Shell**, and **Cancel**. It never replaces creator-authored objects
+silently. Switching away from Pinball and returning does not rerun the recipe.
+
+The shell is procedural, native-resolution, and stored as ordinary level objects
+with a `starterGenerated` flag:
 
 - left and right side rails following the usable playfield bounds;
 - short inward-sloping lower returns that guide the ball toward the flippers;
@@ -84,9 +97,13 @@ The shell is procedural, native-resolution, and saved as ordinary creator-author
 - a short launch ball-save grace period and a stuck-ball rescue default;
 - debug labels/handles in Build mode, hidden anchors and editor guides in Play mode.
 
-The shell adapts to the native playfield rectangle without scaling or cropping the source document. Its side rails and apron are the exterior containment; the document remains visible inside them and retains the default Pinball destructive text-plow behavior. If the creator chooses **Clear Starter Shell**, only generated shell objects are removed; source pixels, placed creator objects, and mutations remain untouched. Reopening a saved level never silently regenerates deleted shell parts.
+The shell adapts to the native playfield rectangle without scaling or cropping the source document. Its side rails and apron are the exterior containment; the document remains visible inside them and retains the default Pinball destructive text-plow behavior. If the creator chooses **Clear Starter Shell**, only generated shell objects are removed; source pixels, placed creator objects, and mutations remain untouched. Reopening a saved level, switching family/preset, or revisiting a workspace never silently regenerates deleted shell parts.
 
-**Acceptance:** selecting Pinball on a fresh source produces a contained ball, a working launch lane, two correctly sloped flippers, a bottom drain, at least one rebound target, and a playable first launch without the creator placing a single physical part.
+**Acceptance:** invoking and applying **Create Starter Table** on a fresh source
+produces a contained ball, a working launch lane, two correctly sloped flippers, a
+bottom drain, at least one rebound target, and a playable first launch without the
+creator placing a physical part. Merely selecting Pinball leaves the level byte-for-
+byte unchanged and does not dirty the session.
 
 These can initially draw as clean debug shapes. The VerzatileDev pinball asset pack should enter through a batch prep/scaler before it becomes runtime art:
 
@@ -126,19 +143,20 @@ The table should feel readable before it feels realistic.
 
 ## Pinball physics blueprint
 
-Pinball should not begin with full rigid-body simulation. It should begin as a deterministic arcade solver that we understand completely, then graduate individual parts to Godot physics only if the hand-rolled model becomes a bottleneck.
+Pinball should begin with an intentionally arcade-tuned **Godot 2D physics configuration**, not a realism simulator and not a second hand-written engine. [ADR-0015](adr/ADR-0015-simulation-clock-and-physics-authority.md) makes Godot the first collision authority and the shared session clock the only place gameplay advances. A custom solver is considered only after measured Godot fixtures demonstrate a specific failure and a narrow superseding decision defines ownership.
 
 ### Core simulation model
 
-Use a simple fixed-step loop inside `PinballOverlay`:
+`PinballOverlay` is a presentation/input adapter; it does not own another accumulator. The shared `SimulationWorld` evaluates Pinball in the fixed physics policy selected by measurement:
 
-1. Accumulate frame time.
-2. Step the ball in small fixed ticks, probably `1/120s`.
-3. Apply table forces.
-4. Move the ball.
-5. Resolve collisions.
-6. Emit score/effect/sound/mutation events.
-7. Clamp speed and rescue stuck balls.
+1. Consume buffered input and evaluate flipper/plunger commands.
+2. Apply table tilt, authored forces, impulses, and active-part motion.
+3. Advance one Godot physics tick using the ball body's configured continuous-collision/contact policy.
+4. Resolve contact/sensor events and perform a swept, spatially indexed text-plow query for source-derived targets.
+5. Commit score, sound, effect, damage, and clone/region-state mutations in deterministic event order.
+6. Enforce max-speed/stuck-ball/drain-save policy and publish the tick state.
+
+The baseline semantic clock is 60 Hz. The Pinball spike compares 60 Hz and 120 Hz fixed physics on identical traces; rate is never expressed as a number of substeps per rendered frame, and catch-up is bounded.
 
 The ball state should be small and inspectable:
 
@@ -163,9 +181,9 @@ Default first-pass values:
   - gates/rollovers: low/no bounce unless specified
 - damping: tiny per tick so the ball eventually settles
 
-### Collision order
+### Contact and event priority
 
-Resolve collisions in this order so gameplay feels intentional:
+Godot remains the solid-contact solver. When several contact/sensor events are reported in the same tick, DACK applies gameplay consequences in this priority so the result feels intentional:
 
 1. Drains / outlanes / capture zones.
 2. Plunger lane walls and launch lock.
@@ -177,28 +195,21 @@ Resolve collisions in this order so gameplay feels intentional:
 8. Text, icons, actors, and source-derived targets.
 9. Table bounds.
 
-The order matters. A ball in the drain should not also score a rollover on the same tick unless the table explicitly allows it. A flipper strike should take precedence over a nearby decorative wall.
+The priority governs drain, score, trigger, effect, and mutation consequences; it does not make DACK re-solve the same solid contact with a second physics implementation. A ball in the drain should not also score a rollover on the same tick unless the table explicitly allows it. A flipper strike and nearby wall may both be Godot contacts, while the authored flipper impulse/event receives the declared gameplay priority.
 
-### Ball collision primitives
+### Godot collision shapes and contact policy
 
-Minimum useful primitives:
+Minimum useful Godot shape vocabulary:
 
-- circle vs. line segment;
-- circle vs. thick line/capsule;
-- circle vs. circle;
-- circle vs. rectangle;
-- point-in-sensor region for rollovers/drains;
-- optional polygon later for imported art silhouettes.
+- a circle shape for the ball;
+- segment, capsule-style, or narrow convex/static shapes for rails and line walls;
+- circle shapes for solid bumpers;
+- rectangle or convex/polygon shapes for authored parts and later imported silhouettes;
+- `Area2D`-style sensor regions for rollovers, drains, gates, and capture zones.
 
-For lines and flippers, use capsule-style collision: line segment plus radius. This is more forgiving and closer to pinball rails than strict infinitely thin lines.
+For lines and flippers, use capsule-style collision geometry: a line segment plus radius. This is more forgiving and closer to pinball rails than strict infinitely thin lines.
 
-Collision response:
-
-- push the ball out along the collision normal;
-- reflect velocity across the normal;
-- multiply by material elasticity;
-- apply tangential friction;
-- add active impulse if the object is a flipper, bumper, kicker, or plunger.
+Godot owns separation, contact normals, restitution, and friction for solid contacts. DACK consumes the reported contacts after the physics step to publish scoring, sound, effects, triggers, and clone mutations. A flipper, bumper, kicker, or plunger may add one authored force/impulse through the Godot body API, but toolkit code does not push the ball out, reflect/replace its velocity, or resolve the same contact a second time.
 
 ### Flippers
 
@@ -228,8 +239,8 @@ First geometry:
 
 Flipper hit response:
 
-- reflect using the flipper surface normal;
-- add impulse based on sweep direction and how close the ball is to the tip;
+- let the moving Godot flipper body and its configured material provide the base contact response;
+- optionally add one authored impulse based on sweep direction and how close the contact is to the tip;
 - tip hits should be stronger than root hits;
 - clamp final speed to keep the ball readable.
 
@@ -251,8 +262,8 @@ Data:
 
 Behavior:
 
-- if ball overlaps bumper circle, push out from center;
-- set velocity away from center at at least `minKickSpeed`;
+- when Godot reports the ball/bumper contact or sensor event, apply one cooldown-gated outward bumper impulse;
+- tune that impulse toward the desired `minKickSpeed` without replacing velocity or performing manual penetration correction;
 - add score;
 - trigger comic/electric burst;
 - optionally light or advance a mission word.
@@ -342,7 +353,7 @@ Data:
 Behavior:
 
 - if ball approaches from allowed side, pass through;
-- if from blocked side, reflect or stop depending on material;
+- if it approaches from the blocked side, enable the authored Godot collision/material response; DACK does not reflect or stop it separately;
 - can open when a rollover bank or word mission completes.
 
 ### Ramps, rails, and wireforms
@@ -471,9 +482,11 @@ Success test: a screenshot/document table produces meaningful pinball targets wi
 - Plunger lane handles.
 - Gate direction handles.
 - Rollover groups and mission words.
-- Save/load all pinball object attributes.
+- Serialize all pinball object attributes through the shared level format; the global
+  File/Level commands own save and load.
 
-Success test: creator can build a small table from shelf parts and save/load it.
+Success test: a small table built from shelf parts survives a round trip through the
+global level persistence workflow.
 
 #### Phase PB-6: assets and polish
 
@@ -552,7 +565,7 @@ This is also a good home for animated score/reel text: large, rotating, strobing
 
 ### Open decisions to test empirically
 
-- Hand-rolled pinball solver vs. Godot `RigidBody2D`: start hand-rolled, compare only after flippers exist.
+- Godot fixed-rate/CCD/contact configuration: compare 60 Hz and 120 Hz with identical launch/flipper traces, high-speed tunneling cases, dense-text spatial queries, CPU/catch-up cost, and repeatability. A custom solver is not an ordinary tuning option; it requires the evidence and decision gate in ADR-0015.
 - Ball count cap: likely 3 for readability, same as Brickbat.
 - Text collision tuning: destructive pass-through/plow is fixed as the default; test how zones and promoted objects communicate optional bounce/sensor overrides.
 - Flipper input: keyboard-only first; mouse/touch later if it proves helpful.
@@ -572,7 +585,7 @@ Pinball needs richer handles than Platformer:
 - gate direction arrow;
 - ramp/rail spline handles.
 
-This is why Pinball should follow the current A/B endpoint work: it is the next handle family.
+Pinball is the stress test that graduates the proven A/B endpoint grammar into pivots, arcs, radii, one-way gates, and curved rails without inventing another selection system.
 
 ## Pinball and text/document features
 
@@ -616,7 +629,7 @@ Responsibilities:
 - health/lives later;
 - collision against the environmental awareness map.
 
-### First controls
+### Overhead first controls
 
 Three useful modes:
 
@@ -626,7 +639,7 @@ Three useful modes:
 
 Start with Tank mode because it proves Combat's identity and keeps keyboard-only office play intact. Mouse aim can follow.
 
-### First parts
+### Overhead first parts
 
 - player spawn;
 - enemy spawn;

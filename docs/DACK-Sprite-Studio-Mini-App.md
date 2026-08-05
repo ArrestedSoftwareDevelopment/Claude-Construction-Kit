@@ -199,11 +199,11 @@ Blue Guard Enemy Card
 
 That completed `Blue Guard Enemy Card` can then be dragged into a level, dropped onto an Enemy Spawn Point, used as a tower-defense wave unit, or forked into a variant. The creator is not wiring raw systems every time; they are building little recipes and then reusing them as larger pieces.
 
-The same recursion applies above individual objects. A tuned level becomes a `Level Card` containing its Snapshot, actors, placed tools, rules, OCR/Word Sense cache, mutations, score rules, and local assets. Several Level Cards can become a `World` or `Chapter Card`. A full `.dackpack` is effectively a `Playset/Campaign Card` made from those larger cards plus shared assets and publishing policy.
+The same recursion applies above individual objects. A tuned `Level Card` references an immutable Snapshot/Analysis pair and contains its actors, placed tools, rules, accepted semantic corrections, Variant policy, score rules, and local asset bindings. Replaceable OCR/Word Sense results remain cache data. Several Level Cards can become a `World` or `Chapter Card`, and a `Playset/Campaign Card` can compose those larger Cards. A `.dackpack` is the validated distribution container for that graph plus shared assets, provenance, and publishing policy; it is not itself a Card Definition.
 
 Recommended card rule:
 
-> If a creator can configure it, save it, drag it, or reuse it, it should probably be represented as a card.
+> If a creator can reuse or bind a configured whole, it is probably a Card. A scalar value remains a typed property; a placed use is an Instance; local divergence is an Override.
 
 The UI should still hide depth until needed. Beginners see friendly cards like `Flying Shooter`, `Fireball`, or `Three-Ball Brickbat`. Advanced creators can open the card to inspect the ingredients inside.
 

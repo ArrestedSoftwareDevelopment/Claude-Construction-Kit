@@ -1,7 +1,7 @@
 # DACK Optimization and Refactoring Plan
 
 **Status:** Active engineering plan  
-**Baseline:** RAD prototype, July 2026  
+**Baseline:** RAD prototype, re-audited 2026-08-05
 **Applies to:** `dack/` Godot 4.7.1 .NET prototype and the transition to the product editor/runtime
 
 ## 1. Why This Plan Exists
@@ -30,6 +30,9 @@ Refactoring is authorized when it protects a proven loop or removes a measured b
 - Overhead movement and a broad actor library seed.
 - Draggable/scalable actors and draggable endpoint-based world objects.
 - Contextual Cockpit tabs, Player/Enemy/Projectile/Object pages, Inspector, and editor/play separation.
+- Shared File/Transport menus, F6 Build/Play, F7 Freeze/Resume, explicit UI-state axes, and family-preserving navigation.
+- Common nine-section family pages, descriptor-backed cards/shelves/slots, repeated drag placement, project-local forks, and instance-level actor/world-object editing through a shared docked/floating Inspector.
+- A provisional geometry-only Playfield Profile and top-three source-to-game recommendations in Understand.
 - Live-linked sprite pad, large Sprite Studio proof, editable animation labels/sequences, save/load manifests, strobe, ping-pong, and per-source animation defaults.
 - Source-specific sprite import experiments: fixed grid, fixed rectangles, component extraction, blob detection, and individual-file sequences.
 - Lazy, local OCR behind a service boundary, with gameplay-prioritized requests and geometry-only fallbacks.
@@ -41,7 +44,7 @@ Refactoring is authorized when it protects a proven loop or removes a measured b
 - Rendering, mutable image work, text-region queries, world-object editing, collision helpers, and environment interpretation are concentrated in `PlayfieldSurface.cs`.
 - Asset catalog, source-specific imports, image cleanup, frame detection, frame assembly, and curated actor factories are concentrated in `SpriteAnimationSet.cs`.
 - Many panels are built imperatively in code and refreshed by polling, making layout defects and stale controls more likely.
-- The current `SetEditorMode(false)` path forces Platformer, so ordinary Play/Cockpit navigation from Brickbat, Pinball, or Overhead can change the active playset. This is a P0 correctness defect and the clearest evidence that shell state must be explicit.
+- The former `SetEditorMode(false)` forced-Platformer side effect was removed during the August shell pass. It remains a permanent transition-regression fixture because it exposed the need for explicit session/surface/simulation ownership.
 - Text-region queries repeatedly map, allocate, and sometimes inspect pixels instead of querying a stable indexed model.
 - The captured-page importer performs several independent whole-image passes for related detections.
 - Image mutations update the full texture even when only a small dirty rectangle changed.
@@ -53,6 +56,8 @@ Refactoring is authorized when it protects a proven loop or removes a measured b
 - Palette handling is still centered on a small default strip, and repeated character shelves consume more space than a shared two-level picker.
 - There is no automated test project or repeatable performance scene suite.
 
+The current size audit reinforces the ownership problem: `Main.cs` is about 8,300 lines, `PlayfieldSurface.cs` about 2,100, and `SpriteAnimationSet.cs` about 1,900. File size alone is not a defect, but these three classes still cross application, editor, simulation, analysis, persistence, and asset-compilation boundaries. The smaller `DackUiState`, `FamilyPageShell`, card/shelf/slot components, shared Inspector, and `PlayfieldProfiler` are useful strangler seams; productization should route ownership through them rather than replace them wholesale.
+
 These limitations are normal for a successful RAD. They are now explicit exit criteria rather than invisible debt.
 
 ## 3. Engineering Rules
@@ -60,13 +65,18 @@ These limitations are normal for a successful RAD. They are now explicit exit cr
 1. **Preserve the playable loop during extraction.** Each refactor step ends with the project building and the Platformer, Brickbat, Pinball, and editor/play smoke paths still usable.
 2. **Measure before and after.** A suspected hot path earns priority through frame timing, query counts, allocation counts, or a repeatable hitch—not file size alone.
 3. **No full-image work in the frame loop.** Capture analysis, OCR preparation, color maps, and connected-component work run on import/background jobs or explicit mutation regions.
-4. **Derived data is cached and versioned.** Text boxes, local backgrounds, spatial buckets, OCR labels, and import manifests belong to the Snapshot/asset cache and invalidate by source hash plus algorithm version.
+4. **Derived data is cached and versioned.** Text boxes, local backgrounds, spatial buckets, OCR labels, and import manifests belong to separable analysis/content-addressed or asset-compile caches and invalidate by baseline/recipe/content hash plus provider/algorithm version.
 5. **Stable IDs replace position-as-identity.** Text objects, actors, cards, placed objects, assets, and mutations need stable identifiers so save/load and incremental updates do not depend on list order.
 6. **One authoritative session state.** UI controls render state and issue commands; they do not each own competing copies of gameplay configuration.
 7. **Toolkits declare differences.** A toolkit provides verbs, shelf entries, rules, preflight mutations, HUD widgets, and win/lose logic through a common contract.
 8. **The immutable source remains separate.** Source pixels, working clone pixels, collision state, semantic labels, and runtime mutations are distinct layers.
 9. **Degrade spectacle before gameplay.** Under load, reduce particles, shadows, glow, animation rate, OCR urgency, and distant AI ticks before reducing input/collision fidelity.
 10. **Optimize for office PCs.** The baseline is an ordinary keyboard/mouse Windows machine at native document resolution, not a controller-first gaming rig.
+11. **One simulation, many views.** A second monitor binds another view/input scope to the same session, world, environment, assets, audio, and mutation state.
+12. **Godot objects stay on the main thread.** Workers consume immutable buffers/DTOs and return versioned results through a bounded main-thread commit queue.
+13. **Reject stale work by identity.** Every OCR, analysis, refresh, save-stage, thumbnail, and asset-compile result carries session/source/content/algorithm identity and cancellation.
+14. **User gestures define transactions.** A drag or slider scrub previews continuously but commits one undo command. Runtime mutation history is separate from creator Undo/Redo.
+15. **Caches are replaceable; creator intent is not.** Derived masks and thumbnails may rebuild. Stable IDs, accepted corrections, source bindings, card overrides, and authored rules must survive algorithm/version changes.
 
 ## 4. Provisional Performance Budgets
 
@@ -74,14 +84,22 @@ These are starting budgets to make “fast enough” testable. Profile data may 
 
 | Area | Target | Floor / guardrail |
 | --- | --- | --- |
-| Active play | 60 FPS at 1920×1080 on the agreed baseline PC | Never remain below 30 FPS during an ordinary level |
-| Main-thread frame time | 16.7 ms budget | Warn at 22 ms sustained; capture a trace at 33 ms |
+| Baseline machine | Windows 11; 4 physical/8 logical cores; 16 GB RAM; integrated-GPU class; 1920×1080 at 60 Hz | Record exact CPU/GPU/driver/power mode with every published result |
+| Active play | 60 FPS; p95 frame ≤16.7 ms and p99 ≤25 ms after warm-up | Never remain below 30 FPS during an ordinary supported level |
+| Main-thread frame time | 16.7 ms budget | Warn at 22 ms sustained; automatically capture a trace/counters at 33 ms |
+| Hot-loop allocation | zero managed allocation after warm-up for simulation/environment probes | No page-wide LINQ/array construction per actor, ball, or projectile |
 | Input-to-visible-response | under 50 ms for editor handles and controls | No blocking OCR/import work on input |
-| Play/Edit/Cockpit transition | visibly immediate; under 150 ms preferred | Must not reset or copy the full source unnecessarily |
+| Intake guide manipulation | 60 FPS visual guide response; expensive regional re-analysis begins only after a 150–300 ms configurable debounce | One active candidate per region/revision; superseded work cancels or is discarded |
+| Play/Edit/Cockpit transition | p95 under 150 ms | Must not reset, recapture, reanalyze, or copy the full source |
 | Boss Key response | under 100 ms to hide/neutralize and mute | Safety path is never delayed by save/import/OCR |
-| Document mutation | under one frame for small letter/word hits | Larger blasts may queue dirty regions, never rescan the whole page |
-| OCR | background only, bounded concurrency | Zero frame-loop waits; cancellation on source/session change |
-| Save | atomic and recoverable | Never partially overwrite the last good level |
+| Document mutation | collision/active state commits in the current simulation transaction; pixels visible by the next frame | One coalesced texture upload per rendered frame; never rescan the page |
+| 1080p capture/intake | preview within 1 s; coarse geometry within 750 ms; full non-OCR analysis within 2 s | Progressive/cancelable; creator can work from last coherent result |
+| 4K/mixed-DPI stress | coherent non-OCR analysis within 5 s | Tile/bound memory and avoid duplicate full-frame buffers |
+| OCR/background jobs | bounded concurrency and queues; cancellation acknowledged within 250 ms | Zero frame-loop waits; stale result never applies to a new source |
+| Manual-refresh idle | median process CPU below 1% over ten minutes on the baseline machine, with no captures/full analysis and no continuously animated hidden UI | Foreground office work and Boss/Desktop parking suspend nonessential previews/jobs |
+| Second presentation view | identical simulation/query counts to one-view run; hidden view adds below 1% median CPU after settling | Visible view adds rendering only; it never advances physics, audio, RNG, OCR, or mutation twice |
+| Active session visual/analysis working set | initial guardrail ≤256 MB at 1080p and ≤768 MB at 4K, including baseline, clone, analysis, masks, indices, staging, and resident GPU tiles | Instrument each owner separately; spill inactive page/derived caches before paging the process |
+| Save | atomic; metadata/recipe save p95 under 500 ms excluding an explicit new large image copy | Never partially overwrite the last good level; retain rolling recovery |
 
 The benchmark matrix should include:
 
@@ -93,6 +111,10 @@ The benchmark matrix should include:
 - mixed ladders/conveyors/elevators/enemies/projectiles;
 - the largest admitted sprite sheet and a deliberately awkward importer test sheet;
 - a two-monitor layout with different DPI scales when Live Desktop work begins.
+- 1366×768, 1920×1080, and 3840×2160 editor layouts at 100%, 125%, 150%, and 200% scale, including one mixed-DPI pair;
+- idle/foreground-office and background-DACK power behavior, not only a maximized benchmark run.
+
+The first memory figures are engineering guardrails, not promises. Record peak committed memory, owned pixel buffers by purpose, texture memory, Snapshot/page cache count, and eviction. A native 4K RGBA frame is roughly 32 MB before clones, masks, mip/tile summaries, textures, and refresh candidates; accidental copies can consume the budget faster than the algorithms themselves.
 
 ## 5. Instrumentation Before Optimization
 
@@ -144,7 +166,7 @@ The current importer derives platforms, letters/bricks, words, lines, and anchor
 2. group components into glyphs, words, lines, regions, icons/pillboxes, and background zones;
 3. assign stable IDs and confidence/authority;
 4. build spatial buckets;
-5. cache the result in the Snapshot.
+5. publish and cache an immutable `AnalysisRevision` keyed by Snapshot Baseline hash, Intake Recipe hash, and detector/schema version.
 
 Toolkit-specific shapes should be views over that shared analysis, not independent detections.
 
@@ -164,7 +186,7 @@ Deliver it in five explicit layers:
 4. **Mutation service:** make the region mask used for collision the same mask used for letter/word erasure, scoring, and effects. Expand a hit by a small configurable fringe, include adjacent anti-alias pixels, fill from the cached local background model, mark only intersecting regions dirty, and record a reversible mutation. Exact word mode must deactivate one selected word, not every overlapping candidate.
 5. **Verification and correction:** show a creator-facing Understand overlay with accepted/rejected regions, OCR confidence, background samples, and the current mutation mask. Golden fixtures must cover light text, anti-aliasing, icons, pillboxes, sub-headings, dense paragraphs, already-erased pages, and repeated word shapes.
 
-The output is a single `EnvironmentMap`/Snapshot analysis product consumed by Platformer, Brickbat, Pinball, Snake/Maze, RPG, and future route tools. It is acceptable for OCR to arrive late; it is not acceptable for a later playset to use a different definition of the same text object.
+The output is one immutable `AnalysisRevision` resolved through a shared `EnvironmentMap` view consumed by Platformer, Brickbat, Pinball, Snake/Maze, RPG, and future route tools. It is acceptable for OCR to arrive late; it is not acceptable for a later playset to use a different definition of the same text object.
 
 **Acceptance:** the supplied difficult document remains legible at 1:1; light and anti-aliased text is discoverable; collision and erasure agree; a one-letter/one-word hit changes only its bounded dirty region; a blast cannot leave a visible fringe outside its configured tolerance; OCR may be disabled without breaking geometry play; and the same stable region survives a playset switch and reload.
 
@@ -187,13 +209,13 @@ All six tools use the same native-resolution coordinate contract and emit serial
 
 ### 6.2.3 Make source refresh explicit
 
-The active playfield must not be invalidated every time the underlying desktop or document changes. Separate the source/session layers:
+The active playfield must not be invalidated every time the underlying desktop or document changes. Use the canonical ADR-0012 products rather than a three-bucket shortcut:
 
-- immutable `SourceFrame` and versioned `SnapshotAnalysis`;
-- mutable DACK `WorkingClone` and reversible mutation log;
-- transient `RefreshCandidate` that is invisible to gameplay until approved.
+- ephemeral immutable `SourceFrame`, admitted immutable `SnapshotBaseline`, independent versioned `IntakeRecipe`, and immutable replaceable `AnalysisRevision`;
+- authored `LevelDefinition` plus mutable tiled `WorkingClone`/`RegionRuntimeState` and reversible mutation log;
+- transient `RefreshCandidate` aggregate that is invisible to gameplay until approved and never publishes its pixels without the matching analysis revision.
 
-Initial capture runs one full analysis. Editing, Play, playset switching, OCR naming, and clone mutations reuse the cached Snapshot and do not recapture the source. A lightweight OS/window signal may set `Refresh available`, but only the creator's `Refresh Source` command can capture and analyze a candidate. Apply/Rebind/Discard is one transaction; rejected or superseded candidates cancel their OCR and analysis work.
+Initial capture runs one full analysis. Editing, Play, playset switching, OCR naming, and clone mutations reuse the stable Snapshot Baseline and selected cached `AnalysisRevision`; they do not recapture the source. A lightweight OS/window signal may set `Refresh available`, but only the creator's `Refresh Source` command can capture and analyze a candidate. Apply/Rebind/Discard is one transaction; rejected or superseded candidates cancel their OCR and analysis work.
 
 **Acceptance:** ten minutes of idle Editing/Playing performs no source capture or full-image analysis; switching playsets performs no capture; applying a refresh creates a new Snapshot and preserves the previous one; discarding a candidate leaves the active clone byte-for-byte unchanged.
 
@@ -262,25 +284,50 @@ The current classes should be separated by responsibility, not merely split into
 
 | Boundary | Owns | Does not own |
 | --- | --- | --- |
-| `DackSession` | active source, Snapshot, playset, edit/play state, selection, dirty state | Godot controls or rendering |
+| `DackSession` | active product IDs/revisions and one coherent Source/Baseline/Recipe/Analysis/Level/Clone/Region/Run/Variant aggregate, family/preset, selection, dirty/recovery state | Godot controls, duplicated view models, or rendering |
+| `CommandDispatcher` / `CommandHistory` | validate session revision, commit authored transactions, coalesce gestures, undo/redo, diagnostics | rendering widgets or simulation polling |
+| `JobScheduler` | bounded priority lanes, deduplication, cancellation, stale-result rejection, main-thread publication | unbounded worker creation or direct Godot-node access |
 | `InputRouter` | Esc, Boss Key, play/edit mappings, text-entry suppression | toolkit simulation |
 | `UiShellController` | window/panel ownership, tabs, responsive layout, fade/collapse | level rules |
 | `SelectionService` | selected card/object/actor and edit commands | inspector widgets |
+| `LevelContentsModel` | virtualized searchable hierarchy, visibility/lock/authority, multi-selection | asset discovery or direct mutation |
 | `InspectorSchemaRegistry` | property descriptors, validation, grouping, undoable setters | object-specific hardcoded panels |
 | `ToolkitRegistry` | toolkit descriptors, shelves, verbs, rules, preflight, HUD declarations | global capture/input/effects |
 | `SimulationWorld` | fixed-step actors, projectiles, damage, triggers, win/lose events | editor layout |
-| `EnvironmentMap` | stable regions, layers, spatial queries, source/current geometry | source file decoding |
-| `SourceProvider` | Snapshot image/live frames, bounds, DPI, update policy | gameplay mutations |
-| `DocumentAnalysisService` | pixels → regions/backgrounds/text/icon guesses | toolkit-specific scoring |
-| `MutationService` | clone edits, active-state updates, undo/redo, variants | original source |
-| `AssetCatalog` | stable asset IDs, provenance, cards, compiled manifests | raw-vault discovery at runtime |
+| `EnvironmentMap` | indexed resolved query view over Analysis, accepted corrections, creator geometry, and Region Runtime State | source decoding, detector evidence mutation, or clone pixel uploads |
+| `SourceProvider` | source capabilities and coherent `SourceFrame` acquisition, bounds, DPI/color/rotation metadata, update policy | Snapshot admission, analysis, or gameplay mutations |
+| `DocumentAnalysisService` | baseline + Intake Recipe + algorithm version → immutable Analysis Revision and profile evidence | toolkit-specific scoring or runtime active state |
+| `MutationService` | transactional Working Clone edits, Region Runtime State updates, runtime mutation history, Variant derivation | original source, Analysis evidence, or creator command undo/redo |
+| `CloneRenderer` | tile residency, dirty-tile uploads, 1:1 presentation, view transforms | semantic mutation/scoring rules |
+| `CardCatalog` | canonical Card definitions, typed Slots, forks, dependency/version resolution, resolved hashes, and placeholders | placed Instances or competing actor/asset definition stores |
+| `AssetCatalog` | stable asset IDs, provenance, compiled manifests, and Card-addressable asset records | raw-vault discovery at runtime or Card composition authority |
 | `SpriteImportCompiler` | source-specific slicing/cleanup/diagnostics | actor behavior |
-| `ActorProfileRepository` | animation, boxes, movement/AI/attack/effect/sound bindings | live actor instances |
+| `ActorProfileRepository` | actor-specific projection/adapter over resolved Cards: animation, boxes, movement/AI/attack/effect/sound bindings | independent Card truth or live actor instances |
 | `HudManager` | placement, whitespace/avoidance, approach fading | toolkit score rules |
 | `EffectService` / `AudioService` | named reusable feedback profiles and load shedding | hit detection |
 | `LevelRepository` | versioned load/save, migrations, atomic files, Snapshot/package assembly | live simulation |
+| `GeometryToolService` | grids, maze/path/curve/parabola authoring and serializable geometry | family-specific scoring/win rules |
+| `PlayfieldRecommendationService` | descriptor-driven compatibility/confidence/explanations and draft construction recipes | silently selecting a family or placing objects |
+| `PackageValidator` / `Sanitizer` | dependency resolution, path/archive limits, provenance, privacy scrub, publish preview | originals or raw-vault admission |
 
-Godot scenes and resources should define stable visual composition. C# controllers should bind state and commands rather than construct the entire product UI imperatively.
+Godot scenes and resources should define stable visual composition. C# controllers should bind state and commands rather than construct the entire product UI imperatively. The dependency direction and thread rules are normative in [ADR-0011](adr/ADR-0011-core-adapters-and-session-command-model.md); the state products are normative in [ADR-0012](adr/ADR-0012-snapshot-analysis-clone-state-separation.md); tile-backed clone rendering is normative in [ADR-0013](adr/ADR-0013-tile-backed-native-pixel-clone-rendering.md); Card resolution and physics/clock ownership are normative in [ADR-0014](adr/ADR-0014-card-definition-instance-and-dependency-contract.md) and [ADR-0015](adr/ADR-0015-simulation-clock-and-physics-authority.md).
+
+### 7.1 Canonical runtime products
+
+```text
+SourceDescriptor -> SourceFrame -> SnapshotBaseline
+                                      + IntakeRecipe
+                                      -> AnalysisRevision
+
+LevelDefinition references the baseline/analysis and owns authored corrections,
+Cards, instances, rules, routes, bindings, and policies.
+
+WorkingClone + RegionRuntimeState are the mutable environmental branch.
+RunState is transient simulation. Variant is a named authored mutation branch.
+Session is the one open aggregate; Pack is a validated distribution artifact.
+```
+
+Do not store placed actors/rules/current damage inside an immutable Snapshot. Do not store creator grids/seeds only inside detector regions. Do not mutate an Analysis revision to represent a destroyed letter. Cache and canonical data must remain separable enough that deleting all derived caches cannot delete creator intent.
 
 ## 8. UI Shoring Plan
 
@@ -293,6 +340,8 @@ Godot scenes and resources should define stable visual composition. C# controlle
 - Replace the current mojibake UI strings (`Ã—`, `â€¢`, `Â°`, and similar) with verified UTF-8 text or simple safe glyphs, then add a startup/UI-string smoke check so close gadgets and status text cannot regress.
 - Closing the main editor closes or returns ownership of Sprite Studio and transient subpages.
 - Esc follows one stack: dismiss transient edit → close Sprite Studio → close Cockpit → open Cockpit. It never resets the level.
+- Reserve `F1` for Help and `Ctrl+P` for conventional Print semantics; use `Ctrl+Shift+P` for Command Search. `Ctrl+Alt+B` is Boss/Safety only, not ordinary show/hide.
+- Right-click quick Inspector/context commands also exist through `Shift+F10`/Menu key and the shared Inspector command.
 
 ### P0: Make Play and Build unmistakable
 
@@ -341,6 +390,15 @@ The descriptor registry also owns the shared two-level character picker and the 
 
 This removes repeated button-building code and makes capitalization, spacing, button width, and disabled states consistent.
 
+### P1: Add Level Contents and transactional editing
+
+- Add a virtualized searchable Level Contents/Outliner for Actors, World, Logic, HUD, source-bound objects, editor-only objects, and unresolved records.
+- Expose visible, editor-locked, authority/source, selection, and multi-select state without requiring a precise canvas click.
+- A drag/resize/rotation or slider scrub previews at pointer rate but commits one coalesced command on release; Cancel restores its start value.
+- Inspector edits target the placed instance by default. Editing a project-owned definition is explicit, names affected instances, and offers Apply/Reset/Fork.
+- Runtime mutation history remains separate from creator `Ctrl+Z`; converting a run mutation into authored terrain is an explicit Promote/Save Variant command.
+- Add lightweight recipe autosave and rolling recovery records. Immutable Snapshot tiles are referenced by hash instead of recopied on each recovery pass.
+
 ### P1: Establish a small design system
 
 Create shared tokens/components for:
@@ -352,6 +410,8 @@ Create shared tokens/components for:
 Palette selectors are part of the design system: expose named constrained profiles (C64, DOS/ANSI, DACK 32/64, Game Boy, monochrome, full-color) and a creator custom-palette path without expanding every card into a permanent swatch wall.
 
 Buttons size to content unless a primary action explicitly deserves full width. Faint dark-gray labels and low-contrast toggles are defects, not theme flavor.
+
+Accessibility profiles are part of the design system: Reduced Motion, No Flash/Strobe, screen-shake reduction/off, pointer-hide override, scalable editor text, color-independent states, and visual equivalents for important sound cues. Strobe is disabled by default. Keyboard-only, Narrator/NVDA, Magnifier, Windows contrast themes, and mixed-DPI checks belong in the shell smoke suite.
 
 ### P1: Make the Inspector schema-driven
 
@@ -379,11 +439,31 @@ The target two-monitor model is:
 
 Do not clone application state into two independent controllers.
 
+Split the work into two measured spikes before integration: (1) Godot multi-window presentation over one existing Snapshot/session; (2) Windows monitor/window/region capture and loss/recovery behavior. The presentation spike tests negative desktop coordinates, mixed DPI, focus, Alt-Tab, monitor hot-unplug, hidden-window suspension, close ownership, and atomic Boss teardown. The capture spike tests consent, self-capture exclusion, cursor policy, rotation/color normalization, protected/inaccessible content, resize/close, device/access loss, and refresh candidates.
+
+### P2: Activity Center and background-work UX
+
+Capture, analysis, OCR, import, save, thumbnail, and compilation jobs report to one nonmodal Activity Center. Each activity shows source/session identity, progress when meaningful, current stage, Cancel, outcome, and diagnostics. Play may begin from the last coherent partial product. When another office application is foreground or DACK is parked/Bossed, nonessential work yields or suspends according to policy rather than continuing invisibly at full power.
+
 ### P2: Optional dynamic-light spectacle
 
 Keep the shared projected-paper shadow as the baseline path. As an opt-in rendering tier, allow one scene light to drive shadow direction, length, skew, softness, and tint for all eligible objects. Cache the light/object relationship, update it only when the light or object transform changes, and shed back to the cheap shadow when frame time or office-safe presentation requires it. Validate this first in a Pinball showcase scene; it is not a prerequisite for ordinary document playfields.
 
 ## 9. Refactoring Sequence
+
+The `R` labels are remaining architecture gates, not a claim that visible product work happened in that order. August work has already implemented parts of the shell, cards, Inspector, and profiler inside the monolith. A workstream is not complete until four distinct states are recorded:
+
+| Workstream | Visible in RAD | Extracted behind target boundary | Automated coverage | Performance/persistence qualified |
+| --- | --- | --- | --- | --- |
+| UI axes, F6/F7, File/Transport, family shell | Yes | Partial (`DackUiState`/`FamilyPageShell`; root still owns transitions/UI) | No | No |
+| Cards, shelves, slots, forks, repeated placement | Yes | Partial descriptors/components | No | Partial RAD save only |
+| Actor/world Inspector | Yes | Shared presentation but not schema/command complete | No | Partial RAD save only |
+| Playfield recommendations | Provisional geometry-only | Initial `PlayfieldProfiler`; hardcoded family scoring | No | No |
+| Source analysis/environment/mutation | Proven across playsets | No shared immutable Analysis revision/index/tile renderer | No | No |
+| Sprite imports/actor defaults | Proven for many sources | No compiled catalog boundary | Manual only | No |
+| Level/Snapshot/package persistence | RAD JSON save/load | No canonical DTO/repository/package boundary | No | No |
+
+Work may proceed in thin vertical slices, but R0 observability/fixtures, the canonical state graph, and the session/command boundary gate any serious live-source integration. A small multi-window presentation spike may run alongside analysis work only if it uses one session and testable transforms.
 
 ### R0 — Safety Net and Baselines
 
@@ -397,7 +477,7 @@ Keep the shared projected-paper shadow as the baseline path. As an opt-in render
 ### R1 — State, Input, and UI Shell Extraction
 
 - Introduce `DackSession`, explicit `AppMode`, and command/event flow.
-- Add transition tests first, then remove the forced-Platformer side effect from Play/Build navigation.
+- Add transition tests that preserve the now-fixed forced-Platformer regression and every family/source/mutation combination.
 - Extract `InputRouter`, `UiShellController`, `SelectionService`, and `HudManager`.
 - Move tab/shelf/button definitions into registries/descriptors.
 - Register one two-level character/asset picker (role/family → individual asset) and one configurable `F6` Build/Play command.
@@ -409,11 +489,14 @@ Keep the shared projected-paper shadow as the baseline path. As an opt-in render
 ### R2 — Snapshot, Analysis, and Environment Map
 
 - Implement `SnapshotImageSource` behind `SourceProvider`.
+- Implement `SnapshotBaseline`, independent versioned `IntakeRecipe`, and immutable `AnalysisRevision` per ADR-0012.
+- Deliver the first rectangular Intake Recipe grid (origin, cell size, rows/columns, rotation, snapping, undo, save/load) with immediate guide drawing and debounced/cancelable regional analysis; hex/semantic guides follow.
 - Build one cached document-analysis result with stable region IDs, adaptive background/ink/anti-alias maps, and explicit icon/pillbox/background candidates.
 - Replace the current separate discovery/OCR/erasure heuristics with the staged text-understanding and mutation pipeline in §6.2.1; preserve geometry-only play when OCR is unavailable.
 - Introduce `EnvironmentMap` layers and spatial queries.
 - Move text collisions, current/deleted state, background regions, and mutation events out of `PlayfieldSurface`.
 - Add dirty-rectangle mutation and reversible deltas.
+- Replace the monolithic clone texture with the tile-backed renderer in ADR-0013 and measure 256/512-pixel tiles before freezing the runtime default.
 
 **Exit:** all current toolkits consume the same indexed environment and can distinguish source geometry from current mutable geometry.
 
@@ -432,29 +515,33 @@ Keep the shared projected-paper shadow as the baseline path. As an opt-in render
 ### R4 — Shared Simulation and Toolkit Contracts
 
 - Extract actor movement, perception/radar, damage, weapons, projectiles, spawns, and goals into reusable systems.
-- Use a fixed simulation step where construction-kit predictability benefits.
+- Move all gameplay advancement to the single fixed session clock in ADR-0015 (60 Hz semantic baseline; measured Pinball physics-rate option), with interpolation and bounded catch-up rather than frame-driven toolkit loops.
+- Separate gameplay/decorative RNG, define deterministic event priority, and budget AI/rules/path/contact/mutation work per tick.
 - Add shared `GeometryToolService` capabilities: rectangular/hex grids, seeded maze generation, path finding, point/polyline/Bezier paths, parabola previews, and serialized inertia/motion profiles.
 - Define toolkit descriptors/modules for Platformer, Brickbat, Pinball, and Overhead.
 - Move toolkit-specific preflight, HUD, scoring, win/lose, and shelf declarations behind those modules.
 - Add transient-object pools and effects quality tiers if profiling justifies them.
 
-**Exit:** a new playset composes shared verbs and registers its differences rather than adding another branch throughout `Main`.
+**Exit:** a new playset composes shared verbs and registers its differences rather than adding another branch throughout `Main`; one/two views and 30/60/144 Hz rendering produce the same fixed-input gameplay trace within declared physics tolerances.
 
 ### R5 — Level/Snapshot Contract
 
 - Replace nested RAD save classes with versioned DTOs in a persistence assembly/folder.
 - Add atomic save, backups, migrations, unknown-field tolerance, asset IDs, Snapshot hashes, OCR cache, mutations, and actor profiles.
 - Keep the current RAD level loadable through a migration adapter.
+- Define authored level data, derived caches, optional checkpoint/run state, autosave/recovery, card/asset version pins, safe archive extraction, and package privacy scrub as separate records.
 
 **Exit:** save files survive refactors and can become `.dacklevel`/`.dackpack` without embedding implementation details.
 
 ### R6 — Live Desktop and Two-Monitor Product Spike
 
-- Add `LiveDesktopSource`/window/region providers.
+- First complete the Godot multi-window presentation spike over the existing Snapshot session; separately complete the Windows capture-backend spike; then integrate them.
+- Add capability-declaring monitor/window/region providers, using Windows Graphics Capture for consent-oriented window/display selection and Desktop Duplication where monitor dirty/move/cursor metadata or performance justifies it.
 - Normalize all coordinates through explicit source, Snapshot, playfield, window, monitor, and DPI transforms.
 - Debounce boundary changes and update only affected environment regions.
 - Run the editor and playfield as coordinated windows over one session.
 - Exercise Boss Key, focus release, monitor removal, minimized source, and different-DPI cases.
+- Exercise negative monitor coordinates, rotation, color normalization/HDR-to-SDR policy, DACK self-capture exclusion, protected content, source close/replacement, access/device loss, Alt-Tab/taskbar behavior, and hidden-window render suspension.
 
 **Exit:** the live path reuses the product spine rather than creating a second screenshot-specific engine.
 
@@ -505,6 +592,12 @@ Keep the shared projected-paper shadow as the baseline path. As an opt-in render
 - Pinball launches, flips, clears text, and exits cleanly;
 - actors remain animated in every playset where they are visible;
 - closing the main editor closes or safely returns from Sprite Studio.
+- one edit drag or slider scrub produces one undo transaction, Cancel restores its pre-preview value, and runtime mutation history never contaminates creator Undo;
+- Snapshot, Intake Recipe, Analysis Revision, Level, Working Clone, Region Runtime State, Run State, and Variant survive save/load without ownership leakage;
+- tile seams are visually absent at 1:1, erasure and collision share the same mask, and dirty uploads remain bounded to affected tiles;
+- stale capture/analysis/OCR jobs cannot publish over a newer session or revision;
+- a second presentation window does not create a second simulation tick, and monitor removal/DPI changes return to a recoverable single-window state;
+- keyboard-only and `Shift+F10` paths reach every durable editor action, Level Contents exposes invisible/overlapped items, and Reduced Motion/No Flash are honored by every effect family;
 
 ## 12. Optimization Exit Criteria
 
@@ -525,6 +618,7 @@ The stabilization/refactor plateau is complete when:
 - the current RAD level format migrates into a versioned Snapshot-aware save;
 - benchmark scenes meet the agreed 60 FPS target or record an explicit, evidence-backed exception;
 - a new actor, shelf object, Inspector property, or toolkit action can be added mostly through data/registration rather than another root-controller branch.
-- Player/Enemy/Projectile/Builder pages use the shared two-level asset picker, and expanded palette profiles load without permanent shelf sprawl.
+- Player, Actors, World, Logic, Effects, and asset-binding surfaces use the shared catalog/two-level picker projection, and expanded palette profiles load without permanent shelf sprawl.
+- p95 and p99 frame/input/job latency, resident CPU/GPU memory, idle cost, and capture/analysis timings are recorded on the published baseline hardware at 1080p and 4K, including a mixed-DPI two-monitor case.
 
 At that point, Live Desktop work can proceed without multiplying the prototype’s current coupling.

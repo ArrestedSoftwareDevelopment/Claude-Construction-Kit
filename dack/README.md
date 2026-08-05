@@ -55,7 +55,8 @@ If neither exists, procedural fallback terrain is used.
 | Action | Current RAD control |
 | --- | --- |
 | Open/close ordinary Cockpit or return from Sprite Studio | **Esc** |
-| Toggle Build/Play and back | **F6** (planned shared default; current RAD binding may not be wired yet) |
+| Toggle Build/Play and back without changing the active playset | **F6** |
+| Freeze/resume the running simulation | **F7** |
 | Toggle the thin RAD quick strip | **F1** |
 | Boss Key | **Ctrl+Alt+B** |
 
@@ -108,7 +109,8 @@ Pinball plows through document letters by default. Bounce remains an authored ob
 - For endpoint objects, drag the body to move it and the A/B handles to resize it.
 - Ladders remain vertical; ramps, slides, and conveyors may angle.
 - Start points, hidden switches, spawn markers, and other invisible logic are visible while building and hidden during play.
-- The Inspector edits the selected object’s applicable attributes.
+- Right-click an actor or supported world object in Build to open the movable floating Inspector. Its current actor controls edit the placed instance directly; full inherited-versus-override Card authority is still planned.
+- The docked/floating Inspector edits the selected object’s applicable attributes.
 - Enter Play to hide anchors/editor-only objects and honor the configured Start Point.
 - Return to Build without restoring the source; clone deformation should remain until an explicit restore/new-game action.
 
@@ -141,13 +143,13 @@ The full Sprite Studio is transitional UI. The product target is a responsive, h
 | Brickbat | Letter/word targets, reserve balls, multiball cooldown, laser, found-word ticker, HUD placement/drag, effects/sound, destructible actors |
 | Pinball | Plunger, ball, flippers, bumpers/parts seed, drain, destructive text plow |
 | Overhead | Movement family and categorized actor-library seed |
-| Editor | Cockpit tabs, contextual pages, shelves, cards, Inspector, Understand seed, handles, edit/play split |
+| Editor | Cockpit tabs, contextual pages, shelves, cards, movable right-click Inspector, Understand seed, handles, F6 edit/play split that preserves the active playset |
 | Actors | Stickmen, Dungeon Runner, Knight, Sunny Dragon, TGC characters including Green Snake, shooter/fleet seeds |
 | Animation | Source-aware import proofs, editable labels/sequences, preview, strobe, ping-pong, save/load |
 | OCR/Word Sense | Optional lazy local command-line Tesseract proof with geometry-only fallbacks |
 | Persistence | RAD JSON level and animation-manifest save/load |
 | Audio/effects | Live semantic sound routing, 18-card/50-source Kenney CC0 shelf with pooled random-no-repeat playback and legacy fallbacks, projectile/explosion profiles, comic text and psychedelic effects |
-| Multi-monitor | Monitor enumeration and move-window primitive |
+| Multi-monitor | Monitor enumeration and move-window primitive; coordinated windows are not implemented, and the required target is one simulation with multiple bound views |
 
 “Implemented” here means present in the RAD, not fully generalized, optimized, or cleared for public distribution.
 
@@ -155,7 +157,7 @@ The full Sprite Studio is transitional UI. The product target is a responsive, h
 
 1. Build the C# project successfully.
 2. Launch and confirm the source page is sharp at native resolution.
-3. Open/close the Cockpit and Sprite Studio with Esc; verify the pointer returns for editing.
+3. Open/close the Cockpit and Sprite Studio with Esc; verify the pointer returns for editing. Right-click an actor in Build, move the floating Inspector, edit an instance value, and close it without changing playset.
 4. In Platformer, enter Play, move/jump, fall through a real gap, then test ladder/text climbing only with a character profile whose climb capability and animation are enabled; ride a conveyor/elevator, shoot text/enemies, die with a named cause, and reach a Goal.
 5. Save the RAD level, move/delete something, load it, and verify actors/objects/markers/settings return.
 6. In Brickbat, verify letter and word clearing, three-ball reserve behavior, multiball cap/cooldown, laser deletion, word ticker, HUD dragging, and persistent deformation.
@@ -165,17 +167,18 @@ The full Sprite Studio is transitional UI. The product target is a responsive, h
 10. Open Cockpit → Sounds; filter by family, sample cards, use Next Variant to hear the three-source families, and confirm the visible event list matches the selected card. Confirm the Builder's Sounds slot opens the same page without changing the selected actor or playset.
 11. In play, verify jump/fire/hurt/defeat, Brickbat text/word/laser/drain, and Pinball launch/flipper/bumper/rollover/plow/drain produce varied but coherent cues. Temporarily remove one imported card only in a disposable test copy and confirm its legacy fallback still plays.
 12. Close the Cockpit during an audition and trigger the Boss Key during another; verify audition/game audio stops and input is released.
+13. From Brickbat, Pinball, Platformer, and Overhead, press F6 into Build and F6 back into Play; verify the selected playset, clone mutations, placed objects, and run state do not change merely because the mode changed.
 
 ## Known RAD Limitations
 
-- Play/Edit navigation currently contains a known coupling where entering Play can force Platformer. The documented invariant is that navigation must preserve the active playset; this is a P0 stabilization item.
+- The early Play/Edit path that forced Platformer is fixed: the current F6 transition preserves the active playset. Session, shell, input, selection, and window-layout responsibilities are still concentrated in the root controller, so this remains a required regression invariant rather than a completed architectural extraction.
 - Dense pages can become slow because active text regions are repeatedly remapped/pixel-checked and some mutations update the full texture multiple times.
 - UI, simulation, persistence, and Sprite Studio logic are still concentrated in the root controller.
 - Cockpit/Studio pages need systematic responsive layout, scrolling, contrast, keyboard focus, and state restoration.
 - Several current UI strings contain visible encoding artifacts in place of bullets, multiplication signs, degrees, ellipses, and close gadgets.
-- Save Level currently targets a fixed RAD path and does not yet provide Save As, autosave/recovery, or a full Snapshot package.
+- Save Level currently targets a fixed RAD path and does not yet provide Save As, autosave/recovery, or the canonical `.dacklevel` package with separate baseline, Intake Recipe, Analysis Revision, Level Definition, Variant, and optional cache records.
 - OCR currently discovers an external Tesseract executable; embedded LibTesseract is the preferred optional product provider.
-- Live Desktop capture and coordinated editor/playfield windows are not implemented yet. The planned ingress is manual-refresh: capture once, build/play against the stable clone, and use an explicit `Refresh Source` transaction with diff/rebind/rollback; continuous source polling is not the default.
+- Live Desktop capture and coordinated editor/playfield windows are not implemented yet. The planned ingress is manual-refresh: capture once, build/play against the stable clone, and use an explicit `Refresh Source` transaction with diff/rebind/rollback; continuous source polling is not the default. Any second window must be another view of the same session and simulation, never a cloned level or second simulation.
 - Source-specific sprite detectors are still authoring experiments. Runtime content must move to reviewed compiled manifests before the asset library is stable.
 - The new 8-bit player character has not yet been proven on ladders or text-crawl surfaces; its climb capability, climb animation binding, and text-surface policy remain an active implementation/test item.
 - Dragon shadow orientation/offset and occasional blank Sprite Studio previews remain active visual correctness fixes; expanded palettes and the shared two-level character picker are planned UI work.

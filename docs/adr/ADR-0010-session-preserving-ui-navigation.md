@@ -1,4 +1,4 @@
-# ADR-0010: Session-Preserving UI Navigation and Layer Ownership
+# ADR-0010: Session-Preserving UI Navigation, One Shared Session, and Multiple Views
 
 - **Status:** Accepted
 - **Date:** 2026-07-30
@@ -7,9 +7,9 @@
 
 ## Context
 
-The RAD proved many editor surfaces quickly: a quick strip, Cockpit, contextual playset pages, Inspector, Sprite Studio/sidebar, HUDs, play/edit state, Boss overlay, and early multi-monitor controls. Their state is currently coordinated through several booleans and visibility side effects.
+The RAD proved many editor surfaces quickly: a quick strip, Cockpit, contextual playset pages, Inspector, Sprite Studio/sidebar, HUDs, play/edit state, Boss overlay, and early multi-monitor controls. Much of their state is still coordinated through root-controller fields and visibility side effects.
 
-That coupling has produced a concrete correctness problem: the current “enter Play” path can force Platformer, so ordinary Cockpit navigation from Brickbat, Pinball, or Overhead may change the active game. Similar ambiguity exists around cursor visibility, Sprite Studio return context, subordinate-window closure, editor-only anchors, and which layer draws above effects.
+That coupling produced a concrete historical correctness problem: an early “enter Play” path could force Platformer, so ordinary Cockpit navigation from Brickbat, Pinball, or Overhead changed the active game. The current RAD F6 path is wired and preserves the selected playset; the defect is fixed, but it remains a required regression test while session ownership is still concentrated in the root controller. Similar architectural risk remains around cursor visibility, Sprite Studio return context, subordinate-window closure, editor-only anchors, and which layer draws above effects.
 
 UI navigation must never alter the creator’s game as an accidental side effect.
 
@@ -37,6 +37,18 @@ Navigation invariants:
 8. Closing a subordinate editor/preview does not close the level. Closing the owning main editor closes or resolves its subordinate surfaces safely.
 9. Two-monitor mode has one authoritative session/simulation and multiple bound views, never two copies of level state.
 
+### Shared-session and view ownership
+
+Single-window and multi-monitor layouts use the same ownership model:
+
+- One authoritative session owns the active playset, source/Snapshot identity, working-clone state, placed level data, runtime state, selection, dirty state, persistence operations, and undoable commands.
+- One simulation clock advances one gameplay world. A second window is a view of that world, not another running scene tree, controller, random stream, physics world, or copy of the level.
+- Views may own only view-local state: monitor, window rectangle, zoom/camera framing, panel arrangement, transient focus/hover, and presentation preferences that do not alter gameplay.
+- Editor, playfield, preview, and Understand views read immutable published session snapshots and submit commands to the same session authority. They must not mutate duplicated local models and reconcile them later.
+- Input authority is explicit. At most one view owns gameplay input and pointer capture at a time; editor shortcuts and the Boss Key are routed through the shared shell.
+- Opening, closing, moving, or losing a secondary view cannot pause, reset, fork, or replace the simulation unless the creator issues an explicit session command.
+- Rendering cadence may differ by view, but simulation cadence and outcomes do not. A hidden or slower editor view must not slow or advance the game independently.
+
 DACK will use explicit layer roots, back to front:
 
 1. Source Clone.
@@ -59,6 +71,7 @@ Players, balls, projectiles, targeting cursors, and active edit handles remain r
 - Opening a menu cannot silently change the game.
 - Esc, close gadgets, cursor, input, anchors, and subordinate editors become predictable.
 - Single- and two-monitor layouts can share the same state model.
+- Editor and playfield monitors cannot drift into contradictory level or simulation states.
 - Static source rendering, gameplay animation, HUD, and editor UI can invalidate independently.
 - Transition tests can verify preservation without rendering the whole editor.
 
@@ -66,7 +79,14 @@ Players, balls, projectiles, targeting cursors, and active edit handles remain r
 
 - The root controller needs incremental extraction into session, shell, input, selection, layer, and window-layout services.
 - Existing controls that directly change fields/visibility need commands or state bindings.
+- View-local and session-owned fields must be separated before independent windows can be reliable.
 - Some convenient RAD side effects must be removed even if they currently make one page appear to “just work.”
+
+## Current implementation status
+
+- **Working now:** F6 toggles Build/Play, and the transition no longer forces Platformer. The active playset and working-clone mutations are preserved by the current path.
+- **Partially proven:** monitor enumeration and a move-window primitive exist; ordinary Cockpit/Sprite Studio/Boss transitions exercise parts of the state model.
+- **Not yet complete:** the authoritative session, command routing, layer ownership, and window-layout responsibilities are still being extracted from the root controller. Coordinated editor/playfield windows are not implemented. Therefore “one simulation, multiple views” is the mandatory architecture for that work, not a claim that dual-monitor mode already ships.
 
 ## Validation
 
@@ -79,3 +99,6 @@ Automated or repeatable transition tests must prove:
 5. Esc never resets the source or level.
 6. Boss mode works from Canvas, Cockpit, and Sprite Studio and restores each state correctly.
 7. gameplay-critical objects remain visible during maximum allowed effects.
+8. F6 from every playset toggles Build/Play twice without changing playset, Snapshot, score/run state, object identities, or clone mutations.
+9. Opening a second view shows the same selected level and simulation tick; closing/reopening it cannot duplicate actors, physics steps, projectiles, random events, audio, or input.
+10. Different view refresh rates, zooms, monitor positions, and hidden states do not change simulation outcomes.

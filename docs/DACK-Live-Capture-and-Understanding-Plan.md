@@ -1,7 +1,7 @@
 # DACK Live Capture and Scene Understanding Plan
 
-**Status:** Active architecture; provisional geometry profiler implemented; manual-refresh source policy is normative
-**Authority:** Companion to [ADR-0009: Shared Snapshot Analysis and Environmental Map](adr/ADR-0009-shared-snapshot-environment-map.md)  
+**Status:** Active architecture; provisional geometry profiler implemented; manual-refresh source policy is normative; reviewed 2026-08-05
+**Authority:** Companion to [ADR-0009](adr/ADR-0009-shared-snapshot-environment-map.md), [ADR-0012](adr/ADR-0012-snapshot-analysis-clone-state-separation.md), and [ADR-0013](adr/ADR-0013-tile-backed-native-pixel-clone-rendering.md)
 **Scope:** Windows desktop, monitor, window, region, Snapshot, and incremental scene analysis
 
 DACK's live-desktop promise is not “put sprites on a screenshot.” It is:
@@ -17,12 +17,14 @@ All source kinds implement one session-facing contract:
 ```text
 ISourceProvider
   Describe() -> SourceDescriptor
-  CaptureFull() -> CapturedFrame
-  RequestRefresh() -> RefreshCandidate
-  CaptureChanges(previousFrame) -> CapturedDelta  # future continuous-live mode only
-  Freeze() -> SnapshotImageSource
-  Stop() -> void
+  Capabilities -> SourceCapabilities
+  CaptureFullAsync(request, cancellation) -> SourceFrame
+  RequestRefreshAsync(activeBaseline, cancellation) -> RefreshCandidate
+  CaptureChangesAsync(previousSequence, cancellation) -> CapturedDelta  # only when declared
+  StopAsync() -> void
 ```
+
+`SourceCapabilities` declares full capture, incremental/delta capture, cursor include/exclude, UIA evidence, occlusion behavior, minimum-update cadence, permission/consent model, and window/monitor/region support. Callers never infer that every provider can perform the same operation. Admission of a `SourceFrame` into an immutable `SnapshotBaseline` is an Application/Snapshot-repository use case, not a `Freeze()` side effect owned by the provider.
 
 Initial providers:
 
@@ -43,6 +45,8 @@ Every captured frame records:
 - monitor, window, or region identity when available;
 - physical pixel size and capture rectangle;
 - Windows DPI scale, desktop coordinate origin, orientation, and color format;
+- graphics-adapter/output identity, including negative desktop coordinates and independent monitor rotation;
+- channel order, bit depth, alpha/premultiplication, SDR/HDR/transfer-function/color-profile metadata, and the normalization profile used for analysis;
 - capture timestamp, monotonic sequence, and content hash;
 - cursor policy (`excluded`, `included`, or `unknown`);
 - occlusion/minimization/permission state;
@@ -50,6 +54,8 @@ Every captured frame records:
 - source privacy/local-only state and provenance note.
 
 The pixel buffer remains the authority for visual play. Window metadata and UI Automation (UIA) text are evidence layers, not substitutes for the captured image.
+
+Analysis uses one documented CPU-normalized pixel contract (initially 8-bit premultiplied/unpremultiplied policy made explicit, RGBA channel order, sRGB/SDR working space). The original capture metadata is retained. HDR/wide-gamut inputs require an explicit previewable tone/color normalization rather than silent clipping; a future high-fidelity path may preserve more precision, but collision/erasure/background restoration must use the same normalized pixels the creator approved.
 
 ### 1.2 Coordinate systems
 
@@ -92,29 +98,32 @@ The Workbench provides independent guide layers:
 
 A rectangular grid records origin, cell width/height, rows/columns, rotation, and snapping. A hex grid records origin, radius, pointy/flat orientation, rotation, and bounds. These are guides and optional gameplay topology; they never resample or overwrite Snapshot pixels. Ordinary UI must not be forced into a grid when `None` is the more truthful interpretation.
 
-Every correction is creator-authored evidence attached to the same region records used by automatic analysis. Creator evidence outranks detector guesses, remains undoable, survives Save/Load, and can be reapplied or reviewed during an explicit source refresh. Editing a guide reprocesses only its affected region and previews candidate masks, collision, words, objects, and background restoration before the creator accepts the result.
+Workbench authorship lives in an independent, versioned `IntakeRecipe`, because guides and seeds may exist before any detector region exists. Each guide has a stable ID, Snapshot binding/transform, geometry, role/label, authority, accepted state, and undo history. Creator evidence outranks detector guesses, survives Save/Load, and can be mapped/reviewed during an explicit source refresh.
+
+Dragging a guide draws immediate geometry at editor frame rate. Cheap approximate feedback may update continuously, but expensive segmentation/analysis is debounced, cancelable, and limited to affected tiles/regions; pointer motion does not launch an unbounded detector job. A candidate Analysis revision previews masks, collision, words, objects, and background restoration, and becomes active only through an explicit Accept command.
+
+An **analysis guide grid** helps intake; a **gameplay topology grid** is authored level geometry. One may seed the other through an explicit command, but they are not automatically the same object or authority.
 
 The intended intake sequence is:
 
 ```text
 Capture -> native-pixel calibration -> optional grid -> regions/edges/seeds
         -> live analysis preview -> creator correction -> lazy OCR enrichment
-        -> freeze SnapshotAnalysis + PlayfieldProfile
+        -> admit SnapshotBaseline + IntakeRecipe + selected AnalysisRevision
+        -> derive PlayfieldProfile
 ```
 
-### 2.2 Snapshot
+### 2.2 Snapshot admission and level ownership
 
-`Capture Snapshot` freezes:
+`Capture Snapshot` admits an immutable `SnapshotBaseline` containing:
 
-- the image buffer and source hash;
-- capture metadata and transforms;
-- the analysis algorithm version;
-- region records and evidence;
-- OCR/UIA results that have completed;
-- creator corrections and source-to-region bindings;
-- placed instances, rules, mutations, and presentation layers.
+- the approved native image buffer and content hash;
+- capture metadata, color normalization, transforms, and source provenance;
+- a stable Snapshot ID and creation/admission record.
 
-The original desktop, file, window, and document remain outside DACK's write boundary. A later recapture creates a new Snapshot and offers an explicit region rebind/diff; it never mutates the old Snapshot in place.
+The level separately owns the selected `IntakeRecipe` and `AnalysisRevision` references, accepted creator corrections/source bindings, Cards/instances, rules, routes, presentation policy, and mutation policy. The Working Clone, Region Runtime State, and Run State remain separate mutable products. Completed OCR/UIA labels are versioned enrichment cache records bound to Analysis region IDs, not in-place changes to the immutable baseline.
+
+The original desktop, file, window, and document remain outside DACK's write boundary. A later recapture creates a new candidate baseline and an explicit region/guide lineage proposal; it never mutates the old baseline or silently reuses derived IDs.
 
 ### 2.3 Continuous live (future opt-in)
 
@@ -125,7 +134,7 @@ Live Desktop begins with one full frame, then uses bounded incremental work:
 3. Expand each dirty rectangle by detector-specific padding (anti-alias, glyph, border, and shadow margins).
 4. Re-run background/geometry/text analysis only inside the expanded regions.
 5. Reconcile new candidates against stable region IDs using role, bounds, overlap, and local evidence.
-6. Publish one environment-map transaction to gameplay and UI.
+6. Publish one coherent frame/Analysis/environment transaction to gameplay and UI; never show new pixels with old collision as if they agree.
 7. Cancel or discard OCR work tied to an obsolete frame sequence.
 
 No capture, analysis, OCR, or texture upload may block input or the gameplay frame loop. If the source changes faster than analysis can keep up, DACK shows the last coherent analysis and marks the source `updating` rather than mixing partial worlds.
@@ -143,13 +152,13 @@ Uncaptured -> Previewing -> Captured -> SnapshotReady -> Editing/Playing
                                       \-> DiscardRefresh -> Editing/Playing
 ```
 
-Initial capture performs the expensive work once: acquire a full native-resolution frame, preserve immutable `SourceFrame` pixels, create a DACK-owned `WorkingClone`, run the versioned analysis pipeline, cache one `EnvironmentMap`, and publish a Snapshot that every playset can query.
+Initial capture performs the expensive work once: acquire a full native-resolution `SourceFrame`, admit an immutable `SnapshotBaseline`, create a DACK-owned tiled `WorkingClone`, run the versioned `IntakeRecipe`/`AnalysisRevision` pipeline, build one indexed `EnvironmentMap` view, and publish a coherent level revision every playset can query.
 
 While in `Editing` or `Playing`, the source frame, analysis, OCR cache, and region IDs remain stable. Runtime mutations affect only the clone. Lazy OCR may continue against the current Snapshot, but it is not a source refresh and never triggers a full-image rescan.
 
 If DACK can cheaply observe that the selected window moved, resized, closed, or changed, it may show a non-invasive `Source changed - Refresh available` badge. This advisory must not capture pixels, invalidate gameplay, or alter the clone.
 
-`Refresh Source` is a deliberate creator command in the Cockpit and Source page. It pauses Play if necessary, retains the current clone, captures a temporary `RefreshCandidate`, analyzes it off the active game path, and shows a diff of added, moved, deleted, and uncertain regions. The creator chooses `Apply as New Snapshot`, `Rebind and Apply`, or `Discard`.
+`Refresh Source` is a deliberate creator command in the shared File/Source command surface, with review in Understand/Intake. It pauses Play if necessary, retains the current clone, captures a temporary `RefreshCandidate`, analyzes it off the active game path, and shows a diff of added, moved, deleted, and uncertain regions. The creator chooses `Apply as New Snapshot`, `Rebind and Apply`, or `Discard`.
 
 Applying creates a new Snapshot/version while preserving the prior Snapshot and mutation history. Only source bindings with confident matches migrate automatically; uncertain ladders, routes, actors, and goals are flagged for review. Candidate OCR and analysis jobs carry the candidate source version and are discarded if the candidate is rejected or superseded.
 
@@ -171,27 +180,42 @@ The implementation should keep capture, understanding, editing, and play as sepa
 ```text
 Windows capture backend
   -> immutable SourceFrame (BGRA/RGBA pixels + metadata + hash)
-  -> Snapshot builder (native image + version)
-  -> one SnapshotAnalysis / EnvironmentMap cache
-  -> WorkingClone (mutable pixels + mutation log)
+  -> Snapshot repository -> immutable SnapshotBaseline
+  -> IntakeRecipe + Analysis service -> immutable AnalysisRevision
+  -> EnvironmentMap index/view + RegionRuntimeState
+  -> tile-backed WorkingClone (mutable pixels + mutation log)
   -> toolkit queries (collision, text, icons, whitespace, routes)
   -> simulation and renderer
 ```
 
-The initial and refresh capture paths may use Desktop Duplication/DXGI for monitors and Windows.Graphics.Capture for windows or regions, with a reviewed fallback for inaccessible surfaces. The backend owns native pixel acquisition and DPI/desktop transforms; it does not know about enemies, OCR words, or gameplay.
+The initial and refresh capture paths may use Desktop Duplication/DXGI for monitors and Windows.Graphics.Capture for user-consented windows/displays, with an explicit post-acquisition crop for creator-selected regions and a reviewed fallback for inaccessible surfaces. The backend owns native pixel acquisition and DPI/desktop transforms; it does not know about enemies, OCR words, or gameplay.
 
-The Snapshot builder copies or references the captured buffer immutably, records the source hash and capture metadata, and assigns a `sourceVersion`. The analysis service consumes that version once and emits immutable derived records. The WorkingClone is a separate writable layer: Brickbat erasure, projectile damage, paragraph deformation, shadows, ANSI underlays, and creator-painted collision never write into `SourceFrame` or `SnapshotAnalysis`.
+The Snapshot repository copies or references the captured buffer immutably, records the source hash and capture metadata, and assigns a Snapshot identity. The analysis service consumes baseline + Intake Recipe + algorithm versions and emits immutable derived records. The Working Clone is a separate tiled writable layer: Brickbat erasure, projectile damage, paragraph deformation, and creator visual mutations never write into `SourceFrame`, `SnapshotBaseline`, or `AnalysisRevision`. Shadows and ANSI underlays are normally composited presentation layers rather than baked clone mutations unless the creator explicitly promotes them.
 
-Gameplay reads the cached EnvironmentMap through spatial queries and subscribes to clone mutation events. It must never call the capture backend or run a whole-image detector during a frame. `RefreshCandidate` follows the same pipeline off to the side and becomes visible only after an Apply/Rebind command commits a new Snapshot.
+Gameplay reads the cached Environment Map through spatial queries and subscribes to committed clone/Region Runtime State mutation events. It must never call the capture backend or run a whole-image detector during a frame. `RefreshCandidate` follows the same pipeline off to the side and becomes visible only after an Apply/Rebind command commits a new baseline/analysis/lineage transaction.
+
+### 2.7 Windows capture backend policy
+
+Use the platform APIs by capability, not by a false single-backend abstraction:
+
+| Need | Preferred first path | Important behavior to preserve |
+| --- | --- | --- |
+| User-consented window/display selection | `Windows.Graphics.Capture` | system picker/consent, capture border where applicable, resize/close/device loss, cursor policy |
+| Per-monitor high-rate/delta evidence | DXGI Desktop Duplication | output/adapter identity, rotation, move rectangles before dirty rectangles, cursor metadata, access loss |
+| Static image/text/ANSI source | reviewed core decoder/parser | deterministic pixels/cells, no executable content, explicit limits |
+
+Manual Snapshot capture may use GPU capture → CPU-normalized buffer → tiled Godot textures. Continuous live work must measure that path, dirty-tile CPU upload, and residency costs before considering shared native textures or GDExtension. Native code is justified by a measured transfer/API bottleneck, not by architectural fashion.
+
+DACK-owned windows should be excluded from DACK capture where supported to prevent recursive feedback, and the picker/preview must reveal when exclusion is unavailable. Window display-affinity/exclusion flags are defense-in-depth presentation controls, not DRM or a guarantee against other capture software. Secure desktop/UAC, protected content, inaccessible/minimized surfaces, target close/replacement, access loss, and device removal fall back to the last coherent baseline and a clear recovery action.
 
 ## 3. Analysis pipeline
 
-The first pass produces one versioned `SnapshotAnalysis` with independently inspectable layers. Each layer can add evidence to a shared region record; none creates a competing geometry model.
+The first pass produces one immutable, versioned `AnalysisRevision` with independently inspectable layers. Each layer can add evidence to a shared derived region record; none creates a competing geometry model. Runtime active/deleted/damaged state is resolved separately through Region Runtime State.
 
 ### Pass A — normalize and tile
 
 - Convert to a managed RGBA/luminance/chroma buffer.
-- Preserve the original pixels separately from the mutable clone.
+- Preserve the admitted Snapshot Baseline pixels byte-stably and separately from the mutable Working Clone; this does not grant access to or package the originating file.
 - Build multiscale tiles for dominant color, variance, edge density, and entropy.
 - Record local background candidates per tile and per connected surface, not one global “white.”
 
@@ -274,9 +298,11 @@ OCR is a lazy naming service, not the geometry engine:
 
 The interpreter produces a **PlayfieldProfile** after geometry analysis. This is an affordance vector, not a single app/file label. Initial dimensions include text density, horizontal continuity, vertical connectivity, grid regularity, open-space ratio, background confidence, destructibility, object repetition, corridor/path evidence, and HUD-safe space. Later rectangle, icon, UIA, and OCR evidence enriches the same profile.
 
-Each playset declares preferred affordances and required construction. DACK ranks several plausible game types, explains the strongest evidence, and identifies what must be added—for example ladders between text rows, a pinball table boundary, a tower-defense route, or racing checkpoints. Recommendations are an intelligent opening move only: the creator can apply any toolkit to any source.
+Each data-driven `ToolkitDescriptor` declares preferred affordances, negative evidence/contraindications, prerequisites, minimum confidence, suggested construction recipes, and explanation templates. The service reports **compatibility score** separately from **evidence confidence**; neither is presented as a calibrated probability. It may truthfully report “No strong recommendation.” Source-app hints are weak evidence, never authority.
 
-The first implemented profiler is deliberately provisional. It derives geometry-only recommendations from the existing text platforms, glyph/word/line candidates, background coherence, and repeated target sizes. It currently ranks Side-View Platformer, Brickbat, Pinball, Maze/Snake, Tower Defense/Escort, and Racing/Route, exposes the best three in Understand mode, and does not require OCR. Rectangle/icon hierarchy, calibrated guide evidence, and source-family hints will replace weak heuristics as those passes come online.
+DACK ranks several plausible game types, explains the strongest evidence, and identifies what must be added—for example ladders between text rows, a pinball table boundary, a tower-defense route, or racing checkpoints. Recommendations use plain labels such as **Strong fit**, **Good fit**, and **Experimental**. `Preview` creates a reversible noncommitted draft; `Apply` is the explicit command that selects a family or creates starter construction. Merely visiting Understand, switching task workspace, or selecting a family/preset never changes the level.
+
+The first implemented profiler is deliberately provisional. It derives geometry-only recommendations from the existing text platforms, glyph/word/line candidates, background coherence, and repeated target sizes. It currently ranks Side-View Platformer, Brickbat, Pinball, Maze/Snake, Tower Defense/Escort, and Racing/Route, exposes the best three in Understand mode, and does not require OCR. Its percentages are uncalibrated compatibility scores. Rectangle/icon hierarchy, calibrated guide evidence, negative evidence, and source-family hints will replace weak heuristics as those passes come online; profiler feature/schema version is part of the cache key and diagnostics.
 
 ## 4. Shared region model
 
@@ -284,26 +310,28 @@ Every region record should be able to answer the same questions for every playse
 
 ```text
 RegionRecord
-  id, parentId, sourceVersion
+  id, parentId, snapshotId, analysisRevision
   bounds, mask, zOrder
   kind: background | window | panel | icon | glyph | word | line | paragraph | gridCell | path | control | unknown
   evidence: pixels | edges | layout | UIA | OCR | creator
   confidence, localBackground, palette
   recognizedText?, textRole?, glyph/cell metrics?
-  traversal, collision, mutation, presentation policies
-  active/deleted/damaged state
-  creatorOverride and provenance
+  proposed traversal, collision, mutation, presentation policies
+  evidence provenance
 ```
 
-The environment map owns:
+Accepted creator corrections/source bindings live in the Level Definition and reference region IDs. `RegionRuntimeState(regionId)` carries active/deleted/damaged/current-presentation values for the current Working Clone/Variant. This keeps detector evidence immutable while allowing every playset to observe the same current world.
+
+The resolved environment service exposes:
 
 - a spatial index by `SourcePx`/`SnapshotPx`;
-- hierarchy and stable-ID reconciliation;
-- active/deleted/mutated region state;
-- dirty-region image updates;
+- accepted hierarchy and stable-ID lineage/reconciliation results;
+- resolved active/deleted/mutated region state through the current Region Runtime State;
 - source-to-playfield transforms;
 - nearest whitespace/background queries for HUD and effects;
 - evidence and correction history for Understand mode.
+
+The mutation service and tile-backed Clone Renderer own dirty pixel updates/uploads and publish the committed region-state delta back to this resolved view; the Environmental Map does not rewrite clone pixels itself.
 
 Collision, erasure, scoring, OCR targeting, shadow grounding, and save/load all query this shared model.
 
@@ -374,3 +402,26 @@ The design is ready to move beyond the spike when:
 - Malformed ANSI/control streams, unstable windows, inaccessible surfaces, and permission failures degrade to the last coherent Snapshot.
 - Local-only is the default. Publishing requires clone preview, visible-content warning, provenance, and always-on metadata scrubbing.
 - Refresh candidates use separate memory/temporary storage and are never published to gameplay until the creator applies them.
+
+### 8.1 Job and publication contract
+
+- One bounded scheduler owns priority lanes for capture, interaction-critical regional analysis, OCR, thumbnails, and asset compilation. Save staging has its own durability priority.
+- Jobs deduplicate by cache key and carry session ID, baseline/candidate ID, recipe revision, input hash, algorithm/provider version, and cancellation token.
+- Workers receive immutable buffers/records only and never access Godot scene/UI objects. Results enter a bounded main-thread commit queue.
+- The commit boundary rejects stale identity/version and publishes coherent pixels + environment revision together. There is no interval where a new live frame pretends to match old collision.
+- Queue depth, age, cancellations, stale drops, cache hit rate, analysis tiles, dirty/upload tiles, bytes owned, and publication latency appear in diagnostics/Activity Center.
+- Boss/Return to Desktop immediately parks providers and suspends nonessential work without synchronously waiting for every worker to unwind.
+
+### 8.2 Native-pixel and memory contract
+
+The clone renderer follows [ADR-0013](adr/ADR-0013-tile-backed-native-pixel-clone-rendering.md): immutable and mutable tiles share Snapshot coordinates; dirty mutation tiles bound CPU/GPU uploads; only visible/preloaded tiles require GPU residency. A 4K RGBA buffer is roughly 32 MiB before clones, staging, analysis maps, masks, and textures, so diagnostics must name every full-size buffer and enforce the optimization plan's 1080p/4K memory guardrails.
+
+At authoritative 1:1 view there is no interpolation, resampling, or unrecorded color conversion. Fit/Overview remains available as a clearly labeled view transform with pan/minimap support; it never rewrites Snapshot coordinates or claims pixel-authoritative inspection. Golden fixtures verify channel order/color normalization, source-to-display coordinate round-trips, half-open rectangle boundaries, collision/erasure mask identity, background restoration, and seam-free tiles.
+
+### 8.3 Initial performance gates
+
+- 1080p: capture preview within 1 s, provisional geometry/profile within 750 ms, coherent non-OCR analysis within 2 s on the recorded baseline.
+- 4K/mixed DPI: coherent non-OCR analysis within 5 s with bounded buffers and progressive feedback.
+- Workbench guide dragging: visible geometry under 50 ms; expensive analysis debounced and cancelable.
+- Manual-refresh idle: no capture or whole-image analysis, and background CPU settles to the agreed quiet-office budget.
+- Continuous-live experiments declare visual capture cadence separately from semantic analysis cadence and keep the last coherent environment when they fall behind.

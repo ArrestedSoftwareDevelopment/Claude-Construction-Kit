@@ -196,23 +196,35 @@ Brickbat calls the shared effects/audio libraries:
 
 Each burst may choose a strong solid color, scale, rotation, vector/spline motion, and palette family. Spectacle opacity/quantity adapts to quality and accessibility settings. Balls, paddle, targeting, and required HUD information remain readable above effects.
 
-## Builder Page
+## Family Contributions to the Shared Shell
 
-Suggested collapsible sections:
+Brickbat contributes controls, cards, shelves, inspector schemas, overlays, and
+validation to the accepted stable task workspaces. It does not own a separate
+Builder page or a family-local session spine.
 
-1. **Session:** New Game, Test/Play, Restore Snapshot, save variant.
-2. **Paddle:** side, size, response, deflection, control.
-3. **Balls:** total served balls, active cap, speed tiers, launch randomization.
-4. **Targets:** source/granularity, filters, hit points, collision/pass-through policy.
-5. **Mutation:** erase/damage/transform recipe, blast cleanup, persistence.
-6. **Bonuses:** bonus deck, rarity, cooldown, duration.
-7. **Laser:** strength range, aim, delay, deletion/scoring rule.
-8. **Scoring:** values, combos, word/line/bank completion, multipliers.
-9. **Word Sense:** Off/Lazy/Prepared, goal/bonus categories, fallbacks.
-10. **Board Skin / Art Cards:** ANSI composition, board/logo/target-wall cards, cell promotion, palette and text protection.
-11. **HUD / Effects / Sound:** layout, fade, theme, intensity, profiles.
+| Stable workspace | Brickbat contributions |
+| --- | --- |
+| **Overview** | Preset summary, board readiness, ball/reserve state, target count, warnings, and family-specific run diagnostics. No New/Open/Save/Play controls. |
+| **Player** | Paddle side, size, response, deflection, and control mapping. |
+| **Actors** | Balls, active cap, speed tiers, launch randomization, destructible enemies, and actor-target behavior. |
+| **World** | Target source/granularity, filters, hit points, collision/pass-through policy, mutation recipe, blast cleanup, persistence, and Board Skin/Art Card composition. |
+| **Logic** | Reserve rules, bonus deck, rarity, cooldowns, laser strength/aim/delay, deletion and scoring rules, values, combos, completion rules, and multipliers. |
+| **Effects** | HUD layout/fade, word ticker, typography, visual intensity, sound hooks, and accessibility profiles. |
+| **Assets** | Paddle, ball, target-wall, ANSI board, logo, bonus, effect, typography, and sound cards. |
+| **Understand** | Target masks, collision proxies, erased/damaged regions, OCR/Word Sense state, fallback labels, background confidence, and performance diagnostics. |
 
-Controls are descriptors feeding the shared Inspector/session state. Brickbat does not own global source capture, Boss Key, save implementation, effects drawing, OCR process management, or document analysis.
+The earlier proof of concept grouped these as eleven collapsible family sections:
+Session, Paddle, Balls, Targets, Mutation, Bonuses, Laser, Scoring, Word Sense, Board
+Skin/Art Cards, and HUD/Effects/Sound. That list remains useful domain vocabulary,
+but the **Session** section is retired. New/Open/Save, snapshot restoration,
+Play/Build transport, Boss, close/return, and source capture are global shell
+commands. Brickbat can expose explicit family rule actions such as **Serve Ball** or
+**Reset Brickbat Round**, but those actions must not impersonate global lifecycle
+commands.
+
+All family controls are descriptors feeding the shared Inspector and session state.
+Brickbat also does not own effects drawing, OCR process management, or document
+analysis; it consumes those shared services.
 
 ## Current Proof vs. Product Work
 
@@ -224,7 +236,7 @@ Controls are descriptors feeding the shared Inspector/session state. Brickbat do
 | Draggable/whitespace-aware HUD | Proven at RAD depth |
 | Actors/enemies as destructible targets | Proven |
 | Stable region IDs/spatial index/batched mutation | Planned in active optimization pass |
-| Schema-driven builder page and target cards | Planned |
+| Schema-driven workspace contributions and target cards | Planned |
 | Versioned persistence and replayable deterministic tests | Planned |
 | Semantic missions/bonus decks beyond starter rules | Exploratory after Word Sense/product spine |
 

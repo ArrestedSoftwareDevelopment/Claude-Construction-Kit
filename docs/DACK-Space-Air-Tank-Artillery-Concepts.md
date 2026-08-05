@@ -4,9 +4,9 @@
 - **Planning role:** Idea bank for future toolkit/card proposals, not an approved scope or implementation sequence
 - **Promotion path:** Validate a small playable slice, then move accepted contracts into the relevant normative design note and [DACK Optimization and Refactoring Plan](DACK-Optimization-and-Refactoring-Plan.md)
 
-This note captures the next broad family of DACK playsets after platformer, Brickbat, pinball, and the first overhead experiments. The common theme is that the document is no longer only a wall, floor, or brick field. It can become sky, space, terrain, resources, hazards, and mission language.
+This note captures candidate broad-family playsets beyond the proven Platformer, Brickbat, Pinball, and early Overhead experiments. The common theme is that the document is no longer only a wall, floor, or brick field. It can become sky, space, terrain, resources, hazards, and mission language.
 
-The source document remains protected. Any fading, harvesting, cratering, sucking, erasing, or exploding happens against the cloned playfield/snapshot layer.
+The source document and Snapshot Baseline remain protected. Any fading, harvesting, cratering, sucking, erasing, or exploding happens against the Working Clone/Variant branch.
 
 Everything below is a candidate until tested. Names, defaults, controls, shelf groupings, physics rules, and module boundaries may change; this note must not override the Snapshot contract, object schema, active toolkit plans, or measured optimization work.
 

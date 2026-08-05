@@ -3,10 +3,12 @@
 - **Status:** Normative persistence contract; Version 1 remains provisional until the first complete package round-trip
 - **Canonical editable format:** `.dacklevel`
 - **Related engineering plan:** [DACK Optimization and Refactoring Plan](DACK-Optimization-and-Refactoring-Plan.md)
+- **State authority:** [ADR-0012](adr/ADR-0012-snapshot-analysis-clone-state-separation.md)
+- **Card/dependency authority:** [ADR-0014](adr/ADR-0014-card-definition-instance-and-dependency-contract.md)
 
 ## Purpose
 
-`Snapshot` is the author-facing word for freezing a playable clone at the moment it feels right.
+`Snapshot` is the author-facing word for freezing an immutable native-pixel baseline at the moment it feels right. The Level—not the Snapshot—owns the creator's Cards, placed instances, rules, routes, accepted corrections, and mutation policy. The current mutable branch is the Working Clone; a saved damaged/remixed branch is a Variant.
 
 The creator can tune the source document, window, desktop region, image, or text map in its native app; DACK then captures a stable clone, reads what it can in the background, and packages the resulting image, geometry, OCR labels, placed tools, rules, assets, and mutation state into a level file.
 
@@ -14,7 +16,7 @@ This turns the current proof-of-concept loop into an intentional workflow:
 
 1. Tune the source until the page/screen has the right visual shape.
 2. Capture a Snapshot.
-3. Let DACK detect text, regions, background color, icons, pillboxes, and possible bonus anchors.
+3. Optionally author an Intake Recipe, then let DACK produce a versioned Analysis revision containing text, regions, background color, icons, pillboxes, and possible bonus anchors.
 4. Optionally run Word Sense/OCR in the background.
 5. Place ladders, ramps, elevators, triggers, enemies, routes, pinball parts, score panels, and other toolkit objects.
 6. Test and deform the clone through play.
@@ -29,12 +31,14 @@ This section is the authoritative contract for saved levels. Prototype save code
 
 ### Canonical container and version
 
-- `.dacklevel` is the one canonical editable level format. The current `rad-test.dacklevel.json` file is a migration fixture, not a second supported format.
-- `.dackpack` is a publishing/campaign container that embeds or references canonical `.dacklevel` records; it does not redefine level semantics.
+- `.dacklevel` is the one canonical editable/interchange level format. The public saved form is a ZIP-compatible package with a constrained internal layout. The editor may use an expanded transactional work/cache directory, but that directory is an implementation detail, not a second format. The current `rad-test.dacklevel.json` file is a migration fixture.
+- `.dackpack` is a ZIP-compatible publishing/campaign container that embeds canonical `.dacklevel` packages or their normalized contents; it does not redefine level semantics.
 - Every root manifest must contain `format`, `formatVersion`, and a stable level `id`.
 - `formatVersion` versions the serialized schema. `dackVersion` records which application build wrote it; these fields must not be used interchangeably.
 - Readers must migrate older known versions deliberately. A newer unsupported major format must produce a clear compatibility error rather than being guessed at or partially loaded.
 - Save/migrate operations preserve the last good file until the replacement has validated and completed atomically.
+- Save assembles and validates a temporary package on the same target volume, then atomically replaces/renames the previous package and retains a bounded recovery backup. Lightweight autosave writes a recipe/command recovery record and references immutable content-addressed Snapshot blobs rather than rebuilding a large ZIP on every edit.
+- Package readers reject absolute paths, `..` traversal, links/reparse escapes, duplicate canonical paths, excessive entry counts, per-entry/total expansion beyond declared limits, and decompression-ratio/archive-bomb abuse before materializing files.
 
 ### Stable identity
 
@@ -60,11 +64,11 @@ This 1:1 rule protects the central visual promise: document text stays at native
 
 ## Snapshot vs. Source
 
-A Snapshot is not the original file. It is DACK's frozen, playable representation of the source at a specific time, resolution, capture rectangle, and detection state.
+A Snapshot Baseline is not the original file. It is DACK's frozen, playable pixel representation of the source at a specific time, resolution, capture rectangle, and approved normalization. `IntakeRecipe` and `AnalysisRevision` are separately versioned because creator guides and detector algorithms can evolve without rewriting those pixels.
 
 For sharing, DACK should support three source policies:
 
-- **Frame-only Snapshot:** stores the frozen playable image plus DACK geometry/rules. This is the safest default and works even when the source was a proprietary document, browser page, app window, or desktop.
+- **Frame-only source policy:** packages the frozen playable baseline and the separate Level/Analysis records needed to play it, without including the originating document. This is the safest default and works even when the source was a proprietary document, browser page, app window, or desktop.
 - **Scrubbed source clone:** optionally includes a copy of an approved open or supported source file after metadata scrubbing and preview. This is useful for editable remix packs, but it is never required for play.
 - **External source reference:** stores provenance only, such as "captured from Word window" or a creator note. This may help the author rebuild locally, but shared play still uses the Snapshot image.
 
@@ -77,7 +81,7 @@ Use two related containers:
 - `.dacklevel` for the canonical editable creator project or single level.
 - `.dackpack` for a distributable playset/campaign bundle.
 
-Both can be folders during development and zip-like packages later.
+Both have constrained ZIP-compatible public containers. Expanded directories are allowed only as editor workspaces/developer fixtures and must round-trip through the same validator.
 
 Suggested editable layout:
 
@@ -86,11 +90,17 @@ MyLevel.dacklevel/
   manifest.json
   snapshots/
     snapshot-0001/
-      snapshot.json
+      baseline.json
       image.png
-      geometry.json
-      words.json
-      mutations.json
+      intake-recipe.json
+      analysis/
+        revision-0001.json
+        words-cache.json
+        masks/
+  level/
+    corrections.json
+    initial-region-overrides.json
+    mutation-policy.json
   placed/
     objects.json
     actors.json
@@ -111,7 +121,15 @@ MyLevel.dacklevel/
   provenance/
     licenses.json
     attribution.txt
+  variants/
+    variant-0001/
+      variant.json
+      flattened-cache/
+  recovery/
+    checkpoint.json        # optional run checkpoint; not authored level truth
 ```
+
+`initial-region-overrides.json` is authored start-state policy, not a serialized copy of the mutable `RegionRuntimeState`. A named Variant stores an explicit mutation/region-state branch; transient current-run state belongs only in an optional checkpoint.
 
 Suggested published layout:
 
@@ -128,7 +146,7 @@ MyPlayset.dackpack/
     attribution.txt
 ```
 
-The package should be playable from the frozen Snapshot data alone. Included source clones are an optional remix/editing feature.
+The package should be playable from the baseline plus canonical Level data and approved embedded assets. Derived Analysis/OCR/flattened-tile caches may be embedded for instant play but are marked rebuildable. Included source clones are an optional remix/editing feature.
 
 ## Level Cards and Multi-Level Design
 
@@ -149,7 +167,7 @@ Logic Cards
   checkpoint, hidden switch, enemy spawn point, route, wave, win/loss rule
 
 Level Card
-  snapshot, detected geometry, placed objects, actors, rules, mutations, music/soundscape, scoring
+  Snapshot/Analysis references, accepted corrections, placed instances, rules, routes, Variant policy, music/soundscape, scoring
 
 World / Chapter Card
   ordered or mapped set of level cards, shared theme, shared enemy pool, shared progression rules
@@ -179,11 +197,11 @@ The creator-facing rule is the same as for enemies:
 
 > Build something from cards; when it works, save the result as a bigger card.
 
-For implementation, `.dacklevel` becomes the saved Level Card format, while `.dackpack` becomes the Playset/Campaign Card format. A later `.dackworld` or world section inside `.dackpack` can group levels without forcing every project to become a campaign.
+For implementation, `.dacklevel` is the serialized Level Card package. A `.dackpack` is the validated distribution container that may include one Playset/Campaign Card, one or more Level Cards, a lightweight Player, shared dependencies, provenance, and publishing policy; the container is not itself a Card Definition. A later `.dackworld` or world section inside `.dackpack` can group levels without forcing every project to become a campaign.
 
 ### PageSequence: one document, many levels
 
-When the source is a multi-page Word, Writer, PDF, or browser document, DACK may create a `PageSequence`. The sequence preserves document order and owns shared assets, progression, transition, and persistence rules; each page remains an ordinary Level Card with its own immutable Snapshot, environment map, OCR cache, placed objects, routes, and mutations.
+When the source is a multi-page Word, Writer, PDF, or browser document, DACK may create a `PageSequence`. The sequence preserves document order and owns shared assets, progression, transition, and persistence rules; each page remains an ordinary Level Card that references its immutable Snapshot Baseline/selected Analysis Revision and owns its placed objects, routes, rules, corrections, and Variant policy.
 
 ```json
 {
@@ -230,9 +248,9 @@ Stable page IDs are matched across scroll recaptures or re-snapshots using sourc
 
 For `.dackpack`, the manifest also lists levels, shared assets, campaign order, and runtime requirements.
 
-## Snapshot Record
+## Snapshot Baseline Record
 
-Each Snapshot stores how the clone was made and what coordinate system all gameplay data uses.
+Each baseline stores how the immutable pixels were admitted and what coordinate system all level data uses. OCR status, Analysis revisions, placed content, and active damage do not belong in this record.
 
 ```json
 {
@@ -246,25 +264,16 @@ Each Snapshot stores how the clone was made and what coordinate system all gamep
   "coordinateSpace": "snapshot-pixels",
   "imagePath": "image.png",
   "snapshotImageHash": "sha256:...",
-  "backgroundSamples": [
-    { "rect": [1200, 820, 320, 160], "color": "#ffffff", "confidence": 0.94 }
-  ],
-  "wordSense": {
-    "enabled": true,
-    "status": "partial",
-    "provider": "tesseract/libtesseract",
-    "providerVersion": "unknown",
-    "language": "eng",
-    "completedAt": null
-  }
+  "pixelFormat": "rgba8-srgb",
+  "colorNormalizationProfile": "sdr-srgb-v1"
 }
 ```
 
-Snapshots should be immutable once frozen. If the creator recaptures the source, DACK writes a new Snapshot and offers to rebind existing placed objects.
+Snapshot Baselines are immutable once admitted. If the creator recaptures the source, DACK writes a new baseline and offers explicit guide/region lineage and placed-object rebinding. The Level manifest selects its Intake Recipe and Analysis revision; changing that selection does not imply the baseline bytes changed.
 
-## Geometry Record
+## Analysis / Geometry Record
 
-`geometry.json` stores the engine's understanding of the frozen image. It should preserve both original source geometry and current mutable geometry.
+An `AnalysisRevision` stores the engine's immutable understanding of the frozen image for one baseline hash + Intake Recipe hash + detector version. It stores derived geometry and proposed policies, not current mutable state.
 
 Important categories:
 
@@ -275,9 +284,9 @@ Important categories:
 - `iconRegions`: desktop icons, app icons, bullets, pillboxes, UI chips, thumbnails, and other non-text objects.
 - `fixedBoundaries`: windows, taskbars, panels, gutters, rulers, sidebars, margins, and other environmental boundaries.
 - `bonusAnchors`: suggested places for power-ups, score inserts, pinball lights, or semantic triggers.
-- `collisionRegions`: the current playable collision map, derived from source geometry plus mutations and placed objects.
+- `collisionCandidates`: source-derived masks/proposed policies. The current playable collision view is resolved at runtime from Analysis + accepted corrections + creator objects + Region Runtime State.
 
-The current proof of concept already points to this split: Brickbat erases text from the mutable clone; Platformer must treat those erased letters as holes, while Reset can restore the immutable Snapshot.
+The current proof of concept already points to this split: Brickbat erases text from the mutable clone and updates Region Runtime State; Platformer treats those inactive regions as holes, while Reset reconstructs the selected baseline/Variant exactly. Neither action edits the Analysis revision.
 
 ## Word Sense / OCR Record
 
@@ -384,7 +393,7 @@ Rectangular and hexagonal grids share one cell/neighbor contract. Path Finder co
 
 ## Mutations and Variants
 
-`mutations.json` records intentional changes to the clone:
+The Level's authored mutation branch records intentional changes to the Working Clone and matching Region Runtime State:
 
 - erased letters/words;
 - laser cuts;
@@ -395,40 +404,35 @@ Rectangular and hexagonal grids share one cell/neighbor contract. Path Finder co
 - pinball dents, lit inserts, or dropped targets;
 - gameplay-created holes, bridges, and hazards.
 
-For performance, DACK can store a flattened variant image beside the mutation log:
+For performance, DACK can store flattened variant tiles/image beside the mutation log as a disposable cache:
 
 ```text
-snapshots/snapshot-0001/
-  image.png
-  variants/
-    pristine.png
-    brickbat-damaged-run-003.png
+variants/variant-0001/
+  variant.json
+  flattened-cache/
+    tile-0003-0007.png
 ```
 
 Creators should be able to choose:
 
-- **Reset to Snapshot:** discard current play damage.
+- **Reset Working Clone:** discard current play damage and reconstruct from the selected baseline/Variant policy.
 - **Save as Variant:** preserve the damaged clone as a new level state.
-- **Promote Variant:** make the damaged clone the new baseline for further editing.
+- **Promote Variant as New Baseline:** derive a new immutable baseline/level revision with lineage for further editing; never overwrite the parent Snapshot.
 
-This formalizes the emergent feature where one game type deforms the page and another game type inherits it.
+This formalizes the emergent feature where one game type deforms the page and another game type inherits it. Authoring mutations/Variants are distinct from transient `RunState`; saving a checkpoint does not silently rewrite the designed level.
 
 ## Snapshot Lifecycle in the UI
 
-The Cockpit should get a contextual Snapshot page or shelf.
+Snapshot lifecycle is global session behavior, not a family-owned page or duplicate shelf. The accepted shell routes it consistently:
 
-Recommended first controls:
+- **File / Source:** Capture Snapshot and Re-snapshot/Refresh Source;
+- **Build / Variant:** Reset Working Clone, Save Variant, and the deliberately weighty **Promote Variant as New Baseline** command;
+- **Understand:** analysis layers, correction, Word Sense start/status, and source/analysis comparison;
+- **File / Export:** Export Pack and the optional scrubbed **Include Source Clone** choice with an exact-content preview.
 
-- **Capture Snapshot:** freeze the current window/region/monitor/image/text map.
-- **Re-snapshot:** capture the source again and attempt to preserve placed objects.
-- **Freeze Baseline:** lock the current clone as the pristine reset point.
-- **Run Word Sense:** start or resume background OCR.
+The context/status strip may show concise source/Snapshot age, dirty state, analysis/OCR progress, active Variant, and Hub-safe state, but it does not create another command implementation.
 
 `Re-snapshot` is an explicit refresh transaction, not an automatic live update. DACK captures and analyzes a temporary candidate, shows a diff, and applies it only after the creator chooses `Apply as New Snapshot` or `Rebind and Apply`. Until then, the active Snapshot, clone, mutations, collision map, and gameplay remain unchanged. `Discard` removes the candidate without affecting the level.
-- **Save Variant:** package current deformations as a named variant.
-- **Show Understanding:** overlay detected letters, words, background regions, icons, boundaries, and OCR labels.
-- **Export Pack:** create a `.dackpack`.
-- **Include Source Clone:** optional, scrubbed, previewed, and off unless the creator explicitly wants remix/editable sharing.
 
 The snapshot state should be visible but not fussy: `Draft`, `Frozen`, `Word Sense reading`, `42 words known`, `Damaged variant unsaved`, `Hub-safe`.
 
@@ -447,19 +451,40 @@ When a new Snapshot is captured from a changed source:
 
 This is the level-editor cousin of Live Document Mode: stable, deliberate, and creator-controlled.
 
+## Recovery, Dependency, and Publishing Contract
+
+### Autosave and crash recovery
+
+- Autosave records the last validated Level DTO revision plus a bounded command/recovery journal; it references immutable Snapshot/content-addressed blobs instead of copying them.
+- A drag/slider transaction enters recovery only when committed. Partially previewed values are discarded after a crash.
+- Manual Save validates and atomically replaces the canonical `.dacklevel`; recovery never overwrites it silently.
+- Cloud-synced or unavailable targets are treated as fallible: save to a same-volume temporary file, flush/validate, replace, and report conflicts without deleting the last local recovery.
+
+### Card and asset dependencies
+
+- Published packs pin or embed exact Card/asset versions and stable component-slot IDs. Dependency cycles are rejected with a readable chain.
+- Built-in/third-party immutable Cards, project-owned editable Cards, and placed instance override patches are distinct. Unresolved or incompatible Cards load as visible disabled placeholders retaining their raw optional data.
+- The Player resolves validated compiled assets only. A frozen-pack Player does not need raw-vault scanning, creator importers, capture, or OCR unless that capability is explicitly part of the pack/runtime profile.
+
+### Publish sanitization and archive safety
+
+- Hub publishing rebuilds from an allow-list of canonical records and admitted assets; it never zips the editor work directory wholesale.
+- Scrubbing removes image/text-container metadata, source filenames/absolute paths, account/user names, window titles, machine/monitor identifiers, temporary paths, local recent-history, and nonessential provider diagnostics. Visible pixels/OCR text remain sensitive content and are shown in mandatory preview.
+- Internal content hashes that could fingerprint a private source are omitted or replaced by pack-local integrity IDs where they are not required for runtime verification.
+- The validator enforces canonical paths, archive expansion/entry/size limits, asset/license eligibility, executable-content rejection, and complete provenance before the package receives a Hub-safe status.
+
 ## Near-Term RAD Implementation
 
-The first useful version does not need the entire package system.
+The first useful public-format proof does not need every campaign/publishing feature, but it must preserve the ownership model rather than bake the RAD fields into a misleading “Snapshot.”
 
-Minimum viable Snapshot save:
+Minimum viable `.dacklevel` package round trip:
 
-- save the current captured image as `image.png`;
-- save detected text objects and background regions;
-- save OCR labels currently known by `LazyOcrService`;
-- save placed world objects;
-- save active playset settings;
-- save current clone mutation state for Brickbat/platformer damage;
-- load the same data back into the prototype scene.
+- save one immutable captured baseline image and baseline manifest;
+- save an independent Intake Recipe and selected Analysis Revision containing detected text/background geometry;
+- save optional OCR labels from `LazyOcrService` as a versioned replaceable cache;
+- save the Level Definition: accepted corrections, placed objects/actors, active family/preset settings, rules, Cards/overrides, and source bindings;
+- save a named Variant or mutation/state delta when the creator deliberately preserves Brickbat/Platformer damage;
+- validate, atomically replace, then load the same products back into the prototype scene without changing their ownership.
 
 Once this round-trips, DACK has a real level format instead of a demo screenshot.
 
@@ -469,6 +494,6 @@ Current RAD `dacklevel` pass:
 - This is a deliberately small local test slot and migration fixture, not a competing format or the final package directory structure.
 - It saves placed world objects, Start/Checkpoint/Goal markers, object attributes, visible actors/enemies, actor names, coarse animation source IDs, text scale, actor scale, playset mode, platformer mode, and gameplay toggles.
 - Loading a level returns to Editor Mode by default. Entering Play Mode is an explicit test action that honors the Start Point, hides editor-only markers, clears transient shots, resets the player, and allows enemy collision/projectile rules to run.
-- It does not yet package the frozen Snapshot image, OCR cache, detected text geometry, or mutated playfield pixels. Those remain the next layer after live/snapshot source handling stabilizes.
+- It does not yet package the frozen Snapshot Baseline, Intake Recipe, Analysis Revision/OCR cache, or named Variant data. That migration is the R2/R5 persistence work in the Optimization Plan, not an extension of the RAD JSON schema by accretion.
 - Actor animation source IDs are currently pragmatic (`stickman-v0.1`, `tgc-player`, `sunny-dragon-fly`) and must become stable, versioned library asset IDs before hub publishing.
 - Projectile/explosion assignments should also become stable IDs. The RAD catalog lives at `dack/assets/project/effects/projectile-effect-profiles.json`; future `.dacklevel` actor/weapon records should reference profile IDs such as `explosion-b-fireball-impact` rather than hardcoded textures.

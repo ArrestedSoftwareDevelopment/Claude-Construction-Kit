@@ -2,6 +2,7 @@
 
 - **Status:** Normative schema direction; RAD coverage is partial
 - **Coordinate authority:** [DACK Level Snapshot and Package Format](DACK-Level-Snapshot-Format.md)
+- **Card authority:** [ADR-0014](adr/ADR-0014-card-definition-instance-and-dependency-contract.md)
 - **Related engineering plan:** [DACK Optimization and Refactoring Plan](DACK-Optimization-and-Refactoring-Plan.md)
 
 ## Purpose
@@ -89,6 +90,29 @@ Movement speed, impulse, elasticity, friction, damping, damage radius, and simil
 
 A reusable card is a definition; an object placed in a level is an instance of that definition.
 
+### Definition ownership and edit authority
+
+Cards have three distinct edit-authority tiers. The UI and save format must never blur them:
+
+1. **Built-in or third-party definition:** shipped by DACK or admitted from an external pack. It is immutable in place and carries `editorLocked: true`. A creator may place it, override a placed instance, or use **Fork Card** to copy it into the project, but cannot rewrite the source definition or its provenance.
+2. **Project-owned definition:** created by the user or forked into the current project. It carries `editorLocked: false` and may be opened and edited as a reusable definition. Changing it is a shared operation because every non-overridden instance that references it may change.
+3. **Placed instance:** a level-owned reference to a definition plus a sparse override patch and runtime identity. It is independently movable, scalable, tintable, configurable, and duplicable without modifying the reusable definition.
+
+`editorLocked` describes definition-authoring authority only. It does not disable the card in play, prevent instance overrides, or replace license/export policy. A locked third-party definition can still be unsafe for redistribution; provenance and distribution state remain separate fields.
+
+The normal Inspector always edits **This Instance**. Definition editing is an explicit context change, not an accidental consequence of changing a field.
+
+Inspector commands:
+
+- **Apply to Definition:** copy the selected instance override(s) into an editable project-owned definition, then remove those now-redundant overrides from the selected instance. Before committing, show how many placed instances inherit each affected field and how many have protecting overrides. Apply to Definition is unavailable for `editorLocked` definitions until the creator forks them.
+- **Reset to Card:** remove the selected field/group override and immediately show the resolved inherited value. This never rewrites the definition.
+- **Fork Card:** create a new project-owned definition with a new stable `cardId`, exact resolved starting values, and optional `derivedFromId`/`derivedFromVersion` provenance; retarget only the selected instance unless the creator explicitly selects a broader scope.
+- **Open Definition:** leave the level-instance Inspector context and open the reusable definition editor. Its header must say whether the definition is built-in, third-party, or project-owned and show the number of affected instances before shared edits are saved.
+
+Every shared-definition operation must name its scope in plain language: `This Instance`, `This Definition`, or an explicitly selected set. Destructive propagation must not hide behind a generic Save button.
+
+### Resolution and sparse overrides
+
 Resolution order is deterministic:
 
 1. schema fallback;
@@ -101,12 +125,23 @@ Rules:
 
 - A placed instance stores `cardId` and `cardVersion` plus only the fields it overrides.
 - Renaming or moving a card does not break instances because identity is ID-based.
-- Editing a shared card updates inheriting instances; an overridden field keeps its instance value.
+- Editing a project-owned shared card updates inheriting instances; an overridden field keeps its instance value.
 - The Inspector must distinguish inherited values from overrides and offer **Reset to Card** per field or group.
-- Nested ingredient-card overrides are namespaced by component/card ID so a projectile's `speedPixelsPerSecond` cannot accidentally overwrite its owner's movement speed.
+- Nested ingredient-card overrides are namespaced by stable slot ID so a projectile's `speedPixelsPerSecond` cannot accidentally overwrite its owner's movement speed.
 - Replacing a card preserves compatible instance overrides, reports incompatible ones, and never silently discards authored values.
-- Publishing may pin exact card/asset versions or embed them so a shared level cannot change underneath the player.
 - A fully detached/forked card receives a new stable ID and may retain `derivedFromId` for provenance.
+
+### Composition slots, dependency safety, and version pins
+
+A composite card owns typed, stable composition slots. A slot's `slotId` is independent of its display label, shelf position, and current ingredient. Examples include `visual.body`, `animation.primary`, `behavior.movement`, `weapon.primary`, `projectile.primary`, `effect.impact`, `effect.death`, and `audio.fire`. Renaming "Primary Shot" or reordering a shelf therefore cannot break bindings or misapply an override.
+
+- Slot replacement is allowed only when the incoming card satisfies the slot's declared type/capability contract.
+- Instance overrides address `slotId` plus a field path, never a display name or array index.
+- Missing or incompatible dependencies load as visible disabled placeholders with repair choices; they do not disappear and do not silently substitute an unrelated card.
+- Card composition is a directed acyclic graph. Self-reference and any transitive dependency cycle are rejected at edit, save, import, and publish time with the complete cycle path. Runtime resolution also keeps a bounded recursion guard so malformed external content cannot hang the app.
+- A project-owned definition may explicitly track a newer compatible version during authoring, but every level save records the exact version resolved at save time. A creator must approve version advancement when it could affect placed instances.
+- Published/shareable levels pin exact card and asset versions or embed immutable copies. Floating `latest` dependencies are not valid for published playsets.
+- Forking begins from an exact resolved dependency graph. Subsequent upstream changes do not alter the fork unless the creator explicitly rebases it through a reviewed diff.
 
 ## Schema and Validation Contract
 
@@ -132,6 +167,7 @@ Rules:
 - source/provenance
 - creation source: creator / imported / toolkit-starter
 - starterGenerated flag and starter preset ID
+- `editorLocked`: definition-authoring lock for built-in/third-party cards; it does not disable placed instances or replace export/licensing policy
 
 ### 2. Presentation
 
@@ -156,6 +192,27 @@ Important distinction:
 - **Disabled:** ignored by play and editor except for selection/re-enable.
 
 These must not collapse into one checkbox.
+
+#### Visibility and Stealth behavior
+
+Presentation visibility answers **whether and how something is drawn**. Stealth answers **how a gameplay actor can be perceived and interacted with while concealed**. Stealth is a behavior/card channel with state and rules; it must not be encoded as a low-opacity sprite, `visible = false`, `disabled`, or `editor-only`.
+
+Minimum stealth vocabulary:
+
+- `stealthMode`: none, always concealed, fade by distance, reveal on proximity, reveal on attack, reveal on damage, timed phase/blink, or camouflage against the source;
+- `visibleOpacity` and `concealedOpacity`, plus bounded fade-in/fade-out times;
+- reveal triggers, reveal range, reveal duration, cooldown, and whether allied or hostile sensors can reveal it;
+- `collisionWhileConcealed`;
+- `targetableWhileConcealed`;
+- `canDealDamageWhileConcealed`;
+- `canTakeDamageWhileConcealed`;
+- shadow, projectile, carried-object, nameplate, and effect visibility policies while concealed;
+- creator-selected **tells** such as an outline, displaced text/pixels, footprints, dust/ripple, shadow, punctuation trail, warning glyph, or positional sound;
+- an `accessibleCue` that communicates the same threat/state without relying only on opacity, color, fine detail, stereo sound, flashing, or rapid motion.
+
+Stealth transitions should emit ordinary state events (`concealed`, `revealing`, `revealed`, `concealing`) so AI, targeting, HUD, sound, effects, save/load, and replay consume one result rather than independently guessing from sprite alpha. Collision and damage remain deterministic even when rendering is reduced or disabled. Reduced-motion/no-flash settings substitute a steady outline, glyph, contrast shape, or other non-strobing cue.
+
+The performant default is event- or interval-driven perception using geometry already owned by the simulation. Source-aware camouflage may sample a coarse cached region when state changes; it must not rescan the full playfield or perform per-pixel matching every frame.
 
 ### 3. Geometry and handles
 
@@ -375,6 +432,8 @@ Common:
 - line of sight
 - hearing/noise sensitivity
 - memory duration
+- visibility/stealth behavior card
+- reveal triggers/range/duration and accessible concealment tell
 - patrol route
 - home/anchor point
 - target priority
@@ -395,6 +454,7 @@ Behavior families:
 - ambusher
 - flanker/pincer
 - erratic/patrol-biased
+- stalker/ambusher with conceal/reveal states
 - turret/guard
 - defend point/area/object
 - hovering flyer / sine-wave flyer
@@ -470,7 +530,7 @@ First enemy slice:
 - Grounded enemies need terrain-following, gap handling, ladders/slopes permissions, and jump/drop rules.
 - Flying enemies need altitude bands, patrol bounds, obstacle avoidance, and optional swoop/projectile behavior.
 - Projectile-firing enemies need shot cadence, aim style, range, projectile collision profile, and whether their shots affect text/terrain.
-- Enemy Spawn Point exists as a first-pass editor-only placeable marker. In the current inspector, `Speed/force` is temporarily reused as spawn interval, `Thickness` as burst count, and `Range` as max active; all are clamped to 1-10 until the bigger enemy/spawner editor page exists.
+- Enemy Spawn Point exists as a first-pass editor-only placeable marker. In the current Inspector, `Speed/force` is temporarily reused as spawn interval, `Thickness` as burst count, and `Range` as max active; all are clamped to 1-10 until the shared schema supplies real spawn fields to the selected-instance Inspector and Actors/Logic workspaces.
 
 First complete test level recipe:
 
@@ -519,26 +579,17 @@ Examples:
 
 ## Current RAD implementation status
 
-Implemented first-pass object attributes:
+The RAD now proves a useful **placed actor instance** Inspector slice. Right-clicking an actor in Build opens a movable floating Inspector with name, AI mode, radar, toughness, projectile ability, text-aware movement, scale, tint, opacity, play visibility, shadow, facing, projectile/effect card slots, **Duplicate Instance**, and an early **Fork Card** action. These are direct instance edits in practice, actor values are included in RAD level save/load, and repeated placements are independent.
 
-- position and A/B endpoints
-- body dragging
-- speed/force
-- thickness/collision pad
-- elevator range of motion
-- ramp/slide direction normalization
-- reversible conveyor direction
-- global player gravity
-- custom tint/color
-- opacity
-- editor-only start/switch/checkpoint-style markers
-- editor-only enemy spawn point marker with small-number interval / burst / max-active attributes
+The RAD also has a narrower world-object Inspector and direct handles for position, A/B endpoints, body dragging, speed/force, thickness/collision pad, elevator range, ramp/slide direction, reversible conveyors, tint, opacity, and editor-only start/switch/checkpoint/spawn markers. Enemy spawn interval/burst/max-active still reuse generic numeric fields as a temporary bridge.
 
-Next useful inspector controls:
+This is not yet the complete model above:
 
-- presentation mode: visible / invisible active / editor-only / disabled
-- marker role dropdown: start / midpoint / end / switch / secret / objective
-- source binding display
-- per-object collision/material type
-- per-actor text capability flags
-- sprite/graphic/text/hybrid presentation toggle
+- actor/world-object data is still represented by prototype fields and switch-based UI rather than one versioned component schema;
+- **Fork Card** is an early sprite/model detachment and does not yet create the complete persisted project-owned definition/dependency graph described here;
+- **Apply to Definition**, **Reset to Card**, **Open Definition**, inherited/overridden field indicators, affected-instance counts, and `editorLocked` enforcement are not implemented;
+- stable composition `slotId` values, exact dependency version pins, cycle detection, placeholder repair, and schema migration are not implemented in RAD persistence;
+- `Visible in play`, opacity, collision flags, and editor-only markers exist, but the distinct stealth state machine, reveal rules, targeting/damage policies, tells, and accessible cues are planned rather than present;
+- the full presentation-mode distinction (invisible-active versus editor-only versus disabled), source-binding editor, material/collision profiles, per-actor text capability set, and sprite/text/graphic/hybrid presentation control remain incomplete.
+
+The required implementation boundary is therefore not more one-off Inspector controls. It is a schema-backed resolved-card view shared by actor and world-object Inspectors, with instance override patches as the default write target and the four explicit definition commands above.

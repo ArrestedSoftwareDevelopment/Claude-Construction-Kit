@@ -1,8 +1,8 @@
 # DACK UI Redesign Proposal: Unified Session Shell
 
-- **Status:** Proposed redesign for review
-- **Date:** 2026-08-04
-- **Scope:** Main menu, Cockpit, family pages, cards, shelves, Inspector, modals, window ownership, play/edit transitions, and future two-monitor layout
+- **Status:** Accepted unified shell specification; implementation in progress
+- **Date:** Accepted 2026-08-05; implementation baseline reviewed 2026-08-05
+- **Scope:** Main menu, Cockpit, stable task workspaces, family/preset contributions, cards, shelves, Inspector, modals, window ownership, play/edit transitions, and future two-monitor layout
 - **Related:** [DACK GUI Architecture](DACK-GUI-Architecture.md), [DACK Top-Level Menu Plan](DACK-Top-Level-Menu-Plan.md), [DACK Sprite Studio Mini-App](DACK-Sprite-Studio-Mini-App.md), [ADR-0010](adr/ADR-0010-session-preserving-ui-navigation.md), [DACK Optimization and Refactoring Plan](DACK-Optimization-and-Refactoring-Plan.md)
 
 ## Executive summary
@@ -13,7 +13,7 @@ The redesign should make DACK feel like one coherent construction environment ra
 
 The central proposal is:
 
-> DACK has one persistent session, one playfield, one editor shell, and a controlled stack of owned workspaces. The File menu owns lifecycle. Game-family pages share one page contract. Cards describe reusable things. Shelves create and place them. The Inspector edits the selected thing. Modals handle short, interrupting tasks only.
+> DACK has one persistent session, one playfield, one editor shell, and a controlled stack of owned workspaces. The File menu owns lifecycle. Stable task workspaces keep their locations while the chosen family/preset contributes relevant Cards, shelves, properties, rules, and overlays. The Inspector edits the selected thing. Modals handle short, interrupting tasks only.
 
 This keeps the existing game-family taxonomy but changes how the taxonomy, controls, windows, and session state are presented.
 
@@ -23,15 +23,14 @@ This keeps the existing game-family taxonomy but changes how the taxonomy, contr
 
 The durable session owns:
 
-- source provider and source identity;
-- immutable capture/reference;
-- native-resolution working clone;
-- Snapshot metadata and source hash;
-- mutation history and undo/redo;
-- active game family and preset;
-- level objects, cards, rules, and bindings;
-- OCR/Word Sense cache;
-- selection and originating page;
+- Source Descriptor/provider identity and admitted immutable Snapshot Baseline selection;
+- versioned Intake Recipe and selected immutable Analysis Revision;
+- Level Definition: accepted corrections, Card definitions/references, placed Instances/overrides, rules, routes, bindings, source policy, active family, and preset;
+- native-resolution Working Clone, Region Runtime State, runtime mutation log, and selected Variant policy;
+- transient Run State and the one simulation owner;
+- creator command/undo history, kept distinct from runtime mutations;
+- versioned optional OCR/Word Sense cache bound to Analysis region IDs;
+- selection and originating workspace;
 - dirty state;
 - save/load identity.
 
@@ -112,9 +111,23 @@ Borrow task-oriented workspace names, saved layout preferences, large previews, 
 
 ### VS Code: command search and profiles
 
-VS Code makes a large command vocabulary discoverable through a searchable Command Palette and remembers coherent settings through profiles. DACK should add lightweight Command Search for actions such as “Add enemy spawn,” “Freeze simulation,” “Open Sprite Studio,” and “Save Snapshot.” [VS Code user interface](https://code.visualstudio.com/docs/editing/userinterface) and [VS Code profiles](https://code.visualstudio.com/docs/configure/profiles)
+VS Code makes a large command vocabulary discoverable through a searchable Command Palette and remembers coherent settings through profiles. DACK should add lightweight Command Search for actions such as “Add enemy spawn,” “Freeze simulation,” “Open Sprite Studio,” and “Capture Snapshot.” [VS Code user interface](https://code.visualstudio.com/docs/editing/userinterface) and [VS Code profiles](https://code.visualstudio.com/docs/configure/profiles)
 
 Borrow fuzzy command search, recent commands, visible shortcuts, and saved layout/theme/input profiles. Keep safety-critical commands visible.
+
+### GameMaker and Unity: definition, instance, and override
+
+GameMaker explicitly separates an Object template from the instances dragged into a Room; Unity's prefab Inspector marks instance overrides and exposes Apply/Revert. DACK should make the same distinction visible without adopting engine jargon: Card Definition, placed Instance, local Override, Reset to Card, Apply to Definition, and Fork Card. [GameMaker objects versus instances](https://manual.gamemaker.io/beta/en/Additional_Information/Objects_vs_Instances.htm), [GameMaker Room Editor](https://manual.gamemaker.io/monthly/en/The_Asset_Editors/Rooms.htm), and [Unity prefab-instance Inspector](https://docs.unity3d.com/ja/current/Manual/prefab-instance-inspector-reference.html)
+
+### Unreal and Figma: contextual properties, bulk work, and compatible slots
+
+Unreal's Details panel follows the selected actor, supports search/favorites, and can edit shared properties across a selection; its Property Matrix handles high-volume comparison. Figma consolidates component properties and compatible instance swaps in the right panel. DACK should use one selection-driven Inspector, a later Level Contents/property-matrix view, and Card Slots that offer only compatible replacements. [Unreal Details Panel](https://dev.epicgames.com/documentation/en-us/unreal-engine/level-editor-details-panel-in-unreal-engine), [Unreal Property Matrix](https://dev.epicgames.com/documentation/en-us/unreal-engine/property-matrix-in-unreal-engine), and [Figma component properties](https://help.figma.com/hc/en-us/articles/5579474826519-Explore-component-properties)
+
+### Windows: keyboard parity, responsive commands, and accessibility
+
+Windows guidance keeps primary commands in consistent locations, moves lower-priority commands into responsive overflow, and requires logical tab order, arrow navigation within groups, visible focus, access keys, and non-pointer routes to contextual commands. DACK's target user is already at a keyboard, so these are core workflow requirements rather than compliance polish. [Command bars](https://learn.microsoft.com/en-us/windows/apps/design/controls/command-bar), [keyboard interactions](https://learn.microsoft.com/en-us/windows/apps/develop/input/keyboard-interactions), [contextual commanding](https://learn.microsoft.com/en-us/windows/apps/develop/ui/controls/collection-commanding), and [accessibility overview](https://learn.microsoft.com/en-us/windows/apps/design/accessibility/accessibility-overview)
+
+The resulting interface should feel less like a general-purpose engine than these references. Their mature conventions reduce surprise; DACK's own identity comes from the native document canvas, Understand mode, clone safety, source binding, playful Cards, and immediate F6 loop.
 
 ## Unified shell anatomy
 
@@ -141,17 +154,16 @@ File must own lifecycle rather than repeating Save/Load buttons on every family 
 - Open Recent
 - Save Level
 - Save Level As
-- Save Snapshot
-- Open Snapshot
-- Re-snapshot Source
+- Capture / Use Source
+- Use Existing Snapshot Baseline
+- Refresh Source / Re-snapshot
 - Reset Working Clone
 - Compare With Source
-- Export .dacklevel
-- Export .dackpack
+- Export Playset (.dackpack)
 - Close Editor
 - Exit DACK
 
-These commands distinguish saving a level recipe, saving a Snapshot, exporting a package, and returning to the desktop while leaving the session alive. The original source is never overwritten.
+These commands distinguish saving the canonical `.dacklevel`, admitting or selecting an immutable Snapshot Baseline, exporting a validated playset package, and returning to the desktop while leaving the session alive. The original source is never overwritten.
 
 ### Edit menu
 
@@ -244,7 +256,7 @@ Boss remains a visible safety indicator and global shortcut, not an ordinary Fil
 
 The strip below the menu bar is an orientation/status surface, not another menu:
 
-Source: Screenshot | Snapshot: Working Clone* | Side View / Platformer
+Source: Screenshot | Snapshot: snap-0007 | Clone: Modified* | Side View / Platformer
 
 BUILD / FROZEN | Player: Stickman 2.0 | 3 unsaved changes | [Run] [Freeze] [Close]
 
@@ -280,21 +292,22 @@ Family switcher:
 
 The family changes the cards and shelf groups available inside the stable workspace tabs.
 
-### Common family-page contract
+### Stable workspace contract and current family scaffold
 
-Every implemented family exposes the same nine sections, with irrelevant groups collapsed:
+The target shell exposes the same stable workspaces in every family:
 
-1. Overview and transport: preset, Run, Freeze, Stop, Save, Load, Reset Clone
-2. Player: player card, controls, spawn, scale, movement/physics
-3. Actors: enemies, NPCs, spawns, AI, perception, damage
-4. World: platforms, table, walls, routes, objects, terrain
-5. Weapons and effects: projectiles, explosions, sounds, power-ups, text shrapnel
-6. Markers and logic: start, checkpoint, goal, switches, triggers, protected objects
-7. Text and source: text policy, OCR, word goals, erasure, background, icons
-8. Scoring and rules: lives, health, win/lose, reserves, cooldowns, intensity
-9. Understand and test: interpretation overlays, diagnostics, playtest notes
+1. Overview — preset summary, readiness, recommendations, recent changes, test notes
+2. Player — player Card, controls, spawn, scale, movement/physics
+3. Actors — enemies, NPCs, spawns, AI, perception, damage
+4. World — platforms, table, walls, routes, objects, terrain, markers
+5. Logic — triggers, goals, text rules, scoring, win/lose, intensity, event sheet
+6. Effects — projectiles, explosions, sounds, power-ups, text shrapnel
+7. Assets — catalogs, project Cards, provenance, import/calibration entry
+8. Understand — source interpretation, corrections, profiles, diagnostics
 
-Moving from Platformer to Brickbat or Pinball should not require learning a new menu language.
+The family/preset switcher changes what these stable workspaces contribute; it does not replace the workspace tabs. Save/Open/Snapshot/Reset and Run/Freeze/Stop exist once in the shared menu/transport shell.
+
+The implemented RAD `FamilyPageShell` currently presents nine matching collapsible sections inside each active family page. This is a useful compatibility scaffold and maps directly into the stable workspaces, but it is not authority for duplicating lifecycle commands or creating a permanent family-specific navigation grammar. Moving from Platformer to Brickbat or Pinball must not require learning another shell.
 
 ### Family-specific shelves
 
@@ -344,6 +357,8 @@ Tiny workers, office wildlife, low/medium/high intensity, safe zones, desktop bo
 - World/Chapter Card
 - Playset Card
 
+Not every configurable scalar is a Card. Speed, opacity, radar range, gravity scale, and similar values normally remain typed properties. A Card is a reusable asset, component/ruleset, or composite with identity, provenance, compatibility, and meaningful reuse.
+
 ### Shared card anatomy
 
 | Card area | Contents |
@@ -359,10 +374,19 @@ Drag rules:
 - Dropping a card on the playfield creates an instance at the drop point.
 - Repeated drops create repeated instances.
 - Dropping a card on a compatible slot binds it.
-- Dropping on an existing object offers Apply or Fork.
-- Shared cards are read-only until Fork.
+- Dropping on an existing object creates a compatible Instance override; shared reuse requires the explicit Apply to Definition or Fork Card action.
+- Built-in/third-party Cards are immutable. Project-owned Card Definitions are editable through an explicit definition command; placed instances are locally editable by default.
 - Level-local overrides are visibly marked.
 - Drag previews show size, anchor, collision footprint, and editor-only status.
+
+Every inherited property/slot exposes the same concise actions:
+
+- **Reset to Card** — remove this instance's override;
+- **Apply to Definition** — update a project-owned definition after showing how many instances inherit the change;
+- **Fork Card** — create a new reusable definition and optionally rebind this instance;
+- **Open Definition** — move sustained definition composition/animation work to Sprite Studio or the appropriate workspace.
+
+Published packs pin or embed exact resolved Card/asset versions. Incompatible changes surface as unresolved/repairable placeholders; they never silently discard overrides.
 
 ### Character assembly
 
@@ -382,7 +406,7 @@ Shelf:
 - Project-Created
 - Quarantined / Reference
 
-The shelf is a searchable, draggable catalog, not a permanent wall of buttons. Use list/grid views, recent/favorites, content-sized controls, provenance badges, and independent scrolling. Do not load or animate every thumbnail at once.
+The shelf is a searchable, draggable catalog, not a permanent wall of buttons. Use list/grid views, recent/favorites, content-sized controls, provenance badges, and independent scrolling. Do not load or animate every thumbnail at once. The compact two-level picker is a filtered projection of this same catalog for replacing a Slot; it does not maintain another asset list.
 
 ## Inspector
 
@@ -403,7 +427,9 @@ Universal sections:
 11. Marker/logic: start, checkpoint, goal, hidden switch, spawn, objective
 12. Provenance: source, license, export status, attribution, fork history
 
-Only relevant sections expand automatically. The creator can always open any section manually.
+Only relevant sections expand automatically. The creator can always open any section manually. The Inspector marks inherited, overridden, unresolved, runtime-only, and creator-authored values by icon/text as well as color. Search and pinned/favorite properties arrive when the schema is stable.
+
+The Inspector is not the only selection route. A virtualized **Level Contents** view lists Actors, World, Logic, HUD, source-bound objects, invisible/editor-only objects, and unresolved records with selection, visibility, `editorLocked`, authority, and multi-select/batch editing. Overlapping canvas objects support “select next under pointer.”
 
 ## Modals and floating windows
 
@@ -411,12 +437,10 @@ Only relevant sections expand automatically. The creator can always open any sec
 
 - short confirmations;
 - file and level selection;
-- source refresh diff;
-- asset picker/search;
-- Apply or Fork choices;
-- import calibration;
+- destructive/reset/publish consequences;
+- a short Apply-to-Card or Fork confirmation when impact must be acknowledged;
 - shortcut reference;
-- diagnostics and license inspection.
+- compact license inspection.
 
 ### Use a workspace for
 
@@ -424,20 +448,31 @@ Only relevant sections expand automatically. The creator can always open any sec
 - full character/actor editing;
 - large animation timelines;
 - source analysis and Understand;
+- Intake Workbench, source-refresh diff/rebinding, and import calibration;
 - two-monitor preview;
 - long card or level editing.
 
 Every modal has a title, visible close gadget, focus trap, Cancel and primary action, consequences for destructive actions, Esc-to-cancel, focus restoration, viewport clamping, and keyboard navigation. A modal never owns a private copy of session state.
 
+### Use a modeless palette/flyout for
+
+- the floating Inspector beside the selection;
+- search/filter/favorite lists;
+- color/palette selection;
+- a short context command list;
+- Activity Center and nonblocking diagnostics.
+
+Right-click selects and opens the quick Inspector/context surface; `Shift+F10`/Menu key and the Inspector command are equivalent. The floating Inspector is movable, pinnable/dockable, and viewport-clamped while canvas selection remains usable. The target docked and floating presenters share schema, view-model, commands, and selection—not physical reparenting of one live control tree, which remains only a RAD shortcut.
+
 ## File, Snapshot, and level lifecycle
 
-Open Level loads the level recipe, Snapshot reference, mutations, cards, rules, and OCR cache. Missing assets become visible unresolved-card warnings.
+Open Level loads the Level Definition, Snapshot Baseline/selected Analysis references, Intake Recipe, accepted corrections, Cards/instances/overrides, rules/routes, selected Variant/Working Clone policy, and optional caches. Missing assets become visible unresolved-card warnings.
 
 Save Level saves the recipe and editor state without replacing the source.
 
-Save Snapshot freezes the selected source/clone image and analysis baseline. The creator can continue editing the level afterward.
+Capture Snapshot admits a new immutable native-pixel baseline from the selected source and records separate Intake/Analysis references. It does not silently absorb placed actors, current score, or transient run state. The creator can continue editing the Level afterward.
 
-Re-snapshot Source:
+Refresh Source / Re-snapshot:
 
 1. Capture the requested desktop/window/region.
 2. Compare it with the current Snapshot.
@@ -445,9 +480,11 @@ Re-snapshot Source:
 4. Let the creator apply, rebind, or discard changes.
 5. Preserve level-local objects unless their source binding is invalid.
 
-Reset Working Clone restores the Snapshot and warns that pixel mutations/deleted terrain will be lost. It does not delete the level recipe or cards.
+Reset Working Clone reconstructs the mutable clone from the selected Snapshot Baseline/Variant policy and warns that uncommitted pixel mutations or deleted terrain will be lost. It does not delete the Level Definition or Cards.
 
 Export Pack builds a sanitized clone package with provenance, source policy, OCR cache, level data, and credits. It never edits the original source.
+
+Lightweight autosave writes the validated Level recipe plus a coalesced command-recovery journal and references immutable Snapshot blobs by ID/hash. It does not rebuild/copy the full image package after every drag. On restart, recovery is offered as an explicit newer draft beside the last manual save.
 
 ## Play, freeze, edit, and desktop
 
@@ -488,7 +525,9 @@ Hide or neutralize every DACK window, mute DACK, release input, preserve exact p
 | Ctrl+S | Save Level |
 | Ctrl+Shift+S | Save Level As |
 | Ctrl+Z / Ctrl+Y | Undo / Redo |
-| Ctrl+P | Command Search |
+| Ctrl+Shift+P | Command Search (`Ctrl+P` remains available for conventional Print semantics) |
+| F1 | Help / shortcut and mode guidance |
+| Shift+F10 / Menu key | Context commands / quick Inspector for the current selection |
 | Tab / Shift+Tab | Move focus |
 | Arrow keys | Navigate tabs, cards, frames, and bounded values |
 | Enter / Space | Activate focused control when text entry is not active |
@@ -525,6 +564,21 @@ Rules:
 - typography uses a readable body font and optional licensed display fonts for effects;
 - asset provenance determines whether a font or graphic is runtime, local-only, reference-only, or license-pending.
 
+## Accessibility and motion safety
+
+The office-keyboard target makes accessibility and efficiency the same design problem.
+
+- All primary scenarios—capture/open, Understand defaults/correction, Card placement/binding, property editing, F6 test, save/export, and Boss—must be completable by keyboard.
+- Every Godot `Control` receives a meaningful accessible name/description/role/value through the platform-supported accessibility path. Custom canvas objects are also represented in Level Contents so a screen-reader or keyboard user is not forced to locate pixels visually.
+- Drag operations have numeric/nudge alternatives. Tab order follows visual reading order; arrow keys stay within compound controls; focus is never invisible and returns to the invoker after dismissal.
+- State is expressed with text/icon/shape or pattern as well as color. Editor typography scales independently of the authoritative Snapshot pixels. Office Light/Dark are not substitutes for a tested Windows contrast theme.
+- **Reduced Motion** removes nonessential rotation, parallax, camera motion, animated thumbnails, and large travel while retaining immediate feedback.
+- **No Flash/Strobe** disables strobe, rapid luminance/color alternation, and photosensitive effect variants. It is the default for unreviewed imported effects; death/effect strobe must be deliberately enabled by a creator and remains subject to the player safety override.
+- Screen shake has a cap and Off setting. Important sound events have captions/visual equivalents; muting audio does not remove necessary state.
+- Pointer hiding has an accessibility override and gameplay bindings are remappable without changing the Boss/Safety route.
+
+Release smoke tests cover keyboard-only, Narrator and NVDA where practical, Magnifier, Windows contrast themes, 100/125/150/200% DPI, reduced motion, no flash, and audio-muted play. [Windows accessibility overview](https://learn.microsoft.com/en-us/windows/apps/design/accessibility/accessibility-overview)
+
 ## Two-monitor layout
 
 ### Work + Clone
@@ -541,113 +595,64 @@ Monitor A shows the full playfield. Monitor B shows a focused selection, Inspect
 
 All layouts share one session, simulation, selection, mutation history, Boss Key, input router, and explicit monitor/DPI transforms. Detachable windows are views, not duplicated state.
 
+Godot already supplies native `Window` surfaces, screen placement, focus/visibility signals, and ordinary fullscreen with multi-window support. That makes creation of a second window straightforward; it does not make the product behavior free. DACK must own every window's close request, surface/input scope, view model, and safe restoration. Exclusive fullscreen is not the default multi-window path. [Godot `Window`](https://docs.godotengine.org/en/stable/classes/class_window.html)
+
+The spike passes only when it covers:
+
+- one simulation tick and one audio/session/environment owner regardless of view count;
+- negative desktop coordinates and 100/125/150/200% mixed-DPI placement;
+- moving either DACK window across monitors and monitor hot-unplug/replug;
+- Editor/Preview focus, text-entry suppression, Alt-Tab/taskbar behavior, cursor capture/release, and close ownership;
+- hidden/minimized preview suspension so a parked second viewport does not keep rendering at full cost;
+- source monitor/window close/replacement and a clear fallback to the last coherent Snapshot;
+- DACK self-capture exclusion where supported, with no security guarantee implied;
+- Boss neutralizing every owned window, audio, and input inside the safety budget, then restoring the exact layout/state.
+
+Run the Godot multi-window presentation spike over an existing static Snapshot separately from the Windows capture-backend spike. Integrate only after both can be diagnosed independently.
+
 ## Implementation boundaries
 
 | Component | Responsibility |
 | --- | --- |
-| DackSession | source, Snapshot, clone, level, playset, selection, dirty state |
+| DackSession | selected Source/Baseline/Recipe/Analysis/Level/Variant products, Working Clone/region/run state, family/preset, selection, dirty/recovery identity |
 | InputRouter | Esc, Boss, mode keys, text-entry suppression, focus ownership |
 | WorkspaceShell | menu, tabs, shelves, Inspector, child-surface ownership |
 | CommandRegistry | commands, labels, shortcuts, conditions |
-| WorkspaceRegistry | page descriptors and family applicability |
+| CommandDispatcher / History | revision-checked commits, coalesced gestures, undo/redo, dirty/recovery events |
+| WorkspaceRegistry | stable task-workspace descriptors plus family/preset contribution applicability |
 | SelectionService | selected card/object/source region and origin |
-| CardCatalog | definitions, forks, provenance, search, recent/favorites |
+| LevelContentsModel | virtualized searchable object/logic/source hierarchy, locks, visibility, multi-selection |
+| CardCatalog | canonical definitions, stable Slots, forks, provenance, dependency/version resolution, unresolved placeholders, search, recent/favorites |
 | InspectorSchemaRegistry | common and family-specific properties |
 | WindowLayoutService | single/two-monitor surfaces and DPI |
 | SimulationController | Running/Frozen/Stopped and test transitions |
 | ModalService | focus-trapped short tasks |
 | HudManager | score/status placement and whitespace avoidance |
+| JobScheduler / ActivityCenter | bounded/cancelable work plus nonmodal progress and diagnostics |
 
 The first refactor does not need every boundary in a new assembly. It does need ownership boundaries so Main.cs stops being the source of truth for every page, button, simulation rule, and window.
 
-## Migration sequence
+## Migration status and remaining gates
 
-### Phase 0: Shell safety
+Visible behavior and architectural completion are tracked separately. A phase is not complete merely because its controls exist inside `Main`.
 
-- Add explicit session, surface, simulation, and safety state.
-- Centralize Esc, F6, F7, Boss, close gadgets, cursor policy, and input ownership.
-- Remove playset-changing side effects from Play/Build navigation.
-- Ensure closing the main editor resolves Sprite Studio and modals.
+| Phase | August 2026 visible RAD | Remaining product gate |
+| --- | --- | --- |
+| **0 — Shell safety** | `DackUiState`, family-preserving F6, F7, Esc/Boss/Studio transitions, pause propagation | Extract session/input/surface commands; transition tests; atomic multi-window Boss; accessibility focus ownership |
+| **1 — File and transport** | Shared command row plus File/Transport/View menus, dirty confirmation/status, Snapshot history, Desktop parking | Versioned repository/atomic save/recovery; canonical Snapshot vocabulary; command registry; no family lifecycle ownership |
+| **2 — Common family scaffold** | `FamilyPageShell` with nine matching sections for Side View, Paddle, Ball/Table, Overhead | Map scaffold into stable task workspaces; remove future-placeholder prose from ordinary pages; lazy/event-driven creation; responsive qualification |
+| **3 — Cards and shelves** | Shared definitions/shelves/slots, search/categories/recent/favorites/forks, repeated placement, provenance badges | Immutable vs project-owned Cards, version/dependency pins, override badges/actions, all component catalogs, persistence and cycle validation |
+| **4 — Inspector and editing** | Actor/world selection, docked/floating RAD form, live AI/bindings/appearance edits, duplicate/fork, RAD save/load | Schema/view-model presenters (no control-tree reparenting), Level Contents, multi-select, command coalescing/Undo, `editorLocked`, modeless/context/keyboard parity |
+| **5 — Understand/intake** | Provisional geometry-only Playfield Profile and top-three recommendations | Snapshot/Intake/Analysis separation, rectangular Workbench guide first, confidence vs compatibility, reversible Preview/Apply, uncertain-region queue, tile-backed clone |
+| **6 — Two-monitor/live** | Earlier monitor probes only | Separate Godot multi-window and Windows capture spikes; then one-session integration with mixed DPI, device/monitor loss, self-capture, focus, power, and Boss tests |
 
-### Phase 1: File menu and transport
-
-- Add the menu bar and File lifecycle commands.
-- Move Load/Save/Snapshot/Reset/Export out of family strips.
-- Add common Run, Freeze, Stop, and mode badges.
-- Add one status/notification tray.
-
-### Phase 2: Common family shell
-
-- Build the nine-section page template.
-- Bind Side View, Paddle/Clearing, Ball/Table, and Overhead.
-- Collapse irrelevant groups rather than creating different UI grammars.
-
-**Implemented:** `FamilyPageShell` now supplies the common collapsible page grammar. The four active family tabs are labeled Side View, Paddle, Ball / Table, and Overhead, and each presents the same ordered sections:
-
-1. Overview & Transport
-2. Player
-3. Actors
-4. World
-5. Weapons & Effects
-6. Markers & Logic
-7. Text & Source
-8. Scoring & Rules
-9. Understand & Test
-
-Existing working controls were moved into those sections: Side View retains its construction tools, enemy controls, text rules, markers, weapons, and safety rules; Paddle retains paddle orientation, letter/word targeting, text collision, score placement, and links to shared assets; Ball / Table retains its plunger, flippers, bumpers, drains, rollovers, and gates; Overhead now exposes the same destinations for player, actors, world, weapons, logic, text, rules, and diagnostics. Unimplemented capabilities remain visible as collapsed explanatory sections, which makes the intended vocabulary discoverable without pretending the controls already exist.
-
-Family pages no longer own separate Save, Load, Reset, or Play controls. Those remain in the shared File/Transport shell from Phase 1.
-
-### Phase 3: Cards and shelves
-
-- Replace repeated button rows with card descriptors.
-- Add the universal two-level character picker.
-- Support repeated drag placement, duplicate, fork, and Apply To Selected.
-- Surface provenance/export state on every card.
-
-**Implemented foundation:** cards now use a shared `CardDefinition` descriptor and render through searchable, category-first `CardShelf` catalogs. Each shelf includes All Cards, Recent, Favorites, source categories, and Project-Created forks. Cards expose their role, provenance, license state, export status, tags, primary action, Duplicate, Fork, Favorite, and drag payload.
-
-The Player, Enemies, Objects, Projectiles/Effects, Side View construction, Side View markers, and Pinball construction catalogs now use this system. Repeated Enemy or World/Object placement creates independent instances; dragging places the instance at the requested playfield position instead of the former center pile. Player cards remain a unique-slot binding and therefore disable Duplicate while retaining Apply and Fork.
-
-Fork creates a project-local card definition that continues to resolve through its source card until the creator changes its bindings. This establishes the shared-versus-local distinction without duplicating source assets. Card provenance is deliberately conservative: CC0/project-owned cards are marked Hub-safe; purchased or legacy sources remain Project-cleared or Review-on-export.
-
-`CardSlot` adds compatible drag targets to the Character Builder. Projectile and explosion/effect cards can be dropped onto their slots and apply to the selected actor/current profile. AI, Sound, Text Rule, Physics, Style, Level, and World/Chapter cards still need concrete descriptor catalogs and persistence; the slot/drop contract is ready for them.
-
-### Phase 4: Inspector and modal manager
-
-- Move object properties into schema-driven Inspector sections.
-- Create shared modal close/Cancel/Apply behavior.
-- Add source refresh diff and import calibration as proper modals.
-
-Implementation status: the Inspector is now the direct editing surface for a selected Player or Enemy Card instance. A creator can change the placed actor's name, AI mode, text awareness, radar range, toughness, projectile ability and binding, impact/effect binding, scale, tint, opacity, visibility, shadow, and facing without leaving the playfield for the Character Builder or Sprite Studio. The AI choices are live runtime behaviors (patrol, track, defend, flee, stationary/turret, horde/flock, and flying), not descriptive tags.
-
-Duplicate Instance preserves the selected actor's bindings and overrides while creating a separately editable placement. Fork Card preserves the distinction between changing this occurrence and deriving a new reusable card. These instance overrides are included in level Save/Load, with compatibility defaults for levels created before the Card Inspector existed. This is the central Cards workflow: select an object in context, change the relevant cards or values in context, and return immediately to play testing.
-
-The same Inspector now has an in-context floating form. In Build mode, right-clicking a player/enemy or a placed world object opens the shared Inspector next to the pointer. It is a movable, viewport-clamped panel with a close gadget; Esc closes it before affecting the Cockpit. The panel is not a duplicate editor: its controls are temporarily reparented from the dock, so docked and floating forms cannot drift into different implementations. Actor controls are hidden for a world-object invocation, leaving the relevant geometry, motion, tint, opacity, direction, and range controls in view. Entering Play mode closes the floating Inspector.
-
-The remaining Phase 4 work is to move non-actor world-object properties onto the same schema-driven section system, then unify source-refresh and import-calibration dialogs under the shared modal contract.
-
-### Phase 5: Understand and live desktop
-
-- Make interpretation overlays a first-class workspace.
-- Add the Intake Workbench: optional square/hex grids, draggable regions and edges, foreground/background/object/exclusion seeds, and bounded live re-analysis.
-- Show a PlayfieldProfile with ranked game recommendations, evidence, confidence, and suggested construction; never restrict toolkit choice.
-- Introduce Return to Desktop.
-- Bind source/capture updates through the same session state.
-
-Implementation start: the current Snapshot importer now emits a provisional geometry-only PlayfieldProfile. Understand displays its affordance metrics and top three recommendations with `Try` actions. This establishes the UI/data seam before the richer background, rectangle, icon, calibrated-guide, and OCR evidence arrives.
-
-### Phase 6: Two-monitor spike
-
-- Move the editor surface to a second coordinated Godot window.
-- Test focus, DPI, source monitor changes, Boss, and monitor removal.
-- Keep playfield and editor on one authoritative session.
+The current Inspector's physical reparenting and `Try` recommendation actions are useful RAD seams, not final contracts. Docked/floating forms converge on one schema/selection/command view model. `Try` becomes a noncommitted Preview followed by explicit Apply. Source refresh review and import calibration become sustained Understand/Intake workspaces, not blocking modals.
 
 ## Acceptance criteria
 
 The redesign is successful when:
 
-- every implemented family has the same transport, Save/Load, Player, Actors, World, Effects, Logic, Text, Rules, and Understand locations;
+- every implemented family contributes to the same Player, Actors, World, Logic, Effects, Assets, and Understand workspaces while global transport/Save/Load remain singular;
 - common commands appear once in File/Edit/View/Build/Assets/Window;
 - no family page needs a unique Save, Load, Play, or Close implementation;
 - source, Snapshot, clone mutations, selected card, and current family survive navigation;
@@ -659,49 +664,25 @@ The redesign is successful when:
 - Sprite Studio returns to its caller and never remains orphaned;
 - repeated same-type cards can be placed at different positions;
 - Inspector never goes offscreen and irrelevant sections are collapsed;
+- docked/floating Inspectors share schema, commands, and selection without requiring one physical control tree;
+- Level Contents can select/lock/edit overlapping and invisible objects without a precise canvas click;
+- a drag or slider scrub creates one undo transaction, autosave/recovery never recopies immutable pixels unnecessarily, and runtime mutations remain a separate history;
 - source pixels remain native-resolution and readable;
 - themes preserve one control grammar;
+- keyboard-only, accessible names/alternate object tree, high contrast, Reduced Motion, and No Flash paths pass their smoke tests;
 - single- and two-monitor layouts show the same selection and simulation state;
 - adding a card or family action is primarily a registration/data change.
 
-## Recommendation
+## Ratified direction
 
-Adopt this as the shell-level redesign proposal. Keep the existing GUI Architecture and Top-Level Menu Plan as supporting specifications for state invariants and game-family coverage.
+This document is the accepted shell-level specification. [GUI Architecture](DACK-GUI-Architecture.md) owns mode/interaction/compositing behavior; [Top-Level Menu Plan](DACK-Top-Level-Menu-Plan.md) owns family/preset taxonomy only; the [Optimization and Refactoring Plan](DACK-Optimization-and-Refactoring-Plan.md) owns implementation order and measurable gates.
 
-Do not add more permanent top-level game buttons until the common family-page shell exists. Make the File menu, session state, and Run/Freeze/Desktop transitions the next refactoring milestone.
+The reference creator path remains:
 
-The immediate target path is:
+```text
+File -> Open/Capture -> Understand/Profile -> choose Family/Preset
+     -> Build -> drag/bind Cards -> F6 Play -> F7 Freeze
+     -> Esc returns to the same context -> File Save
+```
 
-File -> Open Level -> Side View -> Platformer -> Build -> Freeze -> drag cards -> F6 Play -> F7 Freeze -> Esc Cockpit -> File Save
-
-The same path must work for Brickbat, Pinball, and Overhead without changing its vocabulary or losing the creator's work.
-
-## Implementation status — Phase 0 shell safety
-
-The first shell slice is now implemented in the Godot project:
-
-- `DackUiState` records simulation, authoring, owned-surface, and safety state as one shared boundary.
-- `F6` switches between Build and Play without changing the selected playset or resetting the level family.
-- `F7` freezes or resumes Play; Build remains interactive for placement, selection, and animation previews.
-- Esc, Boss, cockpit, and Sprite Studio transitions refresh the shared shell state.
-- Pause state is propagated to Brickbat, Pinball, the playfield effects loop, and actor animation clocks.
-- The cockpit status line exposes the current Build/Play and Frozen/Running state and the new shortcuts.
-
-The next implementation slice is the common File/transport bar: Open, Save, Snapshot, Reset, Run, Freeze, Stop, and Return to Desktop. These commands should be registered once and then reused by every family page.
-
-### Transport slice implemented
-
-The Cockpit now exposes one shared command row for all playset tabs:
-
-| Group | Command | Current prototype behavior |
-|---|---|---|
-| File | Open | Loads the current `.dacklevel.json` manifest. |
-| File | Save | Saves the current level recipe without touching the source document. |
-| File | Snapshot | Writes the native-resolution working clone plus a small `.dacksnapshot.json` companion. |
-| File | Reset | Restores the captured clone and current game state while preserving placed cards and the selected family. |
-| Transport | Run / Build | Uses the existing F6 boundary and preserves the selected game type. |
-| Transport | Freeze / Resume | Uses the existing F7 boundary and pauses active gameplay systems. |
-| Transport | Stop | Enters a safe Build state with the session intact. |
-| Transport | Desktop | Parks DACK's surfaces and releases the input surface; Esc/F6/F7 can bring the session back. |
-
-The File group now also has a true menu-bar entry, with Transport and View menus beside it. Open and Reset use a dirty-session confirmation dialog; Save clears the level dirty marker; Snapshot History lists retained native-resolution captures; and the status line reports `SAVED` or `DIRTY`. The visible row remains as a high-speed transport affordance, while the menus provide discoverability and a stable home for future recent-level, Snapshot-restore, and two-monitor commands.
+That path must work for Side View/Platformer, Paddle/Brickbat, Ball/Table/Pinball, and Overhead without changing its vocabulary or losing work. Current File/Transport, F6/F7, common family sections, Cards/Shelves/Slots, floating Inspector, and provisional recommendations prove the direction; the migration table above deliberately distinguishes that proof from extracted, tested, performance-qualified product architecture.

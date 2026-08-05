@@ -1,7 +1,7 @@
 # DACK GUI Architecture: Collapsible Construction Cockpit
 
 - **Status:** Active product architecture
-- **Baseline:** RAD prototype, July 2026
+- **Baseline:** RAD prototype, reviewed 2026-08-05
 - **Authority:** Shell state, workspace ownership, compositing layers, responsive behavior, and shared UI rules
 - **Related:** [DACK UI Redesign Proposal](DACK-UI-Redesign-Proposal.md), [DACK Sprite Studio Mini-App](DACK-Sprite-Studio-Mini-App.md), [DACK Top-Level Menu Plan](DACK-Top-Level-Menu-Plan.md), [DACK Optimization and Refactoring Plan](DACK-Optimization-and-Refactoring-Plan.md), and [ADR-0010](adr/ADR-0010-session-preserving-ui-navigation.md)
 
@@ -29,7 +29,7 @@ Detection proposes. The editor disposes.
 
 ## Current Baseline
 
-The RAD already proves the basic product shape: fullscreen play, an Esc-toggleable Cockpit, contextual game-family pages, Player/Enemy/Projectile/Object shelves, a persistent Inspector, draggable cards and objects, editor/play separation, a large Sprite Studio proof, and a two-monitor probe. These are the baseline to preserve while the shell is made more legible and efficient.
+The RAD already proves the basic product shape: fullscreen play, an Esc-toggleable Cockpit, transitional contextual game-family pages, Player/Enemy/Projectile/Object shelves, a persistent Inspector, draggable cards and objects, editor/play separation, a large Sprite Studio proof, and a two-monitor probe. Their working behaviors are the baseline to preserve; the target navigation maps those family pages into stable task workspaces as the shell is made more legible and efficient.
 
 The remaining UI debt is structural rather than conceptual:
 
@@ -45,9 +45,9 @@ The implementation and optimization sequence is owned by the [DACK Optimization 
 
 ### Launch surface
 
-At cold launch, DACK intentionally presents almost nothing: the native playfield remains underneath, while a transparent, gently floating DACK logo sits above it with one line beneath: `Ctrl+Alt+B — Show / Hide DACK`. The toolbar, HUD, Cockpit, and ordinary editor chrome remain hidden. This establishes DACK as a secondary layer over the user's desktop rather than another dominant application window.
+At cold launch, DACK intentionally presents almost nothing: the desktop remains underneath, while a transparent, gently floating DACK logo sits above it with calm choices for **Try a Bundled Demo**, **Open Recent**, or **Capture / Use a Source**. It captures nothing merely because it launched. A concise hint reads `Esc — Open DACK   |   Ctrl+Alt+B — Boss / Hide Immediately`. The toolbar, HUD, Cockpit, and ordinary editor chrome remain hidden. This establishes DACK as a secondary layer over the user's desktop rather than another dominant application window.
 
-`Ctrl+Alt+B` is the immediate desktop/app safety swap. `Esc` or `F1` dismisses the launch surface and reveals the ordinary DACK workspace. The logo is presentation-only: it never captures or mutates source content, and it must disappear atomically when Boss mode takes over.
+`Ctrl+Alt+B` is reserved for the immediate safety path. `Esc` or an explicit launch action reveals the ordinary DACK workspace; `F1` opens Help. Onboarding names `CLONE ONLY`, explains that visible pixels may still be private, and asks the creator to test Boss once. The logo is presentation-only: it never captures or mutates source content, and it disappears atomically when Boss mode takes over.
 
 ## State and Ownership Invariants
 
@@ -60,7 +60,7 @@ These rules are normative. No toolkit or editor page may invent a competing vers
 5. **Boss is a separate global safety path.** The Boss Key immediately hides or neutralizes every DACK window, releases input, and mutes DACK without waiting for save, OCR, import, or layout work. It does not reset or discard the session. Returning restores the same source, clone, mutations, playset, mode, and selection.
 6. **Sprite Studio is an owned workspace.** Opening Studio hides the ordinary Cockpit surface and transfers editor focus to the full-screen Studio workspace. Studio's close gadget or Esc returns to the exact calling tab/card/selection. Closing the main editor also closes or safely returns from Studio; no orphan editor window remains.
 7. **Cursor policy follows the owner.** Build, Understand, Cockpit, and Sprite Studio show the pointer. Active Play uses the toolkit's pointer policy and hides it by default. Boss always releases the pointer to Windows. Text entry suppresses gameplay bindings while keeping the Boss Key available.
-8. **Mode and playset changes preserve work.** Switching modes, Cockpit tabs, view families, presets, monitors, or Studio does not replace the source or clear the mutated clone. Only explicit commands such as Reset Clone, Re-snapshot, Load Level, or New Source may do that, with an appropriate dirty-work confirmation.
+8. **Mode and playset changes preserve work.** Switching modes, Cockpit tabs, view families, presets, monitors, or Studio does not replace the source or clear the mutated clone. Only explicit commands such as Reset Working Clone, Refresh Source/Re-snapshot, Load Level, or New Source may do that, with an appropriate dirty-work confirmation.
 9. **One surface owns input at a time.** Safety/Boss outranks Studio; Studio outranks Cockpit; transient dialogs outrank their owner; pure Play owns input only when no editor surface is active. Pointer and keyboard events must not leak through an active editor into the simulation.
 10. **Selection survives context changes when valid.** Returning from test play, Understand, Studio, or another tab restores the prior selection, active tab, Inspector section, and scroll position. If the selected object no longer exists, the UI says so and falls back predictably.
 11. **Play/Build has a dedicated one-key toggle.** The default `F6` binding switches Build ↔ Play and back without opening a page, changing the playset, resetting the source, or discarding mutations. It is configurable, suppressed while text is being edited, and must restore the previous tab/selection/Inspector state on return.
@@ -124,7 +124,7 @@ If creators can see the engine's interpretation, they can correct it.
 
 ## Layer Ownership and Compositing Order
 
-Logical data layers and visual draw layers must be explicit. A toolkit can contribute content to a layer, but it cannot silently reorder or take ownership of the shell.
+Logical data layers and visual draw layers must be explicit. ADR-0010's ten roots remain the normative ownership/render enum. The more detailed order below names sublayers inside those roots—for example ANSI/Working Clone inside Source Clone and underlays inside World/Mutable Terrain. A toolkit can contribute content to a layer, but it cannot silently reorder or take ownership of the shell.
 
 From back to front:
 
@@ -139,7 +139,7 @@ From back to front:
 9. **HUD:** score, lives, word ticker, missions, and status; it uses whitespace and approach fading rather than becoming collision.
 10. **Build overlays:** selection, handles, invisible objects, guides, paths, and drag previews.
 11. **Understand overlays:** engine interpretation, confidence, authority, collision, routes, mutations, and diagnostics.
-12. **Cockpit or Sprite Studio:** the editor workspace that currently owns interaction.
+12. **Cockpit or Sprite Studio:** the active editor workspace that owns interaction.
 13. **Safety:** Boss/clone-only/privacy state, always topmost and independent.
 
 The renderer may batch adjacent layers for speed, but their ownership and visible ordering must remain equivalent. Effects quality may degrade under load; gameplay-critical actors, input feedback, collision, and safety UI may not.
@@ -158,24 +158,23 @@ All three policies preserve native source coordinates and avoid scaling the docu
 
 ### Tabbed Switchboard
 
-The main Cockpit uses a contextual, scalable tabbed switchboard instead of showing every construction column at once.
+The target Cockpit uses stable task workspaces plus an orthogonal family/preset switcher instead of showing every construction column or turning each family into another app.
 
 Intent:
 
-- One active tab displays its full shelf/page; inactive pages reduce to compact tab names.
-- Player is a top-level tab because every game family inherits the protagonist/control card.
-- The active game-family tab follows: Side View/Platformer, Paddle/Brickbat, Ball/Pinball, Overhead, and later Grid/Text, Route/Flow, Ambient.
-- Shared creation tabs follow: Assets, Enemies, Projectiles, Objects, Builder, Understand.
+- Stable workspace tabs are **Overview, Player, Actors, World, Logic, Effects, Assets, Understand**. One displays its page; inactive pages reduce to compact tab names.
+- The family/preset switcher independently selects Side View/Platformer, Paddle/Brickbat, Ball/Pinball, Overhead, and later Grid/Text, Route/Flow, or Ambient.
+- A family contributes shelf groups, property schemas, overlays, rules, diagnostics, and HUD declarations inside stable workspaces; it does not create a second tab grammar.
 - Inspector is the exception: it stays docked beside the active tab so selected-object details remain visible while the creator changes toolsets.
-- Switching the active playset selects its matching family tab without resetting the source, clone, mutations, or placed objects.
-- Each family page exposes the same session spine—Play/Test, Save/Load, Markers & Logic, rules/status, and family shelf—then supplies only its contextual differences.
+- Switching the active family/preset filters the workspace without resetting the source, clone, mutations, or placed objects.
+- File/Open/Save/Snapshot/Reset and Run/Freeze/Stop live once in the shared menu/transport shell; no family page owns another lifecycle implementation.
 - Tabs, groups, cards, and actions should come from descriptors/registries so labels, capitalization, visibility, tooltips, shortcuts, and enabled states remain consistent.
 - Character and sprite selection uses one compact two-level picker everywhere: **top-level role/family pull-down → individual asset pull-down**. Player, Enemy, Spawn, Builder, Projectile, and effect pages reuse the same picker instead of repeating large sprite shelves.
 - Inapplicable controls collapse or disappear with a discoverable explanation; they do not occupy permanent dead columns.
 - Each tab remembers selection, expanded groups, and scroll position.
 - Long tab bodies, shelves, Inspectors, animation lists, and logs scroll inside their own bounds. The whole editor must not grow past the usable viewport.
 
-This preserves the "big cockpit" feeling while keeping screen real estate under control. The user should feel like they are flipping pages in one instrument panel, not hunting through separate popups.
+The implemented `FamilyPageShell` nine-section family pages are a useful RAD scaffold and map into these workspaces. They are not authority to preserve duplicate lifecycle controls or a permanent family-first top level. This preserves the "big cockpit" feeling while keeping screen real estate under control: the user flips task pages in one instrument panel while the family changes its parts.
 
 ### Responsive, Readability, and Keyboard Rules
 
@@ -187,22 +186,27 @@ This preserves the "big cockpit" feeling while keeping screen real estate under 
 - Body text and control labels must meet strong light/dark contrast; faint gray-on-gray labels are defects. Selected, focused, disabled, warning, and error states must differ by more than color alone.
 - `Tab`/`Shift+Tab` traverse controls in reading order; arrow keys change tabs, lists, frame selections, and numeric steps where expected; `Enter`/`Space` activate the focused control.
 - Every mouse action that changes durable state needs a keyboard path. Visible focus rings are mandatory, and focus returns to the invoking control when a transient surface closes.
+- Right-click context/quick Inspector commands are reachable with `Shift+F10`/Menu key and the persistent Inspector command; a floating Inspector is modeless, draggable, pinnable/dockable, and viewport-clamped.
 - Tooltips supplement concise labels; they do not carry essential instructions that keyboard users cannot reach.
 - The two-level picker keeps the selected card's thumbnail, name, source/provenance badge, and a small preview beside the pull-downs; search, recent, and favorites are available inside the second list.
+- A virtualized Level Contents view exposes overlapping, invisible, editor-only, source-bound, and unresolved objects through a searchable keyboard/screen-reader-friendly hierarchy with visibility, `editorLocked`, authority, and multi-select.
+- Reduced Motion, No Flash/Strobe, screen-shake Off, pointer-hide override, scalable editor text, sound captions/visual equivalents, and color-independent state are shared accessibility policies, not toolkit options.
 
 ### UI Efficiency Rules
 
 - Update controls from session events/signals. Do not rebuild panels, refit full-screen pages, or rewrite unchanged labels every frame.
-- Create expensive family pages and catalogs lazily, then reuse them. Hidden tabs pause previews, thumbnail animation, diagnostics, and polling.
+- Create expensive workspace contribution panels and catalogs lazily, then reuse them. Hidden workspaces/groups pause previews, thumbnail animation, diagnostics, and polling.
 - Virtualize or page very large asset/card lists and cache thumbnails, text measurements, imported previews, and Inspector schemas.
 - Refit layout only on workspace open, resize, monitor/DPI change, theme change, or meaningful content change.
 - OCR, sprite compilation, source analysis, save, and thumbnail generation must not block input. Their status appears asynchronously in the owning page and stale results are discarded by session/source identity.
+- One nonmodal Activity Center exposes capture, analysis, OCR, import, save, thumbnail, and compilation work with identity, stage, outcome, diagnostics, and Cancel. Boss/Desktop parks nonessential work.
+- Direct manipulation previews at input rate but commits one command per drag/resize/rotation/slider gesture; runtime mutation history is separate from creator Undo/Redo and lightweight recovery.
 - Under load, reduce decorative preview rate, effects, glow, shadows, and distant animation before reducing pointer feedback, input, collision, or safety responsiveness.
 - Instrument page-open time, idle Cockpit cost, layout passes, active preview count, and list/card counts so efficiency work follows evidence.
 
 ### Kenney UI theme seed
 
-The CC0 Kenney UI Pack is a useful seed for DACK's creator-facing chrome, but the current local extraction appears incomplete relative to the official listing and must be verified/re-downloaded before admission. Once complete, it should enter through one shared Godot theme rather than hundreds of per-button texture assignments.
+The CC0 Kenney UI Pack is an approved seed for DACK's creator-facing chrome. The complete local bundle copy and its CC0 record have been audited; use that canonical copy rather than importing the duplicate standalone pack. Admission still means a curated subset through one shared Godot theme, not hundreds of per-button texture assignments. Exact shipping status remains governed by `dack/assets/ASSET_PROVENANCE.md`.
 
 - Use neutral Grey for ordinary controls, Blue for selection/active state, and Green for Apply/Play/success. The local Red family contains only two arrow sprites, so destructive or stop/cancel actions keep DACK's high-contrast red style token instead of pretending the pack supplies a complete red control state.
 - Prefer content-sized rectangular controls, compact square icon buttons, checkboxes, arrows, slider parts, and close gadgets. The pack does not override the rule that buttons should not stretch across the screen by default.
@@ -319,21 +323,21 @@ The toolkit contributes:
 - Presets.
 - Test-play affordances.
 
-Only the selected toolkit/family page should be expanded by default. Other toolkit pages fold away to keep the playfield and inspector usable. The Inspector and Understand panels remain broadly available because selected-object attributes, source bindings, invisible logic, and detection layers cut across every game type.
+Only the selected task workspace and relevant family-contributed groups should be expanded by default. Other groups fold away to keep the playfield and Inspector usable. The Inspector and Understand workspace remain broadly available because selected-object attributes, source bindings, invisible logic, and detection layers cut across every game type.
 
 This prevents feature growth from turning into a pile of unrelated windows.
 
-## Character Page vs. Sprite Sidebar
+## Sprite Studio vs. Live Sprite Pad
 
 The live sprite sidebar remains the quick in-context pad: select an actor, tweak pixels or frame labels, see the playfield update. It should stay small, hidable, and toy-like.
 
-As actor setup grows, DACK needs a larger Character page. That page should collect the heavier work: imported frame source, animation labels, timing, origins/baselines, attachment points, AI/rule cards, projectile slots, sounds, effects, and text-interaction options. `Idle` and `Climb` should be treated as core labels alongside run, jump, shoot, hurt, and death.
+Serious actor setup belongs to the owned full-screen **Sprite Studio** workspace. Its character-composition hub collects imported frame source, animation labels, timing, origins/baselines, attachment points, AI/rule Cards, projectile Slots, sounds, effects, and text-interaction options. `Idle` and `Climb` are core labels alongside run, jump, shoot, hurt, and death.
 
 This prevents the sidebar from becoming a cramped Aseprite clone and gives creators a natural place to tune enemies, players, guards, climbers, flyers, projectiles, and future RPG/overhead actors.
 
-The Builder should think in cards. Small cards are ingredients; composed cards are finished reusable objects. A creator should be able to assemble sprite, animation, behavior, projectile, sound, effect, and text-rule cards into a richer Enemy/Player/Spawner/Object card, then drag that finished card back into levels or other cards.
+Composition should think in Cards. Small Cards are ingredients; composed Cards are finished reusable objects. A creator assembles sprite, animation, behavior, projectile, sound, effect, and text-rule Cards into a richer Enemy/Player/Spawner/Object Card through Sprite Studio or the explicit definition editor, then drags that finished Card into levels or other compatible Slots.
 
-Player deserves its own top-level tab rather than living inside the general Builder. The Player tab owns protagonist selection, player-card dragging, control/movement defaults, gun/no-gun, size/text ratio, and player-specific animation hooks. Builder remains the more general composition workbench for wiring selected actors and objects into reusable cards.
+Player retains its own stable task workspace. It owns protagonist selection, player-Card placement/swapping, control/movement defaults, gun/no-gun, size/text ratio, and player-specific animation hooks. Ordinary selected-instance wiring stays in the Inspector; reusable actor composition opens the explicit definition/Sprite Studio workspace rather than a competing permanent Builder tab.
 
 Placed toolkit objects should follow the same principle: the playfield gives direct manipulation with A/B handles, while the Inspector gives precise nudges. Ramps, slides, conveyors, elevators, pinball parts, gates, and future line objects should be rotatable; line tools rotate by their endpoints and by Inspector rotate nudges. Ladders are the exception: they should remain vertical climb volumes, with width tuned against the player character rather than treated as angled ropes.
 

@@ -10,7 +10,7 @@ DACK should be able to make a paragraph behave like a Donkey Kong platform witho
 
 The same model should make a long Word, OpenOffice, PDF, or browser document feel like a Bubble Bobble-style sequence: each page is a level, page order is preserved, and the document remains recognizable rather than being stretched into one blurry world.
 
-The source is always read-only. Every transform, mutation, OCR result, and gameplay attachment belongs to the DACK clone or Snapshot.
+The source and Snapshot Baseline are always read-only. Authored transforms and attachments belong to the Level, OCR belongs to a versioned analysis cache, and mutations belong to the Working Clone/Variant branch.
 
 ## Design rules
 
@@ -96,7 +96,7 @@ PageSequence
   transitionPolicy, sharedRules, sharedAssets, persistencePolicy
 ```
 
-Each page is an ordinary Level Card with its own Snapshot, environment map, OCR cache, placed objects, routes, mutations, and rules. The sequence owns the shared catalog and progression rules. Page IDs are stable across recapture when visual/layout matching is confident; uncertain matches are shown for creator approval.
+Each page is an ordinary Level Card referencing its own Snapshot Baseline, Intake Recipe, and selected Analysis Revision while owning its page-local instances, routes, rules, corrections, and Variant policy. The sequence owns the shared catalog and progression rules. Page IDs are stable across recapture when visual/layout matching is confident; uncertain matches are shown for creator approval.
 
 ### Bubble Bobble-style flow
 
@@ -127,17 +127,17 @@ If a native document importer is unavailable, the screenshot path still works: t
 
 - **Page-local mutation:** erasing a word or deforming a paragraph affects only that page.
 - **Sequence mutation:** a rule can intentionally carry a change across pages, such as a score-wide unlock or a destroyed shared asset.
-- **Reset sequence:** restore all pages from immutable Snapshot records.
+- **Reset sequence:** reconstruct every page from its immutable Snapshot Baseline plus selected authored Variant policy.
 - **Save variant:** preserve the current multi-page state as a named variant without replacing the pristine sequence.
 
 The package remains playable from frozen page Snapshots alone. Source clones are optional, scrubbed DACK clones, and never the original document.
 
 ## Editor experience
 
-The Build page adds two compact tools:
+The stable task workspaces contribute two compact tools while Build mode supplies their editable handles:
 
-- **Transform Block:** select a text region, rotate/slant it, choose display/collision policy, and manage attachments.
-- **Page Navigator:** thumbnail/order strip, current page card, transition target, page-local versus sequence-global scope, and `Re-snapshot` status.
+- **World — Transform Block:** select a text region, rotate/slant it, choose display/collision policy, and manage attachments.
+- **Understand — Page Navigator:** inspect the thumbnail/order strip, current page card, transition target, page-local versus sequence-global scope, capture evidence, and `Re-snapshot` status. Authored ordering and transition changes commit through the same Level/session command path.
 
 Understand mode can reveal source bounds, transformed bounds, local axes, page IDs, OCR confidence, and collision masks. Play mode hides handles, spawn markers, and editor-only anchors while retaining their behavior. `F6` continues to toggle Build/Play; `Esc` returns to the Cockpit without changing the current page or mutation state.
 
@@ -153,7 +153,7 @@ Bind ladders, goals, checkpoints, gaps, and rolling spawn routes to transformed 
 
 ### G2 - static page sequence
 
-Add `PageSequence` and per-page Snapshot cards. Support a two-page fixture, thumbnails, ordered transitions, page-local mutations, and cross-page save/load.
+Add `PageSequence` and per-page Level Cards with immutable Snapshot references. Support a two-page fixture, thumbnails, ordered transitions, page-local Variants, and cross-page save/load.
 
 ### G3 - live scroll capture
 
@@ -171,4 +171,3 @@ Ship Bubble Bobble-style page traversal, optional camera scroll, sequence-global
 - Capture two or more Word pages, play page 1, transition to page 2, and return without losing score, chosen policy, or page-local mutations.
 - Scroll a document and recapture it; stable pages reconcile, moved pages are flagged, and stale OCR never appears on the new page.
 - No test writes to the source document, and no viewport fit operation changes Snapshot coordinates or text raster quality.
-

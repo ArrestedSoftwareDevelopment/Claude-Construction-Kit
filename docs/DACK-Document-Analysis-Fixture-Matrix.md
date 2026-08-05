@@ -27,7 +27,7 @@ These files are local development fixtures. They are not automatically public-bu
 
 ## Required Detection Layers
 
-Each fixture should produce one cached analysis product with these independently inspectable layers:
+Each fixture should produce one immutable, versioned `AnalysisRevision` with these independently inspectable evidence layers, plus a separately inspectable resolved view when creator corrections and `RegionRuntimeState` are applied:
 
 1. **Source and background:** native pixel bounds, monitor/DPI metadata when known, dominant/local background zones, gradients, and background confidence.
 2. **Structural rectangles:** windows, panels, toolbars, tables, charts, merged bands, cells, gutters, margins, and scrollbars. Nested rectangles must retain parent/child relationships and z-order.
@@ -35,7 +35,7 @@ Each fixture should produce one cached analysis product with these independently
 4. **Text geometry:** glyph, word, line, heading, paragraph, label, and fixed-width cell candidates. Detection must include colored, light, anti-aliased, and partially erased text.
 5. **Grid model:** inferred rectangular cells for spreadsheets and optional fixed-width cells for ASCII. Hex grids are creator-generated overlays, not something the screenshot detector should hallucinate from ordinary UI.
 6. **Semantic meaning:** optional local OCR/UIA labels bound to existing region IDs. OCR can name a region; it must not create a second incompatible geometry model.
-7. **Mutation/collision masks:** the exact active mask used by gameplay. Erasure, scoring, collision, icon interaction, and background replacement must query the same region identity.
+7. **Candidate and resolved masks:** immutable detector masks remain analysis evidence. Gameplay resolves those masks with accepted creator corrections and current `RegionRuntimeState`; erasure, scoring, collision, icon interaction, and background replacement must query the same region identity and resolved mask.
 8. **Playfield profile:** an inspectable affordance vector and ranked, nonbinding game recommendations. Each recommendation records its score, strongest evidence, and required creator construction. OCR-disabled results remain valid geometry recommendations.
 
 ## Fixture-Specific Acceptance Checks
@@ -72,7 +72,7 @@ DACK's first ANSI reader should:
 
 - decode the byte stream with an explicit code-page policy (CP437 first, with a visible fallback if unavailable);
 - execute a bounded subset of CSI/SGR commands into a terminal-cell buffer rather than drawing directly into the gameplay texture;
-- preserve foreground/background color, bright/blink state where supported, cursor movement, and CR/LF semantics;
+- preserve foreground/background color, bright/blink metadata, cursor movement, and CR/LF semantics; blink never forces actual flashing when No Flash is active and is static by default in authoring views;
 - keep the terminal canvas at its native cell geometry and render it as an opaque/dimmed underlay or backglass;
 - parse SAUCE as provenance/display metadata, not as proof of redistribution rights;
 - impose limits on rows, columns, escape-sequence count, and render time so a hostile or malformed file cannot stall the editor;
@@ -99,12 +99,20 @@ For each fixture, store a small reviewable golden record rather than a full pixe
 - text candidate counts by glyph/word/line/heading;
 - grid origin, cell size, and confidence when applicable;
 - OCR labels and provider/version only where available;
-- expected playable collision/mutation regions;
+- hand-labeled reference boxes/masks for a small representative crop, plus expected playable collision/mutation regions;
 - accepted false positives and creator overrides;
 - playfield affordance metrics, ranked recommendations, evidence, and suggested additions;
-- analysis duration, allocations, and dirty-region sizes.
+- region precision/recall and boundary error against those labeled crops rather than counts alone;
+- background-classification error, source-to-display coordinate error, and collision/erasure resolved-mask equality;
+- analysis duration, peak/resident allocations, cache size, and dirty upload pixels/tiles.
 
 Golden records should be versioned by analysis algorithm. A detector improvement may change a result, but it must produce an explicit golden-record update and a visible before/after review.
+
+### Measurement policy
+
+Counts are diagnostic, not sufficient acceptance evidence. Each golden fixture records per-class precision/recall, median and p95 edge-coordinate error, false-positive/false-negative examples, background-label error, and the creator corrections needed to make the level usable. Fixed-width ASCII/ANSI fixtures require exact row/column/cell reproduction. Synthetic clean glyph and rectangle crops should initially hold a one-pixel median/two-pixel p95 boundary guardrail and byte-identical native-pixel round trip; complex real screenshots establish reviewed class-specific baselines before a regression threshold is locked. Collision and erasure must resolve to the exact same active-mask hash regardless of detector score.
+
+Performance budgets live in the Optimization Plan and are measured separately at cold start, warm cache, and one-region re-analysis. A faster detector does not pass by dropping hard regions, and a more accurate detector does not pass by blocking the editor. Every run records fixture hash, algorithm/configuration version, baseline hardware/profile, wall time, allocations, peak working set, cache hits, jobs canceled as stale, and dirty upload area.
 
 ## Test Order
 
@@ -115,6 +123,6 @@ Golden records should be versioned by analysis algorithm. A detector improvement
 5. `Codex.png` — diff colors, controls, panes, and hierarchy.
 6. `Dragon1.txt` and `DragonBallzLogo.txt` — fixed-width text-grid path.
 7. `KingDiamongANSIFile.ANS` — ANSI byte/control parser and terminal-cell renderer.
-8. `ChromeAnim.mp4` — temporal/live-source analysis after Snapshot analysis is stable.
+8. `ChromeAnim.mp4` — temporal/live-source analysis after the static Analysis Revision path is stable.
 
 The first five fixtures should be part of the R0/R2 golden-data suite. ASCII and ANSI fixtures belong in the Grid/Text, BBS, and Pinball backglass smoke levels. The video belongs in the Live Desktop spike and must not become a prerequisite for the static screenshot loop.

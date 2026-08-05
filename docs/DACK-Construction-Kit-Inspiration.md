@@ -1,11 +1,33 @@
 # DACK Construction-Kit Inspiration and Document-Native Design Rules
 
-**Status:** In progress — design guidance, not a delivery commitment  
-**Authority:** Design inventory; the primary design document and optimization plan still control scope.
+**Status:** Active historical/design guardrail; reviewed 2026-08-05
+**Authority:** Document-native product test and reference analysis; the primary design document controls scope and the optimization plan controls order.
 
 The `raw base assets/Inspiration` folder is a useful visual reminder of what made classic construction kits memorable. The Shoot-'Em-Up Construction Kit and Adventure Construction Set references are not merely palette or nostalgia references. They show a complete authoring grammar: a creator chooses a reusable definition, edits a small set of understandable parameters, places or sequences instances, and can test the result immediately.
 
-DACK should borrow that clarity while making the document, image, window, and desktop the actual material of play. If the source document can be removed and the result still feels identical, we have drifted toward a generic SEUCK/ACK imitation rather than DACK.
+DACK should borrow that clarity while making the document, image, window, and desktop the actual material of play. If the source document can be removed and the result still feels identical, we have drifted toward a generic SEUCK/ACS imitation rather than DACK.
+
+## The lineage and the gap DACK fills
+
+The historical construction sets solved a human problem before “no-code” became a product category: they replaced programming syntax with a small, legible world of parts and parameters. Their original manuals show the pattern directly:
+
+- [Pinball Construction Set](https://smalltalkzoo.computerhistory.org/users/Dan/uploads/PinballConstructionSet.pdf) makes parts, placement, gravity/physics adjustment, play, and saved tables one toy-like loop.
+- [Adventure Construction Set](https://www.mocagh.org/ea/acsuk-manual.pdf) separates play from named construction workrooms, supports reusable map/creature/thing material, and can auto-construct a useful starting adventure.
+- [SEUCK](https://manualzz.com/doc/html/28942555/shoot--em-up-construction-kit-user-manual) exposes distinct sprite, object, background, sound, player, attack-wave, level, test, and storage utilities with no programming prerequisite.
+
+Modern creative tools refine the same structure:
+
+| Modern pattern | Evidence | DACK rule |
+| --- | --- | --- |
+| Definition versus placed instance | [GameMaker objects/instances](https://manual.gamemaker.io/beta/en/Additional_Information/Objects_vs_Instances.htm) and Room Editor | A Card is a reusable definition; a playfield placement is an independently identified instance. |
+| Visible local override with Apply/Revert | [Unity prefab-instance Inspector](https://docs.unity3d.com/ja/current/Manual/prefab-instance-inspector-reference.html) | Instance overrides are marked and can Reset to Card, Apply to Definition, or Fork Card deliberately. |
+| Selection-specific properties and bulk edit | [Unreal Details Panel](https://dev.epicgames.com/documentation/en-us/unreal-engine/level-editor-details-panel-in-unreal-engine) and [Property Matrix](https://dev.epicgames.com/documentation/en-us/unreal-engine/property-matrix-in-unreal-engine) | One Inspector follows selection; a later Level Contents view and property matrix handle repeated actors/objects. |
+| Consolidated component properties and compatible swaps | [Figma component properties](https://help.figma.com/hc/en-us/articles/5579474826519-Explore-component-properties) | Composed Cards expose selected bindings and common values in one place; Slots filter compatible Card replacements. |
+| Task-oriented layouts over one document | [Blender Workspaces](https://docs.blender.org/manual/en/latest/interface/window_system/workspaces.html) | Build, Understand, and Sprite Studio are views over one session, not separate copies of the level. |
+
+DACK's historical niche is the missing combination: **classic construction-set immediacy, modern definition/instance discipline, and a read-only visible office surface as the native material.** Microsoft described [Ribbon Hero](https://blogs.microsoft.com/ai/ready-to-play-with-microsoft-clippy/) as a casual game for discovering Office commands; DACK's office relationship is different. It does not teach or operate Word, Excel, or another host. It compiles the visible work into a clone-safe world and lets the creator decide what that world means.
+
+This distinction should survive every refactor. The reusable engine systems can be conventional; the authored experience must keep source bindings, interpretation, and clone mutation close enough to see and play with.
 
 ## What the references reveal
 
@@ -84,8 +106,9 @@ The adventure reference uses a map, a character, a status/narrative band, and lo
 The references make `TEST GAME` and `STORAGE` first-class menu destinations. DACK's equivalent is:
 
 - `F6` toggles Build/Edit and Play without losing selection or the active document mutation.
-- Snapshot freezes the exact source clone, analysis cache, placed instances, labels, and OCR results used by the test.
-- Save/load restores the document, source binding, mutations, instances, and authoring state together.
+- Snapshot freezes the admitted source pixels and capture identity used by the test. Its matching Intake Recipe and immutable Analysis Revision preserve creator guidance and derived interpretation without pretending that either is part of the pixel baseline.
+- The Level references those immutable products and owns accepted corrections, Card bindings, placed instances, rules, routes, and authoring policy. The Working Clone and Run State remain separate so test-play damage cannot silently rewrite authored truth.
+- Save/load restores the complete session aggregate while retaining those ownership boundaries; named mutation branches are Variants, not mutated Snapshots.
 - Publish shows the clone and metadata-scrubbing preview; it never edits or packages the original implicitly.
 
 ## DACK's document-native oath
@@ -95,7 +118,7 @@ Every toolkit should pass these checks:
 1. The source document, image, window, or desktop capture remains identifiable while building and testing.
 2. At least one core mechanic uses a discovered or author-defined document feature: text, whitespace, paragraph geometry, icon, window boundary, color region, or desktop activity.
 3. The creator can inspect what the document contributed through Understanding mode.
-4. The source remains immutable; only the working clone and Snapshot mutations change.
+4. The source and Snapshot Baseline remain immutable; only the Working Clone, Region Runtime State, and explicitly saved Variant branch change.
 5. A generic replacement asset is allowed, but it is labeled as a freeform overlay rather than pretending to be document-derived.
 6. Removing the source layer should make the level materially less interesting. If it does not, the playset needs a stronger document rule.
 
@@ -111,4 +134,3 @@ Every toolkit should pass these checks:
 ## Reference handling
 
 The files in `raw base assets/Inspiration` are internal visual references. They should guide interaction and information architecture, not be redistributed as DACK content unless their provenance and license are independently confirmed.
-
