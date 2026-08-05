@@ -16,6 +16,7 @@ public partial class BuilderCard : PanelContainer
     public event Action<BuilderCard>? Activated;
     public event Action<BuilderCard>? DuplicateRequested;
     public event Action<BuilderCard>? ForkRequested;
+    public event Action<BuilderCard>? FavoriteRequested;
 
     public BuilderCard(string cardKind, string cardId, string title, string subtitle, string details)
         : this(new CardDefinition(cardKind, cardId, title, subtitle, details, "Cards", "Project catalog", "Review", "Local", [], PrimaryAction: "Apply"))
@@ -88,7 +89,10 @@ public partial class BuilderCard : PanelContainer
         root.AddChild(actions);
 
         Button duplicate = SmallButton("Duplicate");
-        duplicate.TooltipText = "Create another independent instance from this definition.";
+        duplicate.Disabled = definition.Kind is "player-character" or "projectile" or "effect";
+        duplicate.TooltipText = duplicate.Disabled
+            ? "This card binds to a unique slot; use Apply or Fork."
+            : "Create another independent instance from this definition.";
         duplicate.Pressed += () => DuplicateRequested?.Invoke(this);
         actions.AddChild(duplicate);
 
@@ -96,6 +100,11 @@ public partial class BuilderCard : PanelContainer
         fork.TooltipText = "Create a project-local editable card while preserving the shared source definition.";
         fork.Pressed += () => ForkRequested?.Invoke(this);
         actions.AddChild(fork);
+
+        Button favorite = SmallButton("Favorite");
+        favorite.TooltipText = "Toggle this definition in the Favorites shelf.";
+        favorite.Pressed += () => FavoriteRequested?.Invoke(this);
+        actions.AddChild(favorite);
     }
 
     public override Variant _GetDragData(Vector2 atPosition)

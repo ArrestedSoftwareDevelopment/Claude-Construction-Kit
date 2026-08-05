@@ -3,6 +3,18 @@ using System;
 
 namespace Dack;
 
+public enum ActorAiMode
+{
+    Default,
+    Patrol,
+    TrackPlayer,
+    Defend,
+    Flee,
+    Stationary,
+    Horde,
+    Flying
+}
+
 public partial class ActorView : Control
 {
     private EditableSpriteModel? _model;
@@ -40,6 +52,13 @@ public partial class ActorView : Control
     public bool CanFireProjectiles { get; set; }
     public int ShotToughness { get; set; } = 1;
     public float RadarRangeUnits { get; set; } = 28f;
+    public ActorAiMode AiMode { get; set; } = ActorAiMode.Default;
+    public bool TextAware { get; set; } = true;
+    public string ProjectileCardId { get; set; } = "";
+    public string EffectCardId { get; set; } = "";
+    public Color ActorTint { get; set; } = Colors.White;
+    public float ActorOpacity { get; set; } = 1f;
+    public bool ShadowEnabled { get; set; } = true;
 
     public bool IsPlayable
     {
@@ -91,6 +110,8 @@ public partial class ActorView : Control
     public bool AnimationPaused { get; set; }
 
     public event Action<ActorView>? SelectionRequested;
+    public event Action<ActorView>? InspectionRequested;
+    public event Action<ActorView>? PlacementChanged;
 
     public override void _Ready()
     {
@@ -116,7 +137,16 @@ public partial class ActorView : Control
 
     public override void _GuiInput(InputEvent inputEvent)
     {
-        if (inputEvent is InputEventMouseButton mouseButton
+        if (inputEvent is InputEventMouseButton inspectButton
+            && inspectButton.ButtonIndex == MouseButton.Right
+            && inspectButton.Pressed
+            && EditorMode)
+        {
+            SelectionRequested?.Invoke(this);
+            InspectionRequested?.Invoke(this);
+            AcceptEvent();
+        }
+        else if (inputEvent is InputEventMouseButton mouseButton
             && mouseButton.ButtonIndex == MouseButton.Left
             && mouseButton.Pressed)
         {
@@ -133,9 +163,12 @@ public partial class ActorView : Control
                  && release.ButtonIndex == MouseButton.Left
                  && !release.Pressed)
         {
+            bool wasDragging = _dragging;
             _dragging = false;
             if (CanDragInEditor)
                 HomePosition = Position;
+            if (wasDragging && CanDragInEditor)
+                PlacementChanged?.Invoke(this);
             AcceptEvent();
         }
         else if (inputEvent is InputEventMouseMotion motion && _dragging && CanDragInEditor)
@@ -239,13 +272,15 @@ public partial class ActorView : Control
         if (!FacingRight)
             DrawSetTransform(new Vector2(Size.X, 0), 0, new Vector2(-1, 1));
 
-        DrawTextureRectRegion(texture, new Rect2(drawPosition, drawSize), sourceRegion);
+        Color modulate = ActorTint;
+        modulate.A *= Mathf.Clamp(ActorOpacity, 0f, 1f);
+        DrawTextureRectRegion(texture, new Rect2(drawPosition, drawSize), sourceRegion, modulate);
         DrawSetTransform(Vector2.Zero, 0, Vector2.One);
     }
 
     private void DrawSpriteShadow(Texture2D texture, Rect2 sourceRegion, Vector2 drawPosition, Vector2 drawSize)
     {
-        if (drawSize.X <= 0 || drawSize.Y <= 0)
+        if (!ShadowEnabled || drawSize.X <= 0 || drawSize.Y <= 0)
             return;
 
         Vector2 baseCenter = drawPosition + new Vector2(drawSize.X * 0.5f, drawSize.Y * 0.94f);

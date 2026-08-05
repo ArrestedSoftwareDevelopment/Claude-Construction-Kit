@@ -605,17 +605,37 @@ Family pages no longer own separate Save, Load, Reset, or Play controls. Those r
 - Support repeated drag placement, duplicate, fork, and Apply To Selected.
 - Surface provenance/export state on every card.
 
+**Implemented foundation:** cards now use a shared `CardDefinition` descriptor and render through searchable, category-first `CardShelf` catalogs. Each shelf includes All Cards, Recent, Favorites, source categories, and Project-Created forks. Cards expose their role, provenance, license state, export status, tags, primary action, Duplicate, Fork, Favorite, and drag payload.
+
+The Player, Enemies, Objects, Projectiles/Effects, Side View construction, Side View markers, and Pinball construction catalogs now use this system. Repeated Enemy or World/Object placement creates independent instances; dragging places the instance at the requested playfield position instead of the former center pile. Player cards remain a unique-slot binding and therefore disable Duplicate while retaining Apply and Fork.
+
+Fork creates a project-local card definition that continues to resolve through its source card until the creator changes its bindings. This establishes the shared-versus-local distinction without duplicating source assets. Card provenance is deliberately conservative: CC0/project-owned cards are marked Hub-safe; purchased or legacy sources remain Project-cleared or Review-on-export.
+
+`CardSlot` adds compatible drag targets to the Character Builder. Projectile and explosion/effect cards can be dropped onto their slots and apply to the selected actor/current profile. AI, Sound, Text Rule, Physics, Style, Level, and World/Chapter cards still need concrete descriptor catalogs and persistence; the slot/drop contract is ready for them.
+
 ### Phase 4: Inspector and modal manager
 
 - Move object properties into schema-driven Inspector sections.
 - Create shared modal close/Cancel/Apply behavior.
 - Add source refresh diff and import calibration as proper modals.
 
+Implementation status: the Inspector is now the direct editing surface for a selected Player or Enemy Card instance. A creator can change the placed actor's name, AI mode, text awareness, radar range, toughness, projectile ability and binding, impact/effect binding, scale, tint, opacity, visibility, shadow, and facing without leaving the playfield for the Character Builder or Sprite Studio. The AI choices are live runtime behaviors (patrol, track, defend, flee, stationary/turret, horde/flock, and flying), not descriptive tags.
+
+Duplicate Instance preserves the selected actor's bindings and overrides while creating a separately editable placement. Fork Card preserves the distinction between changing this occurrence and deriving a new reusable card. These instance overrides are included in level Save/Load, with compatibility defaults for levels created before the Card Inspector existed. This is the central Cards workflow: select an object in context, change the relevant cards or values in context, and return immediately to play testing.
+
+The same Inspector now has an in-context floating form. In Build mode, right-clicking a player/enemy or a placed world object opens the shared Inspector next to the pointer. It is a movable, viewport-clamped panel with a close gadget; Esc closes it before affecting the Cockpit. The panel is not a duplicate editor: its controls are temporarily reparented from the dock, so docked and floating forms cannot drift into different implementations. Actor controls are hidden for a world-object invocation, leaving the relevant geometry, motion, tint, opacity, direction, and range controls in view. Entering Play mode closes the floating Inspector.
+
+The remaining Phase 4 work is to move non-actor world-object properties onto the same schema-driven section system, then unify source-refresh and import-calibration dialogs under the shared modal contract.
+
 ### Phase 5: Understand and live desktop
 
 - Make interpretation overlays a first-class workspace.
+- Add the Intake Workbench: optional square/hex grids, draggable regions and edges, foreground/background/object/exclusion seeds, and bounded live re-analysis.
+- Show a PlayfieldProfile with ranked game recommendations, evidence, confidence, and suggested construction; never restrict toolkit choice.
 - Introduce Return to Desktop.
 - Bind source/capture updates through the same session state.
+
+Implementation start: the current Snapshot importer now emits a provisional geometry-only PlayfieldProfile. Understand displays its affordance metrics and top three recommendations with `Try` actions. This establishes the UI/data seam before the richer background, rectangle, icon, calibrated-guide, and OCR evidence arrives.
 
 ### Phase 6: Two-monitor spike
 

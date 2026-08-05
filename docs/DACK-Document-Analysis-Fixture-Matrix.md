@@ -36,6 +36,7 @@ Each fixture should produce one cached analysis product with these independently
 5. **Grid model:** inferred rectangular cells for spreadsheets and optional fixed-width cells for ASCII. Hex grids are creator-generated overlays, not something the screenshot detector should hallucinate from ordinary UI.
 6. **Semantic meaning:** optional local OCR/UIA labels bound to existing region IDs. OCR can name a region; it must not create a second incompatible geometry model.
 7. **Mutation/collision masks:** the exact active mask used by gameplay. Erasure, scoring, collision, icon interaction, and background replacement must query the same region identity.
+8. **Playfield profile:** an inspectable affordance vector and ranked, nonbinding game recommendations. Each recommendation records its score, strongest evidence, and required creator construction. OCR-disabled results remain valid geometry recommendations.
 
 ## Fixture-Specific Acceptance Checks
 
@@ -100,6 +101,7 @@ For each fixture, store a small reviewable golden record rather than a full pixe
 - OCR labels and provider/version only where available;
 - expected playable collision/mutation regions;
 - accepted false positives and creator overrides;
+- playfield affordance metrics, ranked recommendations, evidence, and suggested additions;
 - analysis duration, allocations, and dirty-region sizes.
 
 Golden records should be versioned by analysis algorithm. A detector improvement may change a result, but it must produce an explicit golden-record update and a visible before/after review.

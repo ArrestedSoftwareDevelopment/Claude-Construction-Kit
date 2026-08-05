@@ -1,6 +1,6 @@
 # DACK Live Capture and Scene Understanding Plan
 
-**Status:** Planned Phase 1/2 architecture work; manual-refresh source policy is normative  
+**Status:** Active architecture; provisional geometry profiler implemented; manual-refresh source policy is normative
 **Authority:** Companion to [ADR-0009: Shared Snapshot Analysis and Environmental Map](adr/ADR-0009-shared-snapshot-environment-map.md)  
 **Scope:** Windows desktop, monitor, window, region, Snapshot, and incremental scene analysis
 
@@ -76,6 +76,31 @@ Transforms must preserve the source-to-Snapshot mapping. If a creator intentiona
 4. Capture a full native-resolution frame and create a temporary immutable working clone.
 
 The user should see the source at 1:1 before choosing a playset. The playset does not determine the capture crop.
+
+### 2.1.1 Intake Workbench: human-assisted preprocessing
+
+After native capture and before Snapshot publication, DACK opens an optional **Intake Workbench**. It lets the creator contribute visual knowledge without destructively painting the source or replacing automatic analysis.
+
+The Workbench provides independent guide layers:
+
+- `None`, adjustable rectangular grid, and adjustable hex grid;
+- rectangular, polygonal, and freeform regions;
+- draggable dividers, edge segments, and later path/curve guides;
+- foreground/text, background, object, and ignore/exclusion seed points;
+- roles such as document background, text block, solid geometry, UI chrome, playable area, protected region, destructible region, HUD-safe whitespace, and separate page/level;
+- commands such as `treat as one object`, `split along this edge`, `repeat this rule by cell`, and `ignore this toolbar`.
+
+A rectangular grid records origin, cell width/height, rows/columns, rotation, and snapping. A hex grid records origin, radius, pointy/flat orientation, rotation, and bounds. These are guides and optional gameplay topology; they never resample or overwrite Snapshot pixels. Ordinary UI must not be forced into a grid when `None` is the more truthful interpretation.
+
+Every correction is creator-authored evidence attached to the same region records used by automatic analysis. Creator evidence outranks detector guesses, remains undoable, survives Save/Load, and can be reapplied or reviewed during an explicit source refresh. Editing a guide reprocesses only its affected region and previews candidate masks, collision, words, objects, and background restoration before the creator accepts the result.
+
+The intended intake sequence is:
+
+```text
+Capture -> native-pixel calibration -> optional grid -> regions/edges/seeds
+        -> live analysis preview -> creator correction -> lazy OCR enrichment
+        -> freeze SnapshotAnalysis + PlayfieldProfile
+```
 
 ### 2.2 Snapshot
 
@@ -245,6 +270,14 @@ OCR is a lazy naming service, not the geometry engine:
 - cancel stale jobs when the source hash or region version changes;
 - retain fallback IDs and geometry when OCR is unavailable or disabled.
 
+### Pass H — playfield profiling and recommendations
+
+The interpreter produces a **PlayfieldProfile** after geometry analysis. This is an affordance vector, not a single app/file label. Initial dimensions include text density, horizontal continuity, vertical connectivity, grid regularity, open-space ratio, background confidence, destructibility, object repetition, corridor/path evidence, and HUD-safe space. Later rectangle, icon, UIA, and OCR evidence enriches the same profile.
+
+Each playset declares preferred affordances and required construction. DACK ranks several plausible game types, explains the strongest evidence, and identifies what must be added—for example ladders between text rows, a pinball table boundary, a tower-defense route, or racing checkpoints. Recommendations are an intelligent opening move only: the creator can apply any toolkit to any source.
+
+The first implemented profiler is deliberately provisional. It derives geometry-only recommendations from the existing text platforms, glyph/word/line candidates, background coherence, and repeated target sizes. It currently ranks Side-View Platformer, Brickbat, Pinball, Maze/Snake, Tower Defense/Escort, and Racing/Route, exposes the best three in Understand mode, and does not require OCR. Rectangle/icon hierarchy, calibrated guide evidence, and source-family hints will replace weak heuristics as those passes come online.
+
 ## 4. Shared region model
 
 Every region record should be able to answer the same questions for every playset:
@@ -300,6 +333,8 @@ Manual creator decisions outrank automatic detection and survive Snapshot save/l
 - Feed existing screenshot fixtures through the shared analysis product.
 - Draw rectangles, text masks, icons, backgrounds, and whitespace in Understand mode.
 - Save a golden record and a versioned analysis cache.
+- Expose the Intake Workbench guide layers and persist creator corrections.
+- Show a PlayfieldProfile with ranked recommendations, reasons, and required additions.
 
 ### Spike LC-2 — incremental live source
 
@@ -328,6 +363,8 @@ The design is ready to move beyond the spike when:
 9. A source change outside DACK produces at most a non-invasive advisory until the creator selects `Refresh Source`.
 10. A refresh candidate can be previewed, applied as a new Snapshot with confident rebinding, or discarded without changing the active clone.
 11. No action can modify the real desktop, source file, or original document.
+12. A creator can correct intake with grids, regions, edges, and seed points without altering native pixels.
+13. Recommendations explain their evidence, remain optional, and continue to function with OCR disabled.
 
 ## 8. Performance and safety guardrails
 

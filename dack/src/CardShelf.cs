@@ -15,6 +15,8 @@ public partial class CardShelf : VBoxContainer
     private readonly OptionButton _categoryPicker = new();
     private readonly LineEdit _search = new();
     private readonly VBoxContainer _cards = new();
+    private readonly HashSet<string> _favorites = new(StringComparer.OrdinalIgnoreCase);
+    private readonly List<string> _recent = [];
     private int _forkSequence;
 
     public event Action<CardDefinition>? Activated;
@@ -70,6 +72,8 @@ public partial class CardShelf : VBoxContainer
             : "All Cards";
         _categoryPicker.Clear();
         _categoryPicker.AddItem("All Cards");
+        _categoryPicker.AddItem("Recent");
+        _categoryPicker.AddItem("Favorites");
         foreach (string category in _definitions.Select(definition => definition.Category).Distinct().OrderBy(value => value))
             _categoryPicker.AddItem(category);
         SelectCategory(selected);
@@ -97,7 +101,10 @@ public partial class CardShelf : VBoxContainer
         string category = _categoryPicker.Selected >= 0 ? _categoryPicker.GetItemText(_categoryPicker.Selected) : "All Cards";
         string query = _search.Text.Trim();
         IEnumerable<CardDefinition> visible = _definitions.Where(definition =>
-            (category == "All Cards" || definition.Category.Equals(category, StringComparison.OrdinalIgnoreCase))
+            (category == "All Cards"
+                || category == "Recent" && _recent.Contains(definition.Id, StringComparer.OrdinalIgnoreCase)
+                || category == "Favorites" && _favorites.Contains(definition.Id)
+                || definition.Category.Equals(category, StringComparison.OrdinalIgnoreCase))
             && (query.Length == 0
                 || definition.Title.Contains(query, StringComparison.OrdinalIgnoreCase)
                 || definition.Subtitle.Contains(query, StringComparison.OrdinalIgnoreCase)
@@ -107,9 +114,10 @@ public partial class CardShelf : VBoxContainer
         foreach (CardDefinition definition in visible)
         {
             BuilderCard card = new(definition);
-            card.Activated += _ => Activated?.Invoke(definition);
-            card.DuplicateRequested += _ => Activated?.Invoke(definition);
+            card.Activated += _ => ActivateDefinition(definition);
+            card.DuplicateRequested += _ => ActivateDefinition(definition);
             card.ForkRequested += _ => ForkDefinition(definition);
+            card.FavoriteRequested += _ => ToggleFavorite(definition);
             _cards.AddChild(card);
             count++;
         }
@@ -121,6 +129,23 @@ public partial class CardShelf : VBoxContainer
             empty.AddThemeFontSizeOverride("font_size", 11);
             _cards.AddChild(empty);
         }
+    }
+
+    private void ActivateDefinition(CardDefinition definition)
+    {
+        _recent.RemoveAll(id => id.Equals(definition.Id, StringComparison.OrdinalIgnoreCase));
+        _recent.Insert(0, definition.Id);
+        if (_recent.Count > 8)
+            _recent.RemoveRange(8, _recent.Count - 8);
+        Activated?.Invoke(definition);
+    }
+
+    private void ToggleFavorite(CardDefinition definition)
+    {
+        if (!_favorites.Add(definition.Id))
+            _favorites.Remove(definition.Id);
+        if (_categoryPicker.GetItemText(_categoryPicker.Selected) == "Favorites")
+            RefreshCards();
     }
 
     private void ForkDefinition(CardDefinition source)

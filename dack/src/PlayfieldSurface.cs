@@ -30,6 +30,7 @@ public partial class PlayfieldSurface : Control
     public bool HasCapturedPage => _capturedPage is not null;
     public string CapturedPageSourceName => _capturedPage?.SourceName ?? string.Empty;
     public Vector2I CapturedPageSize => _capturedPage?.PixelSize ?? Vector2I.Zero;
+    public PlayfieldProfile? Profile => _capturedPage?.Profile;
     public bool ShowEditorOnlyObjects { get; set; }
     public bool EditorMode { get; set; } = true;
     public bool SimulationPaused { get; set; } = true;
@@ -37,6 +38,8 @@ public partial class PlayfieldSurface : Control
     public Rect2 PlayBounds => _capturedPage is not null ? GetCapturedPageDrawRect(_capturedPage) : new Rect2(Vector2.Zero, Size);
     public event Action<string>? WorldObjectSelectionChanged;
     public event Action<WorldObject?>? WorldObjectSelectionObjectChanged;
+    public event Action<WorldObject?>? WorldObjectInspectionRequested;
+    public event Action<string>? WorldObjectChanged;
     public event Action<Godot.Collections.Dictionary, Vector2>? CardDroppedOnPlayfield;
     public float ElapsedSeconds
     {
@@ -92,7 +95,17 @@ public partial class PlayfieldSurface : Control
         if (!EditorMode)
             return;
 
-        if (inputEvent is InputEventMouseButton mouseButton && mouseButton.ButtonIndex == MouseButton.Left)
+        if (inputEvent is InputEventMouseButton inspectButton
+            && inspectButton.ButtonIndex == MouseButton.Right
+            && inspectButton.Pressed)
+        {
+            if (TrySelectWorldObject(inspectButton.Position))
+            {
+                WorldObjectInspectionRequested?.Invoke(GetSelectedWorldObject());
+                AcceptEvent();
+            }
+        }
+        else if (inputEvent is InputEventMouseButton mouseButton && mouseButton.ButtonIndex == MouseButton.Left)
         {
             if (mouseButton.Pressed)
             {
@@ -812,6 +825,7 @@ public partial class PlayfieldSurface : Control
             return;
 
         _placedWorldObjects[_selectedWorldObjectIndex] = update(_placedWorldObjects[_selectedWorldObjectIndex]);
+        WorldObjectChanged?.Invoke($"{_placedWorldObjects[_selectedWorldObjectIndex].Kind} changed");
         PublishWorldObjectSelection();
         QueueRedraw();
     }
@@ -1089,6 +1103,27 @@ public partial class PlayfieldSurface : Control
         return false;
     }
 
+    private bool TrySelectWorldObject(Vector2 position)
+    {
+        for (int i = _placedWorldObjects.Count - 1; i >= 0; i--)
+        {
+            WorldObject worldObject = _placedWorldObjects[i];
+            if (!WorldObjectBodyHitTest(worldObject, position)
+                && !HandleRect(worldObject.Start).HasPoint(position)
+                && !HandleRect(worldObject.End).HasPoint(position))
+                continue;
+
+            _selectedWorldObjectIndex = i;
+            _draggedHandle = -1;
+            _dragBodyOffset = Vector2.Zero;
+            PublishWorldObjectSelection();
+            QueueRedraw();
+            return true;
+        }
+
+        return false;
+    }
+
     private bool WorldObjectBodyHitTest(WorldObject worldObject, Vector2 position)
     {
         if (worldObject.IsMarker || worldObject.Kind == WorldObjectKind.PinballBumper)
@@ -1158,6 +1193,7 @@ public partial class PlayfieldSurface : Control
         }
 
         _placedWorldObjects[_selectedWorldObjectIndex] = selected;
+        WorldObjectChanged?.Invoke($"{selected.Kind} geometry changed");
         PublishWorldObjectSelection();
         QueueRedraw();
     }
@@ -1171,6 +1207,7 @@ public partial class PlayfieldSurface : Control
         Vector2 desiredCenter = SnapBodyCenterToPlayBounds(selected, position - _dragBodyOffset);
         Vector2 delta = desiredCenter - selected.Center;
         _placedWorldObjects[_selectedWorldObjectIndex] = selected.Translated(delta);
+        WorldObjectChanged?.Invoke($"{selected.Kind} moved");
         PublishWorldObjectSelection();
         QueueRedraw();
     }

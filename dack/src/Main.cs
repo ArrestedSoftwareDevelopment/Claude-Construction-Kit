@@ -63,6 +63,8 @@ public partial class Main : Control
     private Control _pinballPanel = null!;
     private Control _overheadPanel = null!;
     private Label _legacyLibraryStatus = null!;
+    private Label _playfieldProfileLabel = null!;
+    private VBoxContainer _playfieldRecommendationButtons = null!;
     private List<LegacyAssetBundle> _legacyBundles = [];
     private CharacterPreviewPanel _characterPreview = null!;
     private CharacterPreviewPanel _spriteEditorPreview = null!;
@@ -75,6 +77,29 @@ public partial class Main : Control
     private Button _transportFreezeButton = null!;
     private Button _transportStopButton = null!;
     private Label _inspectorText = null!;
+    private Label _actorInspectorSummary = null!;
+    private Control _actorInspectorSection = null!;
+    private LineEdit _actorInspectorName = null!;
+    private OptionButton _actorAiPicker = null!;
+    private CheckBox _actorProjectileCheck = null!;
+    private CheckBox _actorTextAwareCheck = null!;
+    private CheckBox _actorVisibleCheck = null!;
+    private CheckBox _actorShadowCheck = null!;
+    private HSlider _actorRadarSlider = null!;
+    private HSlider _actorToughnessSlider = null!;
+    private HSlider _actorScaleSlider = null!;
+    private HSlider _actorOpacitySlider = null!;
+    private ColorPickerButton _actorTintPicker = null!;
+    private CardSlot _actorProjectileInspectorSlot = null!;
+    private CardSlot _actorEffectInspectorSlot = null!;
+    private bool _updatingActorInspector;
+    private Control _inspectorPanel = null!;
+    private Control _dockedInspectorHost = null!;
+    private PanelContainer _floatingInspector = null!;
+    private VBoxContainer _floatingInspectorHost = null!;
+    private Label _floatingInspectorTitle = null!;
+    private bool _floatingInspectorDragging;
+    private Vector2 _floatingInspectorDragOffset;
     private Label _attributeText = null!;
     private HSlider _speedSlider = null!;
     private HSlider _thicknessSlider = null!;
@@ -193,6 +218,7 @@ public partial class Main : Control
         SyncEditorModeToScene();
         _playfield.Resized += OnPlayfieldResized;
         SelectActor(_actors[0]);
+        RefreshPlayfieldProfile();
         UpdateCursorMode();
         SetProcess(true);
     }
@@ -279,7 +305,9 @@ public partial class Main : Control
                  && escKey.Keycode == Key.Escape)
         {
             DismissLaunchScreen();
-            if (_sidebar is not null && _sidebar.Visible)
+            if (_floatingInspector is not null && _floatingInspector.Visible)
+                CloseFloatingInspector();
+            else if (_sidebar is not null && _sidebar.Visible)
                 CloseSpritePanel();
             else
                 ToggleCockpit();
@@ -361,11 +389,18 @@ public partial class Main : Control
                 _inspectorText.Text = text;
         };
         _playfield.WorldObjectSelectionObjectChanged += UpdateAttributeControls;
+        _playfield.WorldObjectChanged += MarkSessionDirty;
+        _playfield.WorldObjectInspectionRequested += selected =>
+        {
+            if (selected is not null)
+                ShowFloatingInspector($"{selected.Kind} Card Instance", GetViewport().GetMousePosition(), actorContext: false);
+        };
         _playfield.CardDroppedOnPlayfield += OnPlayfieldCardDropped;
         BuildAudioDeck();
         BuildKenneySoundCardDeck();
         BuildPlaysetToolbar();
         BuildCockpit();
+        BuildFloatingInspector();
         BuildPlatformerHud();
         BuildLaunchScreen();
 
@@ -1420,11 +1455,136 @@ public partial class Main : Control
             HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
             VerticalScrollMode = ScrollContainer.ScrollMode.Auto
         };
-        inspectorScroll.AddChild(BuildInspectorPanel());
+        _dockedInspectorHost = inspectorScroll;
+        _inspectorPanel = BuildInspectorPanel();
+        _dockedInspectorHost.AddChild(_inspectorPanel);
         cockpitBody.AddChild(inspectorScroll);
 
         FitCockpitToViewport();
         UpdateCockpitToolkitPanels();
+    }
+
+    private void BuildFloatingInspector()
+    {
+        _floatingInspector = new PanelContainer
+        {
+            Visible = false,
+            Position = new Vector2(24, 24),
+            Size = new Vector2(390, 680),
+            CustomMinimumSize = new Vector2(330, 360),
+            MouseFilter = MouseFilterEnum.Stop,
+            ZIndex = 120
+        };
+        _floatingInspector.AddThemeStyleboxOverride("panel", FlatStyle("#F7F5EF", 10));
+        AddChild(_floatingInspector);
+
+        VBoxContainer root = new();
+        root.AddThemeConstantOverride("separation", 0);
+        _floatingInspector.AddChild(root);
+
+        PanelContainer titleBar = new()
+        {
+            CustomMinimumSize = new Vector2(0, 46),
+            MouseFilter = MouseFilterEnum.Stop,
+            MouseDefaultCursorShape = CursorShape.Move
+        };
+        titleBar.AddThemeStyleboxOverride("panel", FlatStyle("#202A34", 8));
+        titleBar.GuiInput += OnFloatingInspectorTitleInput;
+        root.AddChild(titleBar);
+
+        MarginContainer titleMargin = Margins(12, 6, 6, 6);
+        titleBar.AddChild(titleMargin);
+        HBoxContainer titleRow = new();
+        titleMargin.AddChild(titleRow);
+        _floatingInspectorTitle = new Label
+        {
+            Text = "CARD INSTANCE INSPECTOR",
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        _floatingInspectorTitle.AddThemeColorOverride("font_color", new Color("#F7F5EF"));
+        _floatingInspectorTitle.AddThemeFontSizeOverride("font_size", 14);
+        titleRow.AddChild(_floatingInspectorTitle);
+
+        Button close = Button("×");
+        close.TooltipText = "Close Inspector (Esc)";
+        close.CustomMinimumSize = new Vector2(38, 32);
+        close.Pressed += CloseFloatingInspector;
+        titleRow.AddChild(close);
+
+        _floatingInspectorHost = new VBoxContainer
+        {
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            SizeFlagsVertical = SizeFlags.ExpandFill
+        };
+        root.AddChild(_floatingInspectorHost);
+    }
+
+    private void OnFloatingInspectorTitleInput(InputEvent inputEvent)
+    {
+        if (inputEvent is InputEventMouseButton mouseButton && mouseButton.ButtonIndex == MouseButton.Left)
+        {
+            _floatingInspectorDragging = mouseButton.Pressed;
+            if (mouseButton.Pressed)
+                _floatingInspectorDragOffset = GetViewport().GetMousePosition() - _floatingInspector.Position;
+            _floatingInspector.AcceptEvent();
+        }
+        else if (inputEvent is InputEventMouseMotion && _floatingInspectorDragging)
+        {
+            _floatingInspector.Position = ClampFloatingInspectorPosition(GetViewport().GetMousePosition() - _floatingInspectorDragOffset);
+            _floatingInspector.AcceptEvent();
+        }
+    }
+
+    private void ShowFloatingInspector(string title, Vector2 requestedPosition, bool actorContext)
+    {
+        if (!_editorMode || _floatingInspector is null)
+            return;
+
+        ReparentInspector(_floatingInspectorHost);
+        _floatingInspectorTitle.Text = title.ToUpperInvariant();
+        _actorInspectorSection.Visible = actorContext;
+        Vector2 viewportSize = GetViewportRect().Size;
+        _floatingInspector.Size = new Vector2(
+            Mathf.Min(390f, Mathf.Max(330f, viewportSize.X - 24f)),
+            Mathf.Min(720f, Mathf.Max(360f, viewportSize.Y - 24f))
+        );
+        _floatingInspector.Position = ClampFloatingInspectorPosition(requestedPosition + new Vector2(14f, 10f));
+        _floatingInspector.Visible = true;
+        _floatingInspector.MoveToFront();
+        RefreshActorInspector();
+        UpdateAttributeControls(_playfield.GetSelectedWorldObject());
+        UpdateCursorMode();
+    }
+
+    private void CloseFloatingInspector()
+    {
+        if (_floatingInspector is null)
+            return;
+
+        _floatingInspectorDragging = false;
+        _actorInspectorSection.Visible = true;
+        ReparentInspector(_dockedInspectorHost);
+        _floatingInspector.Visible = false;
+        UpdateCursorMode();
+    }
+
+    private void ReparentInspector(Node destination)
+    {
+        if (_inspectorPanel is null || destination is null || ReferenceEquals(_inspectorPanel.GetParent(), destination))
+            return;
+
+        _inspectorPanel.Reparent(destination, false);
+    }
+
+    private Vector2 ClampFloatingInspectorPosition(Vector2 desired)
+    {
+        Vector2 viewportSize = GetViewportRect().Size;
+        const float edge = 8f;
+        return new Vector2(
+            Mathf.Clamp(desired.X, edge, Mathf.Max(edge, viewportSize.X - _floatingInspector.Size.X - edge)),
+            Mathf.Clamp(desired.Y, edge, Mathf.Max(edge, viewportSize.Y - _floatingInspector.Size.Y - edge))
+        );
     }
 
     private Control BuildMenuBar()
@@ -1780,13 +1940,7 @@ public partial class Main : Control
         shell.AddSection("Actors", "enemies, AI, perception", actors);
 
         VBoxContainer world = FamilySectionBody();
-        world.AddChild(ButtonRow(
-            ShelfButton("Ladder", WorldObjectKind.Ladder, "Vertical climb volume. Drag A/B to set height; thickness roughly matches player width."),
-            ShelfButton("Ramp", WorldObjectKind.Ramp, "Static angled standable line for paragraph slants / Donkey Kong feel.")));
-        world.AddChild(ButtonRow(
-            ShelfButton("Slide", WorldObjectKind.Slide, "Downhill acceleration surface. Slides always push toward the lower endpoint."),
-            ShelfButton("Conveyor", WorldObjectKind.Conveyor, "Powered belt/line surface with intentionally strong force; rotate it for angled belts.")));
-        world.AddChild(ShelfButton("Elevator", WorldObjectKind.Elevator, "Moving platform with editable range, direction, and speed."));
+        world.AddChild(CreateCardShelf("Construction Cards", SideViewConstructionCardDefinitions(), definition => ActivateWorldObjectCard(definition.EffectiveId, null)));
         shell.AddSection("World", "terrain and moving surfaces", world, expanded: true);
 
         VBoxContainer effects = FamilySectionBody();
@@ -1808,13 +1962,7 @@ public partial class Main : Control
         shell.AddSection("Weapons & Effects", "shots, explosions, sound", effects);
 
         VBoxContainer logic = FamilySectionBody();
-        logic.AddChild(ButtonRow(
-            ShelfButton("Start", WorldObjectKind.StartPoint, "Editor-only spawn marker. Visible while building, hidden during play."),
-            ShelfButton("Checkpoint", WorldObjectKind.Checkpoint, "Visible marker now; spawn binding comes next.")));
-        logic.AddChild(ButtonRow(
-            ShelfButton("Goal", WorldObjectKind.GoalPoint, "Visible level objective marker: the first complete test level spine is Start -> Midpoint -> Goal."),
-            ShelfButton("Hidden Switch", WorldObjectKind.HiddenSwitch, "Invisible gameplay logic: visible in editor, hidden from the player.")));
-        logic.AddChild(ShelfButton("Enemy Spawn", WorldObjectKind.EnemySpawnPoint, "Editor-only spawn flag with assignable enemy, interval, burst count, max active count, speed, and behavior."));
+        logic.AddChild(CreateCardShelf("Marker / Logic Cards", MarkerCardDefinitions(), definition => ActivateWorldObjectCard(definition.EffectiveId, null)));
         shell.AddSection("Markers & Logic", "start, goal, triggers, spawns", logic);
 
         VBoxContainer text = FamilySectionBody();
@@ -2004,7 +2152,7 @@ public partial class Main : Control
         shell.AddSection("Overview & Transport", "preset and session", overview, expanded: true);
 
         VBoxContainer player = FamilySectionBody();
-        player.AddChild(PinballShelfButton("Add Plunger", WorldObjectKind.PinballPlunger, "Launch lane/plunger. A/B handles define lane and launch direction."));
+        player.AddChild(CreateCardShelf("Ball / Launch Cards", PinballConstructionCardDefinitions().Where(definition => definition.Category == "Player"), definition => ActivateWorldObjectCard(definition.EffectiveId, null)));
         player.AddChild(CockpitNote("Ball card, plunger strength, launch direction, nudge, and input bindings belong here."));
         shell.AddSection("Player", "ball, plunger, nudge", player);
 
@@ -2013,10 +2161,7 @@ public partial class Main : Control
         shell.AddSection("Actors", "animated targets and hazards", actors);
 
         VBoxContainer world = FamilySectionBody();
-        world.AddChild(ButtonRow(
-            PinballShelfButton("Add Flipper", WorldObjectKind.PinballFlipper, "Pivot-to-tip flipper. A/B handles define pivot, length, and resting angle."),
-            PinballShelfButton("Add Bumper", WorldObjectKind.PinballBumper, "Circular pop bumper. Drag A/B to place and scale radius.")));
-        world.AddChild(PinballShelfButton("Add Drain", WorldObjectKind.PinballDrain, "Drain/outlane. A/B handles set drain width."));
+        world.AddChild(CreateCardShelf("Table Part Cards", PinballConstructionCardDefinitions().Where(definition => definition.Category == "Table Parts"), definition => ActivateWorldObjectCard(definition.EffectiveId, null)));
         world.AddChild(FamilyTabButton("Open Object Cards", "Objects", "Add rails, barricades, gems, inserts, and table furniture."));
         shell.AddSection("World", "table shell and physical parts", world, expanded: true);
 
@@ -2028,9 +2173,7 @@ public partial class Main : Control
         shell.AddSection("Weapons & Effects", "impacts, lights, sound", effects);
 
         VBoxContainer logic = FamilySectionBody();
-        logic.AddChild(ButtonRow(
-            PinballShelfButton("Add Rollover", WorldObjectKind.PinballRollover, "Small scoring/lit insert strip. A/B handles set position and width."),
-            PinballShelfButton("Add Gate", WorldObjectKind.PinballGate, "One-way gate. A/B direction points toward allowed travel.")));
+        logic.AddChild(CreateCardShelf("Table Logic Cards", PinballConstructionCardDefinitions().Where(definition => definition.Category == "Logic"), definition => ActivateWorldObjectCard(definition.EffectiveId, null)));
         logic.AddChild(CockpitNote("Switch banks, jackpots, locks, lanes, missions, and conditional areas will use shared logic cards."));
         shell.AddSection("Markers & Logic", "switches, lanes, jackpots", logic);
 
@@ -2488,7 +2631,7 @@ public partial class Main : Control
         PanelContainer panel = CockpitPanel(270);
         VBoxContainer enemies = PanelVBox(panel);
         enemies.AddChild(CockpitHeading("ENEMIES"));
-        enemies.AddChild(CockpitNote("Pick by role first. The same art can later be reassigned, but these buttons give useful starter defaults: contact, shooter, flyer/ship, vehicle, boss."));
+        enemies.AddChild(CockpitNote("Pick a role category, then Apply, Duplicate, Fork, favorite, or drag an Enemy Card onto the playfield. Repeated placements create independent actors."));
 
         CardShelf enemyShelf = CreateCardShelf("Enemy Cards", EnemyCardDefinitions(), definition => ActivateEnemyCard(definition.EffectiveId, null));
         enemies.AddChild(enemyShelf);
@@ -2660,6 +2803,20 @@ public partial class Main : Control
             cardId,
             dropPosition
         );
+        if (_selectedActor is not null && !_selectedActor.IsPlayable)
+        {
+            _selectedActor.AiMode = cardId switch
+            {
+                "tgc-red-runner" or "tgc-green-crawler" or "tgc-green-snake" => ActorAiMode.Patrol,
+                "tgc-blue-guard" => ActorAiMode.Defend,
+                "sunny-dragon-fly" or "tgc-shooter-fleet" => ActorAiMode.Flying,
+                "tgc-shooter-boss" => ActorAiMode.Stationary,
+                _ => ActorAiMode.TrackPlayer
+            };
+            _selectedActor.ProjectileCardId = shoots ? "enemy-fireball" : "";
+            _selectedActor.EffectCardId = shoots ? "explosion-pack-b" : "";
+            RefreshActorInspector();
+        }
         MarkSessionDirty($"Placed enemy card {name}");
     }
 
@@ -2669,6 +2826,8 @@ public partial class Main : Control
         {
             case "player-basic-shot":
                 _gunEnabled = true;
+                if (_selectedActor is not null)
+                    _selectedActor.ProjectileCardId = cardId;
                 ClearPlayerShots();
                 _inspectorText.Text = "Player Basic Shot applied. The player weapon and Run Shoot / Jump Shoot hooks are enabled.";
                 break;
@@ -2679,14 +2838,19 @@ public partial class Main : Control
                     return;
                 }
                 _selectedActor.CanFireProjectiles = true;
+                _selectedActor.ProjectileCardId = cardId;
                 _enemyProjectilesEnabled = true;
                 _inspectorText.Text = $"Enemy Fireball applied to {_selectedActor.ActorName}. Global enemy shots are enabled.";
                 break;
             case "explosion-pack-b":
                 _explosionsDamageText = true;
+                if (_selectedActor is not null)
+                    _selectedActor.EffectCardId = cardId;
                 _inspectorText.Text = "Explosion B applied as the current impact profile. Blast-letter shrapnel is enabled.";
                 break;
             case "psychedelic-word-burst":
+                if (_selectedActor is not null)
+                    _selectedActor.EffectCardId = cardId;
                 _inspectorText.Text = "Procedural Word Burst selected for the current effects vocabulary.";
                 break;
             default:
@@ -2696,6 +2860,7 @@ public partial class Main : Control
 
         MarkSessionDirty($"Applied projectile/effect card {cardId}");
         RefreshCharacterWorkbenchStatus();
+        RefreshActorInspector();
     }
 
     private void ActivateWorldObjectCard(string cardId, Vector2? dropPosition)
@@ -3172,26 +3337,13 @@ public partial class Main : Control
         );
         inspector.AddChild(_inspectorText);
 
+        _actorInspectorSection = BuildActorInstanceInspector();
+        inspector.AddChild(_actorInspectorSection);
+
         inspector.AddChild(CockpitHeading("ATTRIBUTES"));
         _attributeText = CockpitNote("Select a placed object to edit speed, direction, thickness, and slope behavior.");
         inspector.AddChild(_attributeText);
 
-        inspector.AddChild(CockpitHeading("ACTOR COMBAT"));
-        inspector.AddChild(CockpitNote("Enemy toughness is regular shots to defeat. Gun power subtracts that many shot-points per hit."));
-        Button tougher = Button("Toughness +");
-        tougher.Pressed += () => AdjustSelectedEnemyToughness(1);
-        Button weaker = Button("Toughness -");
-        weaker.Pressed += () => AdjustSelectedEnemyToughness(-1);
-        inspector.AddChild(ButtonRow(weaker, tougher));
-
-        Button shotPower = Button(PlayerShotPowerButtonText());
-        shotPower.Pressed += () =>
-        {
-            _playerShotPower = _playerShotPower >= 4 ? 1 : _playerShotPower + 1;
-            shotPower.Text = PlayerShotPowerButtonText();
-            _inspectorText.Text = $"Player gun power set to {_playerShotPower}x.\n\nA {_playerShotPower}x hit removes {_playerShotPower} point(s) of enemy shot toughness.";
-        };
-        inspector.AddChild(shotPower);
 
         _speedSlider = AttributeSlider(-180, 180, 0, 1);
         _speedSlider.ValueChanged += value =>
@@ -3354,6 +3506,16 @@ public partial class Main : Control
         PanelContainer panel = CockpitPanel(280);
         VBoxContainer understand = PanelVBox(panel);
         understand.AddChild(CockpitHeading("UNDERSTAND"));
+        understand.AddChild(CockpitHeading("PLAYFIELD PROFILE"));
+        understand.AddChild(CockpitNote("Provisional geometry-only recommendations. OCR may enrich their meaning later but is not required."));
+        _playfieldProfileLabel = CockpitNote("Waiting for a captured Snapshot.");
+        understand.AddChild(_playfieldProfileLabel);
+        _playfieldRecommendationButtons = new VBoxContainer();
+        _playfieldRecommendationButtons.AddThemeConstantOverride("separation", 5);
+        understand.AddChild(_playfieldRecommendationButtons);
+        Button refreshProfile = Button("Refresh Recommendations");
+        refreshProfile.Pressed += RefreshPlayfieldProfile;
+        understand.AddChild(refreshProfile);
         understand.AddChild(CockpitHeading("WORD SENSE"));
         understand.AddChild(CockpitNote(_playfield.Ocr.StatusText));
         understand.AddChild(CockpitHeading("DISPLAY LAYOUT"));
@@ -3569,6 +3731,8 @@ public partial class Main : Control
                 Model = _initialModel
             };
             actor.SelectionRequested += SelectActor;
+            actor.InspectionRequested += InspectActor;
+            actor.PlacementChanged += changed => MarkSessionDirty($"{changed.ActorName} moved");
             _actors.Add(actor);
             _playfield.AddChild(actor);
 
@@ -3612,6 +3776,13 @@ public partial class Main : Control
         if (_spriteEditorPreview is not null)
             _spriteEditorPreview.Actor = actor;
         RefreshCharacterWorkbenchStatus();
+        RefreshActorInspector();
+    }
+
+    private void InspectActor(ActorView actor)
+    {
+        SelectActor(actor);
+        ShowFloatingInspector($"{(actor.IsPlayable ? "Player" : "Enemy")} Card: {actor.ActorName}", GetViewport().GetMousePosition(), actorContext: true);
     }
 
     private void RenameSelectedCharacter(string name)
@@ -3629,6 +3800,7 @@ public partial class Main : Control
 
         RefreshBindingText();
         RefreshCharacterWorkbenchStatus();
+        RefreshActorInspector();
         _selectedActor.TooltipText = $"Select {trimmed}";
     }
 
@@ -3795,6 +3967,8 @@ public partial class Main : Control
             Visible = false
         };
         enemy.SelectionRequested += SelectActor;
+        enemy.InspectionRequested += InspectActor;
+        enemy.PlacementChanged += changed => MarkSessionDirty($"{changed.ActorName} moved");
         _actors.Add(enemy);
         _playfield.AddChild(enemy);
         return enemy;
@@ -4726,6 +4900,14 @@ public partial class Main : Control
             actor.ManualPlacement = saved.manualPlacement;
             actor.ShotToughness = saved.shotToughness <= 0 ? DefaultEnemyShotToughness(actor.ActorName) : Mathf.Clamp(saved.shotToughness, 1, 9);
             actor.RadarRangeUnits = saved.radarRangeUnits <= 0 ? DefaultEnemyRadarRange(actor.ActorName) : Mathf.Clamp(saved.radarRangeUnits, 6f, 90f);
+            actor.AiMode = Enum.TryParse(saved.aiMode, out ActorAiMode aiMode) ? aiMode : ActorAiMode.Default;
+            actor.TextAware = saved.textAware;
+            actor.CanFireProjectiles = saved.canFireProjectiles ?? DefaultEnemyCanFire(actor.ActorName);
+            actor.ProjectileCardId = saved.projectileCardId;
+            actor.EffectCardId = saved.effectCardId;
+            actor.ActorTint = string.IsNullOrWhiteSpace(saved.tint) ? Colors.White : new Color("#" + saved.tint);
+            actor.ActorOpacity = saved.opacity <= 0 ? 1f : Mathf.Clamp(saved.opacity, 0.1f, 1f);
+            actor.ShadowEnabled = saved.shadowEnabled;
             actor.MotionState = Enum.TryParse(saved.motionState, out ActorMotionState motionState) ? motionState : ActorMotionState.Idle;
             actor.Position = new Vector2(saved.x, saved.y);
             actor.Size = new Vector2(saved.width, saved.height);
@@ -5245,6 +5427,8 @@ public partial class Main : Control
     private void ToggleCockpit()
     {
         DismissLaunchScreen();
+        if (_floatingInspector is not null && _floatingInspector.Visible)
+            CloseFloatingInspector();
         if (_cockpit.Visible)
         {
             bool resumePlay = _resumePlayWhenCockpitCloses;
@@ -5447,6 +5631,7 @@ public partial class Main : Control
             _resumePlayWhenCockpitCloses = false;
             _soundCardPlayer.StopAll();
             _cockpit.Visible = false;
+            CloseFloatingInspector();
             CloseSpritePanel();
             _platformerLives = Mathf.Max(1, _platformerLives);
             _playerHealth = _playerMaxHealth;
@@ -6050,7 +6235,12 @@ public partial class Main : Control
             if (enemy.HomePosition == Vector2.Zero)
                 enemy.HomePosition = enemy.Position;
 
-            if (IsFlyingEnemy(enemy))
+            if (enemy.AiMode == ActorAiMode.Stationary)
+            {
+                enemy.MotionState = ActorMotionState.Idle;
+                enemy.AnimationClock += dt;
+            }
+            else if (IsFlyingEnemy(enemy))
                 UpdateFlyingEnemy(enemy, dt, i);
             else
                 UpdateGroundEnemy(enemy, dt);
@@ -6079,14 +6269,20 @@ public partial class Main : Control
             Mathf.Sin(phase) * _textUnitPixels * 5.5f,
             Mathf.Sin(phase * 1.7f) * _textUnitPixels * 1.8f
         );
-        if (_enemyTracksPlayer && playerInRadar)
+        bool tracksPlayer = EnemyTracksPlayer(enemy);
+        if (tracksPlayer && playerInRadar)
         {
             float chaseBias = Mathf.Clamp((_player.Position.X - enemy.HomePosition.X) * 0.18f, -_textUnitPixels * 7f, _textUnitPixels * 7f);
             patrol.X += chaseBias;
         }
+        else if (enemy.AiMode == ActorAiMode.Flee && playerInRadar)
+        {
+            float fleeBias = Mathf.Clamp((enemy.HomePosition.X - _player.Position.X) * 0.18f, -_textUnitPixels * 7f, _textUnitPixels * 7f);
+            patrol.X += fleeBias;
+        }
 
         enemy.Position = enemy.HomePosition + patrol;
-        if (_enemyTracksPlayer && playerInRadar)
+        if (tracksPlayer && playerInRadar)
             enemy.FacingRight = _player.Position.X > enemy.Position.X;
         enemy.MotionState = ActorMotionState.Idle;
         enemy.AnimationClock += dt;
@@ -6101,9 +6297,11 @@ public partial class Main : Control
             : (enemy.FacingRight ? 1f : -1f);
         bool playerInRadar = IsPlayerInsideEnemyRadar(enemy);
 
-        float patrolRange = motionUnit * 11f;
-        float patrolSpeed = motionUnit * 5.2f;
-        if (_enemyTracksPlayer && playerInRadar)
+        float patrolRange = motionUnit * (enemy.AiMode == ActorAiMode.Defend ? 6f : 11f);
+        float patrolSpeed = motionUnit * (enemy.AiMode == ActorAiMode.Horde ? 7.2f : 5.2f);
+        if (enemy.AiMode == ActorAiMode.Flee && playerInRadar)
+            direction = _player.Position.X >= enemy.Position.X ? -1f : 1f;
+        else if (EnemyTracksPlayer(enemy) && playerInRadar)
             direction = _player.Position.X >= enemy.Position.X ? 1f : -1f;
         else if (enemy.Position.X < enemy.HomePosition.X - patrolRange)
             direction = 1f;
@@ -6134,7 +6332,7 @@ public partial class Main : Control
         Rect2 playBounds = _playfield.PlayBounds;
         next.X = Mathf.Clamp(next.X, playBounds.Position.X, Mathf.Max(playBounds.Position.X, playBounds.End.X - enemy.Size.X));
         bool grounded = ResolveEnemyVerticalCollisions(enemy, ref next, ref velocity);
-        if (grounded && ShouldGroundEnemyReverseAtEdge(enemy, next, direction))
+        if (grounded && enemy.TextAware && ShouldGroundEnemyReverseAtEdge(enemy, next, direction))
         {
             direction *= -1f;
             velocity.X = direction * patrolSpeed;
@@ -6221,13 +6419,14 @@ public partial class Main : Control
         if (origin.DistanceTo(target) > maxRange)
             return;
 
-        if (_enemyTracksPlayer && IsPlayerInsideEnemyRadar(enemy))
+        bool tracksPlayer = EnemyTracksPlayer(enemy);
+        if (tracksPlayer && IsPlayerInsideEnemyRadar(enemy))
             enemy.FacingRight = target.X > origin.X;
 
         Vector2 direction = target - origin;
         if (direction.LengthSquared() <= 0.01f)
             direction = enemy.FacingRight ? Vector2.Right : Vector2.Left;
-        else if (!_enemyTracksPlayer)
+        else if (!tracksPlayer)
             direction = enemy.FacingRight ? Vector2.Right : Vector2.Left;
         else
             direction = direction.Normalized();
@@ -6568,6 +6767,15 @@ public partial class Main : Control
         return 1;
     }
 
+    private static bool DefaultEnemyCanFire(string actorName)
+    {
+        return actorName.Contains("Shooter", StringComparison.OrdinalIgnoreCase)
+            || actorName.Contains("Guard", StringComparison.OrdinalIgnoreCase)
+            || actorName.Contains("Dragon", StringComparison.OrdinalIgnoreCase)
+            || actorName.Contains("Fleet", StringComparison.OrdinalIgnoreCase)
+            || actorName.Contains("Boss", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static float DefaultEnemyRadarRange(string actorName)
     {
         if (actorName.Contains("Boss", StringComparison.OrdinalIgnoreCase))
@@ -6903,12 +7111,24 @@ public partial class Main : Control
 
     private static bool IsFlyingEnemy(ActorView enemy)
     {
+        if (enemy.AiMode == ActorAiMode.Flying)
+            return true;
         string name = enemy.ActorName;
         return name.Contains("Dragon", StringComparison.OrdinalIgnoreCase)
             || name.Contains("Ship", StringComparison.OrdinalIgnoreCase)
             || name.Contains("Fleet", StringComparison.OrdinalIgnoreCase)
             || name.Contains("Boss", StringComparison.OrdinalIgnoreCase)
             || name.Contains("Fly", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool EnemyTracksPlayer(ActorView enemy)
+    {
+        return enemy.AiMode switch
+        {
+            ActorAiMode.TrackPlayer or ActorAiMode.Defend or ActorAiMode.Horde or ActorAiMode.Flying or ActorAiMode.Stationary => true,
+            ActorAiMode.Patrol or ActorAiMode.Flee => false,
+            _ => _enemyTracksPlayer
+        };
     }
 
     private bool HasEnoughLandingSupport(Rect2 actorBounds, Rect2 surface)
@@ -6988,7 +7208,12 @@ public partial class Main : Control
         }
 
         _actorSizeMultiplier = multiplier;
-        ApplyActorScale();
+        Vector2 playerSize = new(
+            Mathf.Round(_textUnitPixels * 3.0f * _actorSizeMultiplier),
+            Mathf.Round(_textUnitPixels * 4.6f * _actorSizeMultiplier)
+        );
+        _player.Size = playerSize;
+        _player.CustomMinimumSize = playerSize;
         SnapPlayerToStart();
         _playfield.QueueRedraw();
         RefreshMotionText();
@@ -7014,7 +7239,11 @@ public partial class Main : Control
 
     private void UpdateCursorMode()
     {
-        Input.MouseMode = _bossMode || _sidebar.Visible || (_cockpit is not null && _cockpit.Visible) || IsPlaysetToolbarExpanded()
+        Input.MouseMode = _bossMode
+            || _sidebar.Visible
+            || (_cockpit is not null && _cockpit.Visible)
+            || (_floatingInspector is not null && _floatingInspector.Visible)
+            || IsPlaysetToolbarExpanded()
             ? Input.MouseModeEnum.Visible
             : Input.MouseModeEnum.Hidden;
     }
@@ -7311,64 +7540,32 @@ public partial class Main : Control
         lineEdit.AddThemeFontSizeOverride("font_size", 12);
     }
 
-    private Button ShelfButton(string text, WorldObjectKind kind, string description)
-    {
-        Button button = Button(text);
-        button.TooltipText = description;
-        button.Pressed += () =>
-        {
-            SetPlaysetMode(PlaysetMode.Platformer);
-            _playfield.AddPlacedObject(kind);
-            MarkSessionDirty($"Placed {text}");
-            SyncEditorModeToScene();
-            _inspectorText.Text = $"{text} placed.\n\n{description}\n\nDrag either A/B endpoint handle on the playfield to move, scale, or angle it.";
-            RefreshCockpitStatus();
-        };
-        return button;
-    }
-
-    private Button PinballShelfButton(string text, WorldObjectKind kind, string description)
-    {
-        Button button = Button(text);
-        button.TooltipText = description;
-        button.Pressed += () =>
-        {
-            SetPlaysetMode(PlaysetMode.Pinball);
-            _playfield.AddPlacedObject(kind);
-            MarkSessionDirty($"Placed {text}");
-            _inspectorText.Text = $"{text} placed.\n\n{description}\n\nThis is a pinball construction placeholder: draggable now, physics binding later.";
-            RefreshCockpitStatus();
-        };
-        return button;
-    }
-
-    private Button ObjectShelfButton(string text, WorldObjectKind kind, string description)
-    {
-        Button button = Button(text);
-        button.TooltipText = description;
-        button.Pressed += () =>
-        {
-            _playfield.AddPlacedObject(kind);
-            MarkSessionDirty($"Placed {text}");
-            SyncEditorModeToScene();
-            _inspectorText.Text = $"{text} placed.\n\n{description}\n\nObjects are shared level furniture: they can belong to platformer, pinball, Brickbat, overhead, text quests, or later builder presets.";
-            RefreshCockpitStatus();
-        };
-        return button;
-    }
-
     private Control CharacterSlotShelf(string title, string current, string description, string? targetTab = null)
     {
-        Button shelf = Button($"{title}\n{current}");
-        shelf.CustomMinimumSize = new Vector2(0, 54);
-        shelf.TooltipText = description;
-        shelf.Pressed += () =>
+        string[] acceptedKinds = title switch
+        {
+            "Projectile" => ["projectile"],
+            "Explosion" => ["effect"],
+            "AI / Behavior" => ["behavior"],
+            "Sounds" => ["sound"],
+            "Text Rules" => ["text-rule"],
+            _ => []
+        };
+        CardSlot shelf = new(title, current, description, acceptedKinds);
+        shelf.Activated += _ =>
         {
             if (!string.IsNullOrWhiteSpace(targetTab))
                 SelectCockpitTab(targetTab);
-            _inspectorText.Text = $"{title} shelf\n\n{description}\n\nNext pass: drag a card here from Projectiles, Effects, Sounds, AI, or Text Rules. For now, use the matching Cockpit page and the selected actor.";
+            _inspectorText.Text = $"{title} slot\n\n{description}\n\nDrag a compatible card here or open its catalog.";
         };
-        shelf.AddThemeFontSizeOverride("font_size", 11);
+        shelf.CardDropped += (slot, card) =>
+        {
+            string cardId = card.ContainsKey("dackCardSourceId")
+                ? card["dackCardSourceId"].AsString()
+                : card.ContainsKey("dackCardId") ? card["dackCardId"].AsString() : "";
+            ActivateProjectileCard(cardId);
+            slot.SetCurrent($"Current: {cardId}");
+        };
         return shelf;
     }
 
@@ -7424,6 +7621,356 @@ public partial class Main : Control
         };
         panel.AddThemeStyleboxOverride("panel", FlatStyle("#F7F5EF", 8));
         return panel;
+    }
+
+    private void RefreshPlayfieldProfile()
+    {
+        if (_playfieldProfileLabel is null || _playfieldRecommendationButtons is null)
+            return;
+
+        foreach (Node child in _playfieldRecommendationButtons.GetChildren())
+            child.QueueFree();
+
+        PlayfieldProfile? profile = _playfield.Profile;
+        if (profile is null)
+        {
+            _playfieldProfileLabel.Text = "No captured Snapshot is available. Recommendations begin after native-resolution intake.";
+            return;
+        }
+
+        _playfieldProfileLabel.Text = profile.Summary();
+        foreach (PlayfieldRecommendation recommendation in profile.Recommendations)
+        {
+            Button tryRecommendation = Button($"Try {recommendation.Playset}");
+            tryRecommendation.TooltipText = recommendation.Reason + " " + recommendation.SuggestedConstruction;
+            tryRecommendation.Pressed += () => ApplyPlayfieldRecommendation(recommendation);
+            _playfieldRecommendationButtons.AddChild(tryRecommendation);
+        }
+    }
+
+    private void ApplyPlayfieldRecommendation(PlayfieldRecommendation recommendation)
+    {
+        PlaysetMode mode = recommendation.Playset switch
+        {
+            "Side-View Platformer" => PlaysetMode.Platformer,
+            "Brickbat" => PlaysetMode.Brickbat,
+            "Pinball" => PlaysetMode.Pinball,
+            _ => PlaysetMode.Overhead
+        };
+        SetPlaysetMode(mode);
+        MarkSessionDirty($"Applied {recommendation.Playset} recommendation");
+        _inspectorText.Text = $"{recommendation.Playset} selected from the Snapshot profile.\n\nWhy: {recommendation.Reason}\n\nSuggested construction: {recommendation.SuggestedConstruction}\n\nThis recommendation is an opening move only; every toolkit remains available.";
+    }
+
+    private Control BuildActorInstanceInspector()
+    {
+        VBoxContainer actor = FamilySectionBody();
+        actor.AddChild(CockpitHeading("SELECTED CARD INSTANCE"));
+        _actorInspectorSummary = CockpitNote("Select a player or enemy on the playfield.");
+        actor.AddChild(_actorInspectorSummary);
+
+        _actorInspectorName = new LineEdit
+        {
+            PlaceholderText = "Actor name",
+            CustomMinimumSize = new Vector2(0, 34)
+        };
+        StyleLightEditorLineEdit(_actorInspectorName);
+        _actorInspectorName.TextSubmitted += value => ApplyActorInspectorName(value);
+        _actorInspectorName.FocusExited += () => ApplyActorInspectorName(_actorInspectorName.Text);
+        actor.AddChild(_actorInspectorName);
+
+        actor.AddChild(CockpitNote("AI / behavior"));
+        _actorAiPicker = new OptionButton
+        {
+            CustomMinimumSize = new Vector2(0, 34),
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            FocusMode = FocusModeEnum.None
+        };
+        foreach (ActorAiMode mode in Enum.GetValues<ActorAiMode>())
+            _actorAiPicker.AddItem(ActorAiModeLabel(mode), (int)mode);
+        _actorAiPicker.ItemSelected += index =>
+        {
+            if (_updatingActorInspector || _selectedActor is null)
+                return;
+            _selectedActor.AiMode = (ActorAiMode)_actorAiPicker.GetItemId((int)index);
+            MarkSessionDirty($"{_selectedActor.ActorName} AI changed");
+            RefreshActorInspector();
+        };
+        actor.AddChild(_actorAiPicker);
+
+        _actorProjectileCheck = new CheckBox { Text = "Can fire projectile", FocusMode = FocusModeEnum.None };
+        _actorProjectileCheck.Toggled += enabled =>
+        {
+            if (_updatingActorInspector || _selectedActor is null)
+                return;
+            if (_selectedActor.IsPlayable)
+                _gunEnabled = enabled;
+            else
+                _selectedActor.CanFireProjectiles = enabled;
+            MarkSessionDirty($"{_selectedActor.ActorName} projectile ability changed");
+            RefreshActorInspector();
+        };
+        _actorTextAwareCheck = new CheckBox { Text = "Text-aware movement", FocusMode = FocusModeEnum.None };
+        _actorTextAwareCheck.Toggled += enabled =>
+        {
+            if (_updatingActorInspector || _selectedActor is null)
+                return;
+            _selectedActor.TextAware = enabled;
+            MarkSessionDirty($"{_selectedActor.ActorName} text-awareness changed");
+        };
+        actor.AddChild(_actorProjectileCheck);
+        actor.AddChild(_actorTextAwareCheck);
+
+        actor.AddChild(CockpitNote("Radar / perception"));
+        _actorRadarSlider = AttributeSlider(6, 90, 28, 1);
+        _actorRadarSlider.ValueChanged += value =>
+        {
+            if (_updatingActorInspector || _selectedActor is null || _selectedActor.IsPlayable)
+                return;
+            _selectedActor.RadarRangeUnits = (float)value;
+            MarkSessionDirty($"{_selectedActor.ActorName} radar changed");
+            RefreshActorInspectorSummary();
+        };
+        actor.AddChild(_actorRadarSlider);
+
+        actor.AddChild(CockpitNote("Health / regular shots to defeat"));
+        _actorToughnessSlider = AttributeSlider(1, 9, 1, 1);
+        _actorToughnessSlider.ValueChanged += value =>
+        {
+            if (_updatingActorInspector || _selectedActor is null || _selectedActor.IsPlayable)
+                return;
+            _selectedActor.ShotToughness = Mathf.RoundToInt(value);
+            _enemyHealth.Remove(_selectedActor);
+            MarkSessionDirty($"{_selectedActor.ActorName} toughness changed");
+            RefreshActorInspectorSummary();
+        };
+        actor.AddChild(_actorToughnessSlider);
+
+        actor.AddChild(CockpitNote("Instance scale"));
+        _actorScaleSlider = AttributeSlider(0.5, 4, 1, 0.25);
+        _actorScaleSlider.ValueChanged += value =>
+        {
+            if (_updatingActorInspector || _selectedActor is null)
+                return;
+            if (_selectedActor.IsPlayable)
+                SetActorSizeMultiplier((float)value);
+            else
+                ScaleSelectedEnemy((float)value);
+            MarkSessionDirty($"{_selectedActor.ActorName} scale changed");
+        };
+        actor.AddChild(_actorScaleSlider);
+
+        actor.AddChild(CockpitNote("Tint / opacity"));
+        _actorTintPicker = new ColorPickerButton
+        {
+            Text = "Actor Tint",
+            Color = Colors.White,
+            CustomMinimumSize = new Vector2(0, 34),
+            FocusMode = FocusModeEnum.None
+        };
+        _actorTintPicker.ColorChanged += color =>
+        {
+            if (_updatingActorInspector || _selectedActor is null)
+                return;
+            _selectedActor.ActorTint = color;
+            _selectedActor.QueueRedraw();
+            MarkSessionDirty($"{_selectedActor.ActorName} tint changed");
+        };
+        actor.AddChild(_actorTintPicker);
+        _actorOpacitySlider = AttributeSlider(0.1, 1, 1, 0.05);
+        _actorOpacitySlider.ValueChanged += value =>
+        {
+            if (_updatingActorInspector || _selectedActor is null)
+                return;
+            _selectedActor.ActorOpacity = (float)value;
+            _selectedActor.QueueRedraw();
+            MarkSessionDirty($"{_selectedActor.ActorName} opacity changed");
+        };
+        actor.AddChild(_actorOpacitySlider);
+
+        _actorVisibleCheck = new CheckBox { Text = "Visible in play", FocusMode = FocusModeEnum.None };
+        _actorVisibleCheck.Toggled += enabled =>
+        {
+            if (_updatingActorInspector || _selectedActor is null)
+                return;
+            _selectedActor.Visible = enabled;
+            MarkSessionDirty($"{_selectedActor.ActorName} visibility changed");
+        };
+        _actorShadowCheck = new CheckBox { Text = "Cast shadow", FocusMode = FocusModeEnum.None };
+        _actorShadowCheck.Toggled += enabled =>
+        {
+            if (_updatingActorInspector || _selectedActor is null)
+                return;
+            _selectedActor.ShadowEnabled = enabled;
+            _selectedActor.QueueRedraw();
+            MarkSessionDirty($"{_selectedActor.ActorName} shadow changed");
+        };
+        actor.AddChild(_actorVisibleCheck);
+        actor.AddChild(_actorShadowCheck);
+
+        _actorProjectileInspectorSlot = new CardSlot("Projectile", "Current: none", "Drop a Projectile Card here to bind it to the selected actor.", "projectile");
+        _actorProjectileInspectorSlot.CardDropped += (_, card) => ApplyInspectorCardDrop(card);
+        actor.AddChild(_actorProjectileInspectorSlot);
+        _actorEffectInspectorSlot = new CardSlot("Impact / Explosion", "Current: default", "Drop an Effect Card here to bind impact/explosion presentation.", "effect");
+        _actorEffectInspectorSlot.CardDropped += (_, card) => ApplyInspectorCardDrop(card);
+        actor.AddChild(_actorEffectInspectorSlot);
+
+        Button faceLeft = Button("Face Left");
+        faceLeft.Pressed += () => SetSelectedActorFacing(false);
+        Button faceRight = Button("Face Right");
+        faceRight.Pressed += () => SetSelectedActorFacing(true);
+        actor.AddChild(ButtonRow(faceLeft, faceRight));
+
+        Button duplicate = Button("Duplicate Instance");
+        duplicate.Pressed += DuplicateSelectedActor;
+        Button fork = Button("Fork Card");
+        fork.Pressed += () =>
+        {
+            ForkSelected();
+            MarkSessionDirty($"Forked {_selectedActor.ActorName}");
+            _inspectorText.Text = $"{_selectedActor.ActorName} now has an independent editable sprite/card binding.";
+        };
+        actor.AddChild(ButtonRow(duplicate, fork));
+        return actor;
+    }
+
+    private static string ActorAiModeLabel(ActorAiMode mode)
+    {
+        return mode switch
+        {
+            ActorAiMode.TrackPlayer => "Track Player",
+            ActorAiMode.Stationary => "Stationary / Turret",
+            ActorAiMode.Horde => "Horde / Flock",
+            _ => mode.ToString()
+        };
+    }
+
+    private void ApplyActorInspectorName(string value)
+    {
+        if (_updatingActorInspector || _selectedActor is null)
+            return;
+        string trimmed = value.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed) || trimmed == _selectedActor.ActorName)
+            return;
+        RenameSelectedCharacter(trimmed);
+        MarkSessionDirty($"Renamed actor to {trimmed}");
+        RefreshActorInspector();
+    }
+
+    private void ApplyInspectorCardDrop(Godot.Collections.Dictionary card)
+    {
+        if (_selectedActor is null)
+            return;
+        string kind = card.ContainsKey("dackCardKind") ? card["dackCardKind"].AsString() : "";
+        string cardId = card.ContainsKey("dackCardSourceId")
+            ? card["dackCardSourceId"].AsString()
+            : card.ContainsKey("dackCardId") ? card["dackCardId"].AsString() : "";
+
+        if (kind == "projectile")
+        {
+            _selectedActor.ProjectileCardId = cardId;
+            ActivateProjectileCard(cardId);
+        }
+        else if (kind == "effect")
+        {
+            _selectedActor.EffectCardId = cardId;
+            ActivateProjectileCard(cardId);
+        }
+
+        MarkSessionDirty($"Bound {cardId} to {_selectedActor.ActorName}");
+        RefreshActorInspector();
+    }
+
+    private void SetSelectedActorFacing(bool right)
+    {
+        if (_selectedActor is null)
+            return;
+        _selectedActor.FacingRight = right;
+        _selectedActor.QueueRedraw();
+        MarkSessionDirty($"{_selectedActor.ActorName} facing changed");
+    }
+
+    private void DuplicateSelectedActor()
+    {
+        if (_selectedActor is null)
+            return;
+        if (_selectedActor.IsPlayable)
+        {
+            _inspectorText.Text = "The Player card owns one unique player slot. Fork it to edit the definition; use an Enemy/NPC card for repeated actors.";
+            return;
+        }
+
+        ActorView source = _selectedActor;
+        ActorView duplicate = NextEnemySlot();
+        duplicate.ActorName = $"{source.ActorName} Copy";
+        duplicate.AnimationSourceId = source.AnimationSourceId;
+        duplicate.AnimationSet = source.AnimationSet;
+        duplicate.Model = source.Model;
+        duplicate.MotionState = source.MotionState;
+        duplicate.IsPlayable = false;
+        duplicate.Visible = true;
+        duplicate.FacingRight = source.FacingRight;
+        duplicate.CanFireProjectiles = source.CanFireProjectiles;
+        duplicate.ShotToughness = source.ShotToughness;
+        duplicate.RadarRangeUnits = source.RadarRangeUnits;
+        duplicate.AiMode = source.AiMode;
+        duplicate.TextAware = source.TextAware;
+        duplicate.ProjectileCardId = source.ProjectileCardId;
+        duplicate.EffectCardId = source.EffectCardId;
+        duplicate.ActorTint = source.ActorTint;
+        duplicate.ActorOpacity = source.ActorOpacity;
+        duplicate.ShadowEnabled = source.ShadowEnabled;
+        duplicate.ManualPlacement = true;
+        duplicate.Size = source.Size;
+        duplicate.CustomMinimumSize = source.CustomMinimumSize;
+        duplicate.Position = ClampActorToPlayfield(source.Position + new Vector2(_textUnitPixels * 5f, _textUnitPixels * 2f), duplicate.Size);
+        duplicate.HomePosition = duplicate.Position;
+        duplicate.TooltipText = $"Select {duplicate.ActorName}";
+        SelectActor(duplicate);
+        MarkSessionDirty($"Duplicated {source.ActorName}");
+        _inspectorText.Text = $"{duplicate.ActorName} created as an independent placed instance with the same card bindings and overrides.";
+    }
+
+    private void RefreshActorInspector()
+    {
+        if (_actorInspectorSummary is null || _selectedActor is null)
+            return;
+        _updatingActorInspector = true;
+        _actorInspectorName.Text = _selectedActor.ActorName;
+        _actorAiPicker.Select(Mathf.Clamp((int)_selectedActor.AiMode, 0, _actorAiPicker.ItemCount - 1));
+        _actorAiPicker.Disabled = _selectedActor.IsPlayable;
+        _actorProjectileCheck.ButtonPressed = _selectedActor.IsPlayable ? _gunEnabled : _selectedActor.CanFireProjectiles;
+        _actorTextAwareCheck.ButtonPressed = _selectedActor.TextAware;
+        _actorVisibleCheck.ButtonPressed = _selectedActor.Visible;
+        _actorShadowCheck.ButtonPressed = _selectedActor.ShadowEnabled;
+        _actorRadarSlider.Value = _selectedActor.RadarRangeUnits;
+        _actorRadarSlider.Editable = !_selectedActor.IsPlayable;
+        _actorToughnessSlider.Value = _selectedActor.ShotToughness;
+        _actorToughnessSlider.Editable = !_selectedActor.IsPlayable;
+        _actorScaleSlider.Value = EstimateActorScale(_selectedActor);
+        _actorTintPicker.Color = _selectedActor.ActorTint;
+        _actorOpacitySlider.Value = _selectedActor.ActorOpacity;
+        _actorProjectileInspectorSlot.SetCurrent("Current: " + (string.IsNullOrWhiteSpace(_selectedActor.ProjectileCardId) ? (_selectedActor.CanFireProjectiles || _gunEnabled ? "runtime default" : "none") : _selectedActor.ProjectileCardId));
+        _actorEffectInspectorSlot.SetCurrent("Current: " + (string.IsNullOrWhiteSpace(_selectedActor.EffectCardId) ? "default" : _selectedActor.EffectCardId));
+        RefreshActorInspectorSummary();
+        _updatingActorInspector = false;
+    }
+
+    private void RefreshActorInspectorSummary()
+    {
+        if (_actorInspectorSummary is null || _selectedActor is null)
+            return;
+        string role = _selectedActor.IsPlayable ? "Player Card instance" : "Enemy/NPC Card instance";
+        string health = _selectedActor.IsPlayable ? $"HP {_playerHealth}/{_playerMaxHealth}" : $"toughness {_selectedActor.ShotToughness}";
+        _actorInspectorSummary.Text = $"{role}\n{_selectedActor.AnimationSourceId}\n{ActorAiModeLabel(_selectedActor.AiMode)} | {health} | radar {_selectedActor.RadarRangeUnits:0}u";
+    }
+
+    private float EstimateActorScale(ActorView actor)
+    {
+        if (actor.IsPlayable)
+            return _actorSizeMultiplier;
+        float baseHeight = Mathf.Max(_textUnitPixels * 7f, 52f);
+        return Mathf.Clamp(actor.Size.Y / baseHeight, 0.5f, 4f);
     }
 
     private static void AddCockpitTab(TabContainer tabs, string title, Control content)
@@ -7658,6 +8205,14 @@ public partial class Main : Control
         public bool manualPlacement { get; set; }
         public int shotToughness { get; set; } = 1;
         public float radarRangeUnits { get; set; } = 28f;
+        public string aiMode { get; set; } = "Default";
+        public bool textAware { get; set; } = true;
+        public bool? canFireProjectiles { get; set; }
+        public string projectileCardId { get; set; } = "";
+        public string effectCardId { get; set; } = "";
+        public string tint { get; set; } = "ffffff";
+        public float opacity { get; set; } = 1f;
+        public bool shadowEnabled { get; set; } = true;
         public float x { get; set; }
         public float y { get; set; }
         public float width { get; set; }
@@ -7678,6 +8233,14 @@ public partial class Main : Control
                 manualPlacement = actor.ManualPlacement,
                 shotToughness = actor.ShotToughness,
                 radarRangeUnits = actor.RadarRangeUnits,
+                aiMode = actor.AiMode.ToString(),
+                textAware = actor.TextAware,
+                canFireProjectiles = actor.CanFireProjectiles,
+                projectileCardId = actor.ProjectileCardId,
+                effectCardId = actor.EffectCardId,
+                tint = actor.ActorTint.ToHtml(false),
+                opacity = actor.ActorOpacity,
+                shadowEnabled = actor.ShadowEnabled,
                 x = actor.Position.X,
                 y = actor.Position.Y,
                 width = actor.Size.X,

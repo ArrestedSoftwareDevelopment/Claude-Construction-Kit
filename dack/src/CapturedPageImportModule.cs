@@ -15,7 +15,8 @@ public sealed record CapturedPageFrame(
     Rect2[] TextBricks,
     Rect2[] TextWords,
     Rect2[] TextLines,
-    Rect2[] BonusAnchors
+    Rect2[] BonusAnchors,
+    PlayfieldProfile Profile
 );
 
 public static class CapturedPageImportModule
@@ -63,17 +64,25 @@ public static class CapturedPageImportModule
             );
             clone.Convert(Image.Format.Rgba8);
 
+            Rect2[] platforms = DetectTextPlatforms(original);
+            Rect2[] bricks = DetectTextBricks(original);
+            Rect2[] words = DetectTextWords(original);
+            Rect2[] lines = DetectTextLines(original);
+            Rect2[] bonusAnchors = DetectBonusAnchors(original);
+            PlayfieldProfile profile = PlayfieldProfiler.Analyze(original, platforms, bricks, words, lines, bonusAnchors);
+
             return new CapturedPageFrame(
                 ImageTexture.CreateFromImage(clone),
                 clone,
                 original,
                 new Vector2I(clone.GetWidth(), clone.GetHeight()),
                 Path.GetFileName(filePath),
-                DetectTextPlatforms(original),
-                DetectTextBricks(original),
-                DetectTextWords(original),
-                DetectTextLines(original),
-                DetectBonusAnchors(original)
+                platforms,
+                bricks,
+                words,
+                lines,
+                bonusAnchors,
+                profile
             );
         }
 
