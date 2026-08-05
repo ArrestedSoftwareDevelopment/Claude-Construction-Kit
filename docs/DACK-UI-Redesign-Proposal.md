@@ -582,6 +582,22 @@ The first refactor does not need every boundary in a new assembly. It does need 
 - Bind Side View, Paddle/Clearing, Ball/Table, and Overhead.
 - Collapse irrelevant groups rather than creating different UI grammars.
 
+**Implemented:** `FamilyPageShell` now supplies the common collapsible page grammar. The four active family tabs are labeled Side View, Paddle, Ball / Table, and Overhead, and each presents the same ordered sections:
+
+1. Overview & Transport
+2. Player
+3. Actors
+4. World
+5. Weapons & Effects
+6. Markers & Logic
+7. Text & Source
+8. Scoring & Rules
+9. Understand & Test
+
+Existing working controls were moved into those sections: Side View retains its construction tools, enemy controls, text rules, markers, weapons, and safety rules; Paddle retains paddle orientation, letter/word targeting, text collision, score placement, and links to shared assets; Ball / Table retains its plunger, flippers, bumpers, drains, rollovers, and gates; Overhead now exposes the same destinations for player, actors, world, weapons, logic, text, rules, and diagnostics. Unimplemented capabilities remain visible as collapsed explanatory sections, which makes the intended vocabulary discoverable without pretending the controls already exist.
+
+Family pages no longer own separate Save, Load, Reset, or Play controls. Those remain in the shared File/Transport shell from Phase 1.
+
 ### Phase 3: Cards and shelves
 
 - Replace repeated button rows with card descriptors.
@@ -639,3 +655,33 @@ The immediate target path is:
 File -> Open Level -> Side View -> Platformer -> Build -> Freeze -> drag cards -> F6 Play -> F7 Freeze -> Esc Cockpit -> File Save
 
 The same path must work for Brickbat, Pinball, and Overhead without changing its vocabulary or losing the creator's work.
+
+## Implementation status — Phase 0 shell safety
+
+The first shell slice is now implemented in the Godot project:
+
+- `DackUiState` records simulation, authoring, owned-surface, and safety state as one shared boundary.
+- `F6` switches between Build and Play without changing the selected playset or resetting the level family.
+- `F7` freezes or resumes Play; Build remains interactive for placement, selection, and animation previews.
+- Esc, Boss, cockpit, and Sprite Studio transitions refresh the shared shell state.
+- Pause state is propagated to Brickbat, Pinball, the playfield effects loop, and actor animation clocks.
+- The cockpit status line exposes the current Build/Play and Frozen/Running state and the new shortcuts.
+
+The next implementation slice is the common File/transport bar: Open, Save, Snapshot, Reset, Run, Freeze, Stop, and Return to Desktop. These commands should be registered once and then reused by every family page.
+
+### Transport slice implemented
+
+The Cockpit now exposes one shared command row for all playset tabs:
+
+| Group | Command | Current prototype behavior |
+|---|---|---|
+| File | Open | Loads the current `.dacklevel.json` manifest. |
+| File | Save | Saves the current level recipe without touching the source document. |
+| File | Snapshot | Writes the native-resolution working clone plus a small `.dacksnapshot.json` companion. |
+| File | Reset | Restores the captured clone and current game state while preserving placed cards and the selected family. |
+| Transport | Run / Build | Uses the existing F6 boundary and preserves the selected game type. |
+| Transport | Freeze / Resume | Uses the existing F7 boundary and pauses active gameplay systems. |
+| Transport | Stop | Enters a safe Build state with the session intact. |
+| Transport | Desktop | Parks DACK's surfaces and releases the input surface; Esc/F6/F7 can bring the session back. |
+
+The File group now also has a true menu-bar entry, with Transport and View menus beside it. Open and Reset use a dirty-session confirmation dialog; Save clears the level dirty marker; Snapshot History lists retained native-resolution captures; and the status line reports `SAVED` or `DIRTY`. The visible row remains as a high-speed transport affordance, while the menus provide discoverability and a stable home for future recent-level, Snapshot-restore, and two-monitor commands.

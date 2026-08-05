@@ -69,6 +69,11 @@ public partial class Main : Control
     private Label _characterWorkbenchStatus = null!;
     private readonly List<Button> _editorPlayButtons = [];
     private Label _cockpitStatus = null!;
+    private bool _sessionDirty;
+    private string _sessionDirtyReason = "";
+    private Button _transportModeButton = null!;
+    private Button _transportFreezeButton = null!;
+    private Button _transportStopButton = null!;
     private Label _inspectorText = null!;
     private Label _attributeText = null!;
     private HSlider _speedSlider = null!;
@@ -124,6 +129,7 @@ public partial class Main : Control
     private ActorView _player = null!;
     private EditableSpriteModel _initialModel = null!;
     private bool _bossMode;
+    private bool _desktopParked;
     private bool _launchScreenActive = true;
     private double _launchScreenClock;
     private double _elapsed;
@@ -136,6 +142,17 @@ public partial class Main : Control
     private bool _gunEnabled = true;
     private bool _editorMode = true;
     private bool _simulationFrozen = true;
+    private bool _simulationStopped;
+
+    private const int FileOpenCommand = 1;
+    private const int FileSaveCommand = 2;
+    private const int FileSnapshotCommand = 3;
+    private const int FileResetCommand = 4;
+    private const int FileSnapshotHistoryCommand = 5;
+    private const int FileDesktopCommand = 6;
+    private const int TransportRunCommand = 1;
+    private const int TransportFreezeCommand = 2;
+    private const int TransportStopCommand = 3;
     private bool _enemyAiEnabled = true;
     private bool _enemyTracksPlayer = true;
     private bool _enemyProjectilesEnabled = true;
@@ -191,7 +208,14 @@ public partial class Main : Control
             RefreshCockpitStatus();
         }
 
-        if (!_simulationFrozen)
+        if (_editorMode)
+        {
+            // Build mode remains interactive even while simulation is frozen:
+            // placement, selection, and animation previews still need to update.
+            UpdateActorPresentation((float)delta);
+            UpdatePunchPreview(delta);
+        }
+        else if (!_simulationFrozen)
         {
             UpdatePlayer(delta);
             UpdateOverheadPlayer(delta);
@@ -1353,6 +1377,9 @@ public partial class Main : Control
         close.Pressed += ToggleCockpit;
         top.AddChild(close);
 
+        root.AddChild(BuildMenuBar());
+        root.AddChild(BuildTransportBar());
+
         HBoxContainer cockpitBody = new()
         {
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
@@ -1374,9 +1401,9 @@ public partial class Main : Control
         _overheadPanel = BuildOverheadPanel();
 
         AddCockpitTab(_cockpitTabs, "Player", BuildPlayerPanel());
-        AddCockpitTab(_cockpitTabs, "Platformer", _platformerPanel);
-        AddCockpitTab(_cockpitTabs, "Brickbat", _brickbatPanel);
-        AddCockpitTab(_cockpitTabs, "Pinball", _pinballPanel);
+        AddCockpitTab(_cockpitTabs, "Side View", _platformerPanel);
+        AddCockpitTab(_cockpitTabs, "Paddle", _brickbatPanel);
+        AddCockpitTab(_cockpitTabs, "Ball / Table", _pinballPanel);
         AddCockpitTab(_cockpitTabs, "Overhead", _overheadPanel);
         AddCockpitTab(_cockpitTabs, "Assets", BuildLegacyLibraryPanel());
         AddCockpitTab(_cockpitTabs, "Enemies", BuildEnemiesPanel());
@@ -1398,6 +1425,223 @@ public partial class Main : Control
 
         FitCockpitToViewport();
         UpdateCockpitToolkitPanels();
+    }
+
+    private Control BuildMenuBar()
+    {
+        MenuBar menuBar = new()
+        {
+            SizeFlagsHorizontal = SizeFlags.ExpandFill
+        };
+
+        MenuButton fileMenu = new() { Text = "File" };
+        PopupMenu filePopup = fileMenu.GetPopup();
+        filePopup.AddItem("Open Level", FileOpenCommand);
+        filePopup.AddItem("Save Level", FileSaveCommand);
+        filePopup.AddItem("Save Snapshot", FileSnapshotCommand);
+        filePopup.AddItem("Reset Working Clone", FileResetCommand);
+        filePopup.AddSeparator();
+        filePopup.AddItem("Snapshot History", FileSnapshotHistoryCommand);
+        filePopup.AddSeparator();
+        filePopup.AddItem("Return to Desktop", FileDesktopCommand);
+        filePopup.IdPressed += id => HandleFileMenuCommand((int)id);
+        menuBar.AddChild(fileMenu);
+
+        MenuButton transportMenu = new() { Text = "Transport" };
+        PopupMenu transportPopup = transportMenu.GetPopup();
+        transportPopup.AddItem("Run / Build (F6)", TransportRunCommand);
+        transportPopup.AddItem("Freeze / Resume (F7)", TransportFreezeCommand);
+        transportPopup.AddItem("Stop", TransportStopCommand);
+        transportPopup.IdPressed += id => HandleTransportMenuCommand((int)id);
+        menuBar.AddChild(transportMenu);
+
+        MenuButton viewMenu = new() { Text = "View" };
+        PopupMenu viewPopup = viewMenu.GetPopup();
+        viewPopup.AddItem("Toggle Cockpit (Esc)", 1);
+        viewPopup.AddItem("Toggle Sprite Pad", 2);
+        viewPopup.AddItem("Toggle Playset Toolbar (F1)", 3);
+        viewPopup.AddItem("Boss Key (Ctrl+Alt+B)", 4);
+        viewPopup.IdPressed += id =>
+        {
+            switch ((int)id)
+            {
+                case 1:
+                    ToggleCockpit();
+                    break;
+                case 2:
+                    ToggleSpritePanel();
+                    break;
+                case 3:
+                    TogglePlaysetToolbar();
+                    break;
+                case 4:
+                    ToggleBossMode();
+                    break;
+            }
+        };
+        menuBar.AddChild(viewMenu);
+
+        return menuBar;
+    }
+
+    private void HandleFileMenuCommand(int command)
+    {
+        switch (command)
+        {
+            case FileOpenCommand:
+                ConfirmSessionAction("Open level", "Open the saved level and discard unsaved layout changes?", LoadLevel);
+                break;
+            case FileSaveCommand:
+                SaveLevel();
+                break;
+            case FileSnapshotCommand:
+                SaveSnapshot();
+                break;
+            case FileResetCommand:
+                ConfirmSessionAction("Reset working clone", "Restore the captured Snapshot and reset the active game?", ResetSession);
+                break;
+            case FileSnapshotHistoryCommand:
+                ShowSnapshotHistory();
+                break;
+            case FileDesktopCommand:
+                ReturnToDesktop();
+                break;
+        }
+    }
+
+    private void HandleTransportMenuCommand(int command)
+    {
+        switch (command)
+        {
+            case TransportRunCommand:
+                ToggleBuildPlayMode();
+                break;
+            case TransportFreezeCommand:
+                ToggleSimulationFreeze();
+                break;
+            case TransportStopCommand:
+                StopSimulation();
+                break;
+        }
+    }
+
+    private void ConfirmSessionAction(string title, string message, Action action)
+    {
+        if (!_sessionDirty)
+        {
+            action();
+            return;
+        }
+
+        ConfirmationDialog dialog = new()
+        {
+            Title = title,
+            DialogText = $"{message}\n\nUnsaved change: {_sessionDirtyReason}",
+            OkButtonText = "Continue",
+            CancelButtonText = "Cancel"
+        };
+        dialog.Confirmed += () =>
+        {
+            dialog.QueueFree();
+            action();
+        };
+        dialog.Canceled += dialog.QueueFree;
+        _workspace.AddChild(dialog);
+        dialog.PopupCentered(new Vector2I(520, 220));
+    }
+
+    private void MarkSessionDirty(string reason)
+    {
+        _sessionDirty = true;
+        _sessionDirtyReason = reason;
+        RefreshCockpitStatus();
+    }
+
+    private void MarkSessionClean()
+    {
+        _sessionDirty = false;
+        _sessionDirtyReason = "";
+        RefreshCockpitStatus();
+    }
+
+    private void ShowSnapshotHistory()
+    {
+        string directory = GetSnapshotDirectory();
+        if (!Directory.Exists(directory))
+        {
+            _inspectorText.Text = "Snapshot history is empty. Save a Snapshot to create the first native-resolution clone.";
+            return;
+        }
+
+        string[] snapshots = Directory.GetFiles(directory, "rad-snapshot-*.png")
+            .OrderByDescending(path => File.GetLastWriteTimeUtc(path))
+            .Take(12)
+            .Select(path => Path.GetFileName(path))
+            .ToArray();
+        _inspectorText.Text = snapshots.Length == 0
+            ? "Snapshot history is empty."
+            : "SNAPSHOT HISTORY\n\n" + string.Join("\n", snapshots) + "\n\nThe latest Snapshot remains the active working clone; older entries are retained for comparison and future restore UI.";
+    }
+
+    private Control BuildTransportBar()
+    {
+        PanelContainer bar = new();
+        bar.AddThemeStyleboxOverride("panel", FlatStyle("#293641", 6));
+
+        MarginContainer margin = Margins(8, 6, 8, 6);
+        bar.AddChild(margin);
+        HBoxContainer row = new();
+        row.AddThemeConstantOverride("separation", 6);
+        margin.AddChild(row);
+
+        row.AddChild(Heading("FILE"));
+
+        Button open = Button("Open");
+        open.TooltipText = "Open the current RAD level manifest.";
+        open.Pressed += () => ConfirmSessionAction("Open level", "Open the saved level and discard unsaved layout changes?", LoadLevel);
+        row.AddChild(open);
+
+        Button save = Button("Save");
+        save.TooltipText = "Save the current level recipe.";
+        save.Pressed += SaveLevel;
+        row.AddChild(save);
+
+        Button snapshot = Button("Snapshot");
+        snapshot.TooltipText = "Freeze the current working clone as a native-resolution Snapshot.";
+        snapshot.Pressed += SaveSnapshot;
+        row.AddChild(snapshot);
+
+        Button reset = Button("Reset");
+        reset.TooltipText = "Restore the working clone and reset the current game without changing families.";
+        reset.Pressed += () => ConfirmSessionAction("Reset working clone", "Restore the captured Snapshot and reset the active game?", ResetSession);
+        row.AddChild(reset);
+
+        VSeparator separator = new();
+        separator.CustomMinimumSize = new Vector2(10, 26);
+        row.AddChild(separator);
+        row.AddChild(Heading("TRANSPORT"));
+
+        _transportModeButton = Button("Run (F6)");
+        _transportModeButton.TooltipText = "Switch between Build and Play without changing the selected game type.";
+        _transportModeButton.Pressed += ToggleBuildPlayMode;
+        row.AddChild(_transportModeButton);
+
+        _transportFreezeButton = Button("Resume (F7)");
+        _transportFreezeButton.TooltipText = "Freeze or resume the active simulation.";
+        _transportFreezeButton.Pressed += ToggleSimulationFreeze;
+        row.AddChild(_transportFreezeButton);
+
+        _transportStopButton = Button("Stop");
+        _transportStopButton.TooltipText = "Stop the simulation and return to a safe Build state.";
+        _transportStopButton.Pressed += StopSimulation;
+        row.AddChild(_transportStopButton);
+
+        Button desktop = Button("Desktop");
+        desktop.TooltipText = "Park DACK and return input to the desktop without deleting the session.";
+        desktop.Pressed += ReturnToDesktop;
+        row.AddChild(desktop);
+
+        return bar;
     }
 
     private void BuildPlatformerHud()
@@ -1454,32 +1698,155 @@ public partial class Main : Control
         }
     }
 
+    private static VBoxContainer FamilySectionBody()
+    {
+        VBoxContainer body = new()
+        {
+            SizeFlagsHorizontal = SizeFlags.ExpandFill
+        };
+        body.AddThemeConstantOverride("separation", 7);
+        return body;
+    }
+
+    private Button FamilyTabButton(string text, string targetTab, string description)
+    {
+        Button button = Button(text);
+        button.TooltipText = description;
+        button.Pressed += () =>
+        {
+            SelectCockpitTab(targetTab);
+            _inspectorText.Text = description;
+        };
+        return button;
+    }
+
     private Control BuildShelfPanel()
     {
-        PanelContainer panel = CockpitPanel(260);
-        VBoxContainer shelf = PanelVBox(panel);
-        shelf.AddChild(CockpitHeading("PLATFORMER"));
-        AddGameTypeSessionBlock(shelf, PlaysetMode.Platformer, "Enter Platformer");
+        PanelContainer panel = CockpitPanel(300);
+        FamilyPageShell shell = new("Side View", "Platformer");
+        panel.AddChild(shell);
 
-        shelf.AddChild(CockpitHeading("BUILD TOOLS"));
-        shelf.AddChild(ButtonRow(
+        VBoxContainer overview = FamilySectionBody();
+        AddGameTypeSessionBlock(overview, PlaysetMode.Platformer, "Use Platformer Preset");
+        overview.AddChild(CockpitNote("Horizontal and vertical text-native platforming. The selected Snapshot, cards, and clone mutations survive family navigation."));
+        shell.AddSection("Overview & Transport", "preset and session", overview, expanded: true);
+
+        VBoxContainer player = FamilySectionBody();
+        player.AddChild(FamilyTabButton("Open Player Cards", "Player", "Choose, place, scale, and edit the active player character."));
+        player.AddChild(CockpitNote("Movement, spawn, scale, climb, crawl, gravity, inertia, and input bindings belong here."));
+        shell.AddSection("Player", "character, controls, movement", player);
+
+        VBoxContainer actors = FamilySectionBody();
+        actors.AddChild(FamilyTabButton("Open Enemy Cards", "Enemies", "Choose enemies, configure contact/shooter behavior, and place repeated instances."));
+        Button enemyAi = Button(_enemyAiEnabled ? "Enemy AI: On" : "Enemy AI: Off");
+        enemyAi.Pressed += () =>
+        {
+            _enemyAiEnabled = !_enemyAiEnabled;
+            enemyAi.Text = _enemyAiEnabled ? "Enemy AI: On" : "Enemy AI: Off";
+            MarkSessionDirty("Enemy AI rule changed");
+            _inspectorText.Text = _enemyAiEnabled
+                ? "Enemy AI enabled. Enemies patrol/hover, collide, and can block the route."
+                : "Enemy AI disabled. Enemies stay placed for editing.";
+        };
+        Button enemyTrack = Button(_enemyTracksPlayer ? "Enemy Track: On" : "Enemy Track: Off");
+        enemyTrack.Pressed += () =>
+        {
+            _enemyTracksPlayer = !_enemyTracksPlayer;
+            enemyTrack.Text = _enemyTracksPlayer ? "Enemy Track: On" : "Enemy Track: Off";
+            MarkSessionDirty("Enemy tracking rule changed");
+            _inspectorText.Text = _enemyTracksPlayer
+                ? "Enemy tracking enabled. Enemies bias patrol/facing toward the player."
+                : "Enemy tracking disabled. Enemies keep their patrol/guard behavior.";
+        };
+        Button enemyShots = Button(_enemyProjectilesEnabled ? "Enemy Shots: On" : "Enemy Shots: Off");
+        enemyShots.Pressed += () =>
+        {
+            _enemyProjectilesEnabled = !_enemyProjectilesEnabled;
+            enemyShots.Text = _enemyProjectilesEnabled ? "Enemy Shots: On" : "Enemy Shots: Off";
+            ClearEnemyShots();
+            MarkSessionDirty("Enemy projectile rule changed");
+        };
+        Button enemyRange = Button(EnemyRangeButtonText());
+        enemyRange.Pressed += () =>
+        {
+            _enemyShotRangeUnits = _enemyShotRangeUnits < 28f ? 34f : _enemyShotRangeUnits < 45f ? 55f : 18f;
+            enemyRange.Text = EnemyRangeButtonText();
+            ClearEnemyShots();
+            MarkSessionDirty("Enemy perception range changed");
+            _inspectorText.Text = $"Enemy shot range set to {_enemyShotRangeUnits:0} text units.";
+        };
+        actors.AddChild(ButtonRow(enemyAi, enemyTrack));
+        actors.AddChild(ButtonRow(enemyShots, enemyRange));
+        shell.AddSection("Actors", "enemies, AI, perception", actors);
+
+        VBoxContainer world = FamilySectionBody();
+        world.AddChild(ButtonRow(
             ShelfButton("Ladder", WorldObjectKind.Ladder, "Vertical climb volume. Drag A/B to set height; thickness roughly matches player width."),
             ShelfButton("Ramp", WorldObjectKind.Ramp, "Static angled standable line for paragraph slants / Donkey Kong feel.")));
-        shelf.AddChild(ButtonRow(
+        world.AddChild(ButtonRow(
             ShelfButton("Slide", WorldObjectKind.Slide, "Downhill acceleration surface. Slides always push toward the lower endpoint."),
             ShelfButton("Conveyor", WorldObjectKind.Conveyor, "Powered belt/line surface with intentionally strong force; rotate it for angled belts.")));
-        shelf.AddChild(ShelfButton("Elevator", WorldObjectKind.Elevator, "Moving platform proof; later gets visible endpoints and timing."));
+        world.AddChild(ShelfButton("Elevator", WorldObjectKind.Elevator, "Moving platform with editable range, direction, and speed."));
+        shell.AddSection("World", "terrain and moving surfaces", world, expanded: true);
 
-        shelf.AddChild(CockpitHeading("ROUTE / LOGIC"));
-        shelf.AddChild(ButtonRow(
+        VBoxContainer effects = FamilySectionBody();
+        Button gun = Button(_gunEnabled ? "Player Weapon: On" : "Player Weapon: Off");
+        gun.Pressed += () =>
+        {
+            _gunEnabled = !_gunEnabled;
+            gun.Text = _gunEnabled ? "Player Weapon: On" : "Player Weapon: Off";
+            ClearPlayerShots();
+            MarkSessionDirty("Player weapon rule changed");
+            _inspectorText.Text = _gunEnabled
+                ? "Weapon enabled. Run Shoot / Jump Shoot labels and assigned projectiles can fire."
+                : "Weapon disabled. The preset becomes a jump/climb/dig style game.";
+        };
+        effects.AddChild(gun);
+        effects.AddChild(ButtonRow(
+            FamilyTabButton("Projectiles", "Projectiles", "Assign projectile and impact/explosion cards."),
+            FamilyTabButton("Sounds", "Sounds", "Assign firing, impact, movement, and death sounds.")));
+        shell.AddSection("Weapons & Effects", "shots, explosions, sound", effects);
+
+        VBoxContainer logic = FamilySectionBody();
+        logic.AddChild(ButtonRow(
             ShelfButton("Start", WorldObjectKind.StartPoint, "Editor-only spawn marker. Visible while building, hidden during play."),
             ShelfButton("Checkpoint", WorldObjectKind.Checkpoint, "Visible marker now; spawn binding comes next.")));
-        shelf.AddChild(ButtonRow(
+        logic.AddChild(ButtonRow(
             ShelfButton("Goal", WorldObjectKind.GoalPoint, "Visible level objective marker: the first complete test level spine is Start -> Midpoint -> Goal."),
             ShelfButton("Hidden Switch", WorldObjectKind.HiddenSwitch, "Invisible gameplay logic: visible in editor, hidden from the player.")));
-        shelf.AddChild(ShelfButton("Enemy Spawn", WorldObjectKind.EnemySpawnPoint, "Editor-only spawn flag. Future binding: choose enemy art/graphic, spawn interval, burst count, max active count, speed, and behavior rules. All counts stay small whole numbers; 10 max per sprite."));
+        logic.AddChild(ShelfButton("Enemy Spawn", WorldObjectKind.EnemySpawnPoint, "Editor-only spawn flag with assignable enemy, interval, burst count, max active count, speed, and behavior."));
+        shell.AddSection("Markers & Logic", "start, goal, triggers, spawns", logic);
 
-        shelf.AddChild(CockpitHeading("PLAYER RULES"));
+        VBoxContainer text = FamilySectionBody();
+        Button textTerrain = Button(_textTerrainEnabled ? "Text Terrain: On" : "Text Terrain: Off");
+        textTerrain.Pressed += () =>
+        {
+            _textTerrainEnabled = !_textTerrainEnabled;
+            textTerrain.Text = _textTerrainEnabled ? "Text Terrain: On" : "Text Terrain: Off";
+            MarkSessionDirty("Text terrain rule changed");
+            _inspectorText.Text = _textTerrainEnabled
+                ? "Captured letters and words can support actors."
+                : "Only explicit construction objects support actors.";
+        };
+        Button textCrawl = Button(_playfield.TextCrawlEnabled ? "Text Crawl: On" : "Text Crawl: Off");
+        textCrawl.Pressed += () =>
+        {
+            _playfield.TextCrawlEnabled = !_playfield.TextCrawlEnabled;
+            textCrawl.Text = _playfield.TextCrawlEnabled ? "Text Crawl: On" : "Text Crawl: Off";
+            MarkSessionDirty("Text crawl rule changed");
+        };
+        Button textDestruction = Button(_textDestructionEnabled ? "Shot Text Damage: On" : "Shot Text Damage: Off");
+        textDestruction.Pressed += () =>
+        {
+            _textDestructionEnabled = !_textDestructionEnabled;
+            textDestruction.Text = _textDestructionEnabled ? "Shot Text Damage: On" : "Shot Text Damage: Off";
+            MarkSessionDirty("Text destruction rule changed");
+        };
+        text.AddChild(ButtonRow(textTerrain, textCrawl));
+        text.AddChild(textDestruction);
+        shell.AddSection("Text & Source", "terrain, crawl, destruction", text);
+
+        VBoxContainer rules = FamilySectionBody();
         Button floor = Button(_platformerSafetyFloor ? "Safety Floor: On" : "Safety Floor: Off");
         floor.Pressed += () =>
         {
@@ -1487,64 +1854,11 @@ public partial class Main : Control
             floor.Text = _platformerSafetyFloor ? "Safety Floor: On" : "Safety Floor: Off";
             SetPlaysetMode(PlaysetMode.Platformer);
             SnapPlayerToStart();
+            MarkSessionDirty("Safety floor rule changed");
             _inspectorText.Text = _platformerSafetyFloor
                 ? "Platformer safety floor enabled. Falling below the document catches the player."
                 : "Platformer safety floor disabled. Gutter/plunge/death-pit levels can now work.";
         };
-
-        Button gun = Button(_gunEnabled ? "Gun: On" : "Gun: Off");
-        gun.Pressed += () =>
-        {
-            _gunEnabled = !_gunEnabled;
-            gun.Text = _gunEnabled ? "Gun: On" : "Gun: Off";
-            ClearPlayerShots();
-            _inspectorText.Text = _gunEnabled
-                ? "Gun enabled. Platformer can use Run Shoot / Jump Shoot labels and fire projectiles."
-                : "Gun disabled. Platformer becomes a jump/climb/dig style game; shoot input is ignored.";
-        };
-        shelf.AddChild(ButtonRow(floor, gun));
-
-        shelf.AddChild(CockpitHeading("ENEMY RULES"));
-        Button enemyAi = Button(_enemyAiEnabled ? "Enemy AI: On" : "Enemy AI: Off");
-        enemyAi.Pressed += () =>
-        {
-            _enemyAiEnabled = !_enemyAiEnabled;
-            enemyAi.Text = _enemyAiEnabled ? "Enemy AI: On" : "Enemy AI: Off";
-            _inspectorText.Text = _enemyAiEnabled
-                ? "Enemy AI enabled. Enemies patrol/hover, collide, and can block the route."
-                : "Enemy AI disabled. Enemies stay placed for editing.";
-        };
-
-        Button enemyTrack = Button(_enemyTracksPlayer ? "Enemy Track: On" : "Enemy Track: Off");
-        enemyTrack.Pressed += () =>
-        {
-            _enemyTracksPlayer = !_enemyTracksPlayer;
-            enemyTrack.Text = _enemyTracksPlayer ? "Enemy Track: On" : "Enemy Track: Off";
-            _inspectorText.Text = _enemyTracksPlayer
-                ? "Enemy tracking enabled. Enemies bias their patrol/facing toward the player and face the player when firing."
-                : "Enemy tracking disabled. Enemies keep patrol/guard motion and fire from their current facing.";
-        };
-
-        Button enemyShots = Button(_enemyProjectilesEnabled ? "Enemy Shots: On" : "Enemy Shots: Off");
-        enemyShots.Pressed += () =>
-        {
-            _enemyProjectilesEnabled = !_enemyProjectilesEnabled;
-            enemyShots.Text = _enemyProjectilesEnabled ? "Enemy Shots: On" : "Enemy Shots: Off";
-            ClearEnemyShots();
-            _inspectorText.Text = _enemyProjectilesEnabled
-                ? "Enemy projectile ability enabled. Sunny Dragon fires simple aimed shots on a cooldown."
-                : "Enemy projectile ability disabled. Contact danger remains if Enemy AI is on.";
-        };
-
-        Button enemyRange = Button(EnemyRangeButtonText());
-        enemyRange.Pressed += () =>
-        {
-            _enemyShotRangeUnits = _enemyShotRangeUnits < 28f ? 34f : _enemyShotRangeUnits < 45f ? 55f : 18f;
-            enemyRange.Text = EnemyRangeButtonText();
-            ClearEnemyShots();
-            _inspectorText.Text = $"Enemy shot range set to {_enemyShotRangeUnits:0} text units. Enemies will not fire until the player is inside that threat radius.";
-        };
-
         Button damageModel = Button(_partialDamageEnabled ? "Damage: Hearts" : "Damage: Instant");
         damageModel.Pressed += () =>
         {
@@ -1552,67 +1866,43 @@ public partial class Main : Control
             damageModel.Text = _partialDamageEnabled ? "Damage: Hearts" : "Damage: Instant";
             _playerHealth = _playerMaxHealth;
             RefreshPlatformerHud();
+            MarkSessionDirty("Damage model changed");
             _inspectorText.Text = _partialDamageEnabled
                 ? "Partial damage enabled. Enemy shots remove health before costing a life."
                 : "Instant damage enabled. Enemy shots kill like old-school hazards.";
         };
-        shelf.AddChild(ButtonRow(enemyAi, enemyTrack));
-        shelf.AddChild(ButtonRow(enemyShots, enemyRange));
-        shelf.AddChild(damageModel);
-
-        shelf.AddChild(CockpitHeading("TEXT RULES"));
-        Button textTerrain = Button(_textTerrainEnabled ? "Text Terrain: On" : "Text Terrain: Off");
-        textTerrain.Pressed += () =>
-        {
-            _textTerrainEnabled = !_textTerrainEnabled;
-            textTerrain.Text = _textTerrainEnabled ? "Text Terrain: On" : "Text Terrain: Off";
-            _inspectorText.Text = _textTerrainEnabled
-                ? "Player text terrain enabled. Captured letters/words can support the scout."
-                : "Player text terrain disabled. Only explicit platforms/ramps/elevators/conveyors/floor support the scout.";
-        };
-
-        Button textCrawl = Button(_playfield.TextCrawlEnabled ? "Text Crawl: On" : "Text Crawl: Off");
-        textCrawl.Pressed += () =>
-        {
-            _playfield.TextCrawlEnabled = !_playfield.TextCrawlEnabled;
-            textCrawl.Text = _playfield.TextCrawlEnabled ? "Text Crawl: On" : "Text Crawl: Off";
-            _inspectorText.Text = _playfield.TextCrawlEnabled
-                ? "Player text crawl enabled. Dense single-spaced text can act like climb/crawl surface in Climber mode."
-                : "Player text crawl disabled. Use explicit ladders or other tools for climbing.";
-        };
-
-        Button textDestruction = Button(_textDestructionEnabled ? "Shot Text Damage: On" : "Shot Text Damage: Off");
-        textDestruction.Pressed += () =>
-        {
-            _textDestructionEnabled = !_textDestructionEnabled;
-            textDestruction.Text = _textDestructionEnabled ? "Shot Text Damage: On" : "Shot Text Damage: Off";
-            _inspectorText.Text = _textDestructionEnabled
-                ? "Platformer shots can erase captured text in the working clone."
-                : "Platformer shots no longer damage text; useful for no-destruction traversal tests.";
-        };
-        shelf.AddChild(ButtonRow(textTerrain, textCrawl));
-        shelf.AddChild(textDestruction);
-
-        shelf.AddChild(CockpitHeading("RESET"));
         Button clear = Button("Clear Placed Parts");
         clear.Pressed += () =>
         {
             _playfield.ClearPlacedObjects();
+            MarkSessionDirty("Placed world parts cleared");
             SyncEditorModeToScene();
             _inspectorText.Text = "Placed toolkit parts cleared. Captured document pixels and Brickbat mutations remain separate.";
         };
-        shelf.AddChild(clear);
+        rules.AddChild(ButtonRow(floor, damageModel));
+        rules.AddChild(clear);
+        shell.AddSection("Scoring & Rules", "damage, lives, fail states", rules);
+
+        VBoxContainer understand = FamilySectionBody();
+        understand.AddChild(FamilyTabButton("Open Understand Tools", "Understand", "Inspect detected text, whitespace, icons, regions, collision, and source interpretation."));
+        understand.AddChild(CockpitNote("Use this section to validate text floors, gutters, climb bands, and collision before testing."));
+        shell.AddSection("Understand & Test", "overlays and diagnostics", understand);
 
         return panel;
     }
 
     private Control BuildBrickbatPanel()
     {
-        PanelContainer panel = CockpitPanel(250);
-        VBoxContainer brickbat = PanelVBox(panel);
-        brickbat.AddChild(CockpitHeading("BRICKBAT PAGE"));
-        AddGameTypeSessionBlock(brickbat, PlaysetMode.Brickbat, "Enter Brickbat");
+        PanelContainer panel = CockpitPanel(300);
+        FamilyPageShell shell = new("Paddle / Clearing", "Brickbat");
+        panel.AddChild(shell);
 
+        VBoxContainer overview = FamilySectionBody();
+        AddGameTypeSessionBlock(overview, PlaysetMode.Brickbat, "Use Brickbat Preset");
+        overview.AddChild(CockpitNote("One ball in play, three-ball reserve rules, literary bonuses, and persistent document deformation."));
+        shell.AddSection("Overview & Transport", "preset and session", overview, expanded: true);
+
+        VBoxContainer player = FamilySectionBody();
         Button paddle = Button(_brickbatOverlay.SidePaddle ? "Paddle: Side" : "Paddle: Bottom");
         paddle.Pressed += () =>
         {
@@ -1620,11 +1910,36 @@ public partial class Main : Control
             paddle.Text = _brickbatOverlay.SidePaddle ? "Paddle: Side" : "Paddle: Bottom";
             SetPlaysetMode(PlaysetMode.Brickbat);
             _brickbatOverlay.ResetGame();
+            MarkSessionDirty("Brickbat paddle orientation changed");
             _inspectorText.Text = _brickbatOverlay.SidePaddle
                 ? "Brickbat side-paddle mode. Useful for vertical/side-wall target clearing."
                 : "Brickbat bottom-paddle mode. Standard document brick-clearing layout.";
         };
-        brickbat.AddChild(paddle);
+        player.AddChild(paddle);
+        player.AddChild(CockpitNote("Paddle placement, input edge, size, speed, and rebound shaping live here."));
+        shell.AddSection("Player", "paddle, input, rebound", player);
+
+        VBoxContainer actors = FamilySectionBody();
+        actors.AddChild(FamilyTabButton("Open Enemy Cards", "Enemies", "Add animated destructible enemies and moving targets to Brickbat."));
+        shell.AddSection("Actors", "enemies and moving targets", actors);
+
+        VBoxContainer world = FamilySectionBody();
+        world.AddChild(CockpitNote("The captured document is the target wall. Object cards can add barricades, gates, icons, and shaped bonus zones."));
+        world.AddChild(FamilyTabButton("Open Object Cards", "Objects", "Add reusable objects to the Brickbat field."));
+        shell.AddSection("World", "target wall and objects", world);
+
+        VBoxContainer effects = FamilySectionBody();
+        effects.AddChild(ButtonRow(
+            FamilyTabButton("Projectiles", "Projectiles", "Configure lasers, shots, impacts, and column-clearing effects."),
+            FamilyTabButton("Sounds", "Sounds", "Assign paddle, bounce, target, power-up, and loss sounds.")));
+        effects.AddChild(CockpitNote("Multiball, laser strength, word explosions, letter shrapnel, and psychedelic scoring effects belong here."));
+        shell.AddSection("Weapons & Effects", "laser, multiball, bursts", effects);
+
+        VBoxContainer logic = FamilySectionBody();
+        logic.AddChild(CockpitNote("Conditional target zones, protected regions, bonus triggers, and enemy spawn rules will use shared Marker/Logic Cards."));
+        shell.AddSection("Markers & Logic", "zones, triggers, protection", logic);
+
+        VBoxContainer text = FamilySectionBody();
 
         Button grain = Button(_brickbatOverlay.BrickGranularity == TextObjectGranularity.Letter ? "Targets: Letters" : "Targets: Words");
         grain.Pressed += () =>
@@ -1635,11 +1950,12 @@ public partial class Main : Control
             grain.Text = _brickbatOverlay.BrickGranularity == TextObjectGranularity.Letter ? "Targets: Letters" : "Targets: Words";
             SetPlaysetMode(PlaysetMode.Brickbat);
             _brickbatOverlay.ResetGame();
+            MarkSessionDirty("Brickbat text target granularity changed");
             _inspectorText.Text = _brickbatOverlay.BrickGranularity == TextObjectGranularity.Letter
                 ? "Brickbat target grain set to letters. Fine-grained page destruction; OCR labels can still bleed in from nearby word regions."
                 : "Brickbat target grain set to words. Larger targets, +50 scoring, stronger Word Sense / found-poem behavior.";
         };
-        brickbat.AddChild(grain);
+        text.AddChild(grain);
 
         Button textCollision = Button(_brickbatOverlay.TextCollisionMode == TextCollisionMode.Bounce ? "Text Physics: Bounce" : "Text Physics: Pierce");
         textCollision.Pressed += () =>
@@ -1649,55 +1965,135 @@ public partial class Main : Control
                 : TextCollisionMode.Bounce;
             textCollision.Text = _brickbatOverlay.TextCollisionMode == TextCollisionMode.Bounce ? "Text Physics: Bounce" : "Text Physics: Pierce";
             SetPlaysetMode(PlaysetMode.Brickbat);
+            MarkSessionDirty("Brickbat text collision rule changed");
             _inspectorText.Text = _brickbatOverlay.TextCollisionMode == TextCollisionMode.Bounce
                 ? "Brickbat text collision set to Bounce. Letters/words act like solid targets and deflect the ball."
                 : "Brickbat text collision set to Pierce. The ball erases and scores text but keeps traveling through it.";
         };
-        brickbat.AddChild(textCollision);
+        text.AddChild(textCollision);
+        text.AddChild(CockpitNote("OCR remains lazy and optional; letter/word geometry continues working without recognized text."));
+        shell.AddSection("Text & Source", "targets, OCR, erasure", text, expanded: true);
 
-        Button reset = Button("Reset Brickbat");
-        reset.Pressed += () =>
-        {
-            SetPlaysetMode(PlaysetMode.Brickbat);
-            _brickbatOverlay.ResetGame();
-            _inspectorText.Text = "Brickbat reset. Clone damage returns to the captured/source image for this run.";
-        };
-        brickbat.AddChild(reset);
-
+        VBoxContainer rules = FamilySectionBody();
         Button resetHud = Button("Auto-Place Score");
         resetHud.Pressed += () =>
         {
             _brickbatOverlay.ResetHudPosition();
             _inspectorText.Text = "Brickbat score panel returned to auto whitespace placement. Open the Cockpit in Brickbat and drag the panel to pin it somewhere else.";
         };
-        brickbat.AddChild(resetHud);
+        rules.AddChild(resetHud);
+        rules.AddChild(CockpitNote("Lives, reserves, cooldowns, score multipliers, win/lose conditions, and found-word ticker policy live here."));
+        shell.AddSection("Scoring & Rules", "lives, score, cooldowns", rules);
+
+        VBoxContainer understand = FamilySectionBody();
+        understand.AddChild(FamilyTabButton("Open Understand Tools", "Understand", "Inspect missed letters, connected ink, background regions, OCR targets, and collision masks."));
+        shell.AddSection("Understand & Test", "target and erasure diagnostics", understand);
 
         return panel;
     }
 
     private Control BuildPinballPanel()
     {
-        PanelContainer panel = CockpitPanel(250);
-        VBoxContainer pinball = PanelVBox(panel);
-        pinball.AddChild(CockpitHeading("PINBALL PAGE"));
-        AddGameTypeSessionBlock(pinball, PlaysetMode.Pinball, "Enter Pinball");
+        PanelContainer panel = CockpitPanel(300);
+        FamilyPageShell shell = new("Ball / Table", "Pinball");
+        panel.AddChild(shell);
 
-        pinball.AddChild(CockpitHeading("FIRST PARTS"));
-        pinball.AddChild(PinballShelfButton("Add Flipper", WorldObjectKind.PinballFlipper, "Pivot-to-tip flipper placeholder. A/B handles define pivot, length, and resting angle."));
-        pinball.AddChild(PinballShelfButton("Add Bumper", WorldObjectKind.PinballBumper, "Circular pop bumper placeholder. Drag A/B to place and scale radius."));
-        pinball.AddChild(PinballShelfButton("Add Plunger", WorldObjectKind.PinballPlunger, "Launch lane/plunger placeholder. A/B handles define lane and launch direction."));
-        pinball.AddChild(PinballShelfButton("Add Drain", WorldObjectKind.PinballDrain, "Drain/outlane placeholder. A/B handles set drain width."));
-        pinball.AddChild(PinballShelfButton("Add Rollover", WorldObjectKind.PinballRollover, "Small scoring/lit insert strip. A/B handles set position and width."));
-        pinball.AddChild(PinballShelfButton("Add Gate", WorldObjectKind.PinballGate, "One-way gate placeholder. A/B direction points toward allowed travel."));
+        VBoxContainer overview = FamilySectionBody();
+        AddGameTypeSessionBlock(overview, PlaysetMode.Pinball, "Use Pinball Preset");
+        overview.AddChild(CockpitNote("Generated table shell, document-plowing ball, construction parts, ANSI underlay, and office-themed board rules."));
+        shell.AddSection("Overview & Transport", "preset and session", overview, expanded: true);
+
+        VBoxContainer player = FamilySectionBody();
+        player.AddChild(PinballShelfButton("Add Plunger", WorldObjectKind.PinballPlunger, "Launch lane/plunger. A/B handles define lane and launch direction."));
+        player.AddChild(CockpitNote("Ball card, plunger strength, launch direction, nudge, and input bindings belong here."));
+        shell.AddSection("Player", "ball, plunger, nudge", player);
+
+        VBoxContainer actors = FamilySectionBody();
+        actors.AddChild(FamilyTabButton("Open Enemy Cards", "Enemies", "Add animated targets, roaming hazards, and character bumpers to the table."));
+        shell.AddSection("Actors", "animated targets and hazards", actors);
+
+        VBoxContainer world = FamilySectionBody();
+        world.AddChild(ButtonRow(
+            PinballShelfButton("Add Flipper", WorldObjectKind.PinballFlipper, "Pivot-to-tip flipper. A/B handles define pivot, length, and resting angle."),
+            PinballShelfButton("Add Bumper", WorldObjectKind.PinballBumper, "Circular pop bumper. Drag A/B to place and scale radius.")));
+        world.AddChild(PinballShelfButton("Add Drain", WorldObjectKind.PinballDrain, "Drain/outlane. A/B handles set drain width."));
+        world.AddChild(FamilyTabButton("Open Object Cards", "Objects", "Add rails, barricades, gems, inserts, and table furniture."));
+        shell.AddSection("World", "table shell and physical parts", world, expanded: true);
+
+        VBoxContainer effects = FamilySectionBody();
+        effects.AddChild(ButtonRow(
+            FamilyTabButton("Projectiles", "Projectiles", "Assign ball trails, impacts, explosions, and special shots."),
+            FamilyTabButton("Sounds", "Sounds", "Assign flipper, bumper, plunger, drain, rollover, and jackpot sounds.")));
+        effects.AddChild(CockpitNote("Glow, analog text bursts, letter spirals, backglass effects, and multiball presentation live here."));
+        shell.AddSection("Weapons & Effects", "impacts, lights, sound", effects);
+
+        VBoxContainer logic = FamilySectionBody();
+        logic.AddChild(ButtonRow(
+            PinballShelfButton("Add Rollover", WorldObjectKind.PinballRollover, "Small scoring/lit insert strip. A/B handles set position and width."),
+            PinballShelfButton("Add Gate", WorldObjectKind.PinballGate, "One-way gate. A/B direction points toward allowed travel.")));
+        logic.AddChild(CockpitNote("Switch banks, jackpots, locks, lanes, missions, and conditional areas will use shared logic cards."));
+        shell.AddSection("Markers & Logic", "switches, lanes, jackpots", logic);
+
+        VBoxContainer text = FamilySectionBody();
+        text.AddChild(CockpitNote("Pinball defaults to plowing through detected text. Conditional bounce/pierce regions and ANSI/ASCII underlays remain explicit table rules."));
+        shell.AddSection("Text & Source", "pierce, regions, ANSI underlay", text);
+
+        VBoxContainer rules = FamilySectionBody();
+        rules.AddChild(CockpitNote("Gravity, friction, elasticity, tilt, ball count, drains, scoring, and table completion rules live here."));
+        shell.AddSection("Scoring & Rules", "physics, balls, score", rules);
+
+        VBoxContainer understand = FamilySectionBody();
+        understand.AddChild(FamilyTabButton("Open Understand Tools", "Understand", "Inspect table boundaries, whitespace, detected objects, text collision, and underlay alignment."));
+        shell.AddSection("Understand & Test", "geometry and physics diagnostics", understand);
         return panel;
     }
 
     private Control BuildOverheadPanel()
     {
-        PanelContainer panel = CockpitPanel(250);
-        VBoxContainer overhead = PanelVBox(panel);
-        overhead.AddChild(CockpitHeading("OVERHEAD PAGE"));
-        AddGameTypeSessionBlock(overhead, PlaysetMode.Overhead, "Enter Overhead");
+        PanelContainer panel = CockpitPanel(300);
+        FamilyPageShell shell = new("Overhead", "Combat / Driving / RPG");
+        panel.AddChild(shell);
+
+        VBoxContainer overview = FamilySectionBody();
+        AddGameTypeSessionBlock(overview, PlaysetMode.Overhead, "Use Overhead Preset");
+        overview.AddChild(CockpitNote("Shared top-down foundation for Combat, driving, aircraft, spaceships, RPG actors, animals, insects, escort, and hordes."));
+        shell.AddSection("Overview & Transport", "preset and session", overview, expanded: true);
+
+        VBoxContainer player = FamilySectionBody();
+        player.AddChild(FamilyTabButton("Open Player Cards", "Player", "Choose a tank, car, ship, character, animal, insect, or glyph-derived player."));
+        player.AddChild(CockpitNote("Heading frames, inertia, thrust, steering, localized gravity, and input bindings live here."));
+        shell.AddSection("Player", "vehicle/actor and movement", player);
+
+        VBoxContainer actors = FamilySectionBody();
+        actors.AddChild(FamilyTabButton("Open Enemy Cards", "Enemies", "Configure patrol, defend, pursue, flee, flock, horde, radar, and projectile behavior."));
+        shell.AddSection("Actors", "AI, perception, groups", actors, expanded: true);
+
+        VBoxContainer world = FamilySectionBody();
+        world.AddChild(FamilyTabButton("Open Object Cards", "Objects", "Add cover, barricades, pickups, resource nodes, hazards, and route furniture."));
+        world.AddChild(CockpitNote("Rectangular/hex grids, paths, regions, roads, space fields, and localized physics zones belong here."));
+        shell.AddSection("World", "arena, routes, terrain", world);
+
+        VBoxContainer effects = FamilySectionBody();
+        effects.AddChild(ButtonRow(
+            FamilyTabButton("Projectiles", "Projectiles", "Assign bullets, shells, missiles, beams, mines, impacts, and explosions."),
+            FamilyTabButton("Sounds", "Sounds", "Assign engine, thrust, weapon, impact, pickup, and destruction sounds.")));
+        shell.AddSection("Weapons & Effects", "weapons, impacts, audio", effects);
+
+        VBoxContainer logic = FamilySectionBody();
+        logic.AddChild(CockpitNote("Start, checkpoint, goal, defend area, escort route, spawn waves, safe zones, and capture points use shared Marker/Logic Cards."));
+        shell.AddSection("Markers & Logic", "objectives, zones, waves", logic);
+
+        VBoxContainer text = FamilySectionBody();
+        text.AddChild(CockpitNote("Words can become resources, hazards, objectives, cover, mines, or protected targets. OCR remains an optional semantic layer."));
+        shell.AddSection("Text & Source", "semantic targets and terrain", text);
+
+        VBoxContainer rules = FamilySectionBody();
+        rules.AddChild(CockpitNote("Health, lives, teams, friendly fire, inertia, gravity, score, victory, defeat, waves, and intensity belong here."));
+        shell.AddSection("Scoring & Rules", "combat and mission rules", rules);
+
+        VBoxContainer understand = FamilySectionBody();
+        understand.AddChild(FamilyTabButton("Open Understand Tools", "Understand", "Inspect regions, text, icons, navigable areas, cover, paths, and source interpretation."));
+        shell.AddSection("Understand & Test", "navigation and perception diagnostics", understand);
         return panel;
     }
 
@@ -2094,102 +2490,8 @@ public partial class Main : Control
         enemies.AddChild(CockpitHeading("ENEMIES"));
         enemies.AddChild(CockpitNote("Pick by role first. The same art can later be reassigned, but these buttons give useful starter defaults: contact, shooter, flyer/ship, vehicle, boss."));
 
-        enemies.AddChild(CockpitHeading("GROUND CONTACT"));
-        Button redContact = Button("Red Runner");
-        redContact.TooltipText = "Fast ground contact hazard: patrol/chase, no shots by default.";
-        redContact.Pressed += () => AddEnemyCharacter(
-            "Red Runner",
-            SpriteAnimationSet.TryLoadTgcRedRunner(),
-            "Red Runner added as a ground contact enemy.",
-            "Starter role: fast patrol/chase blocker. Projectile ability starts OFF.",
-            canFireProjectiles: false,
-            animationSourceId: "tgc-red-runner"
-        );
-
-        Button greenContact = Button("Green Crawler");
-        greenContact.TooltipText = "Low crawling/slime/insect contact hazard: no shots by default.";
-        greenContact.Pressed += () => AddEnemyCharacter(
-            "Green Crawler",
-            SpriteAnimationSet.TryLoadTgcGreenCrawler(),
-            "Green Crawler added as a crawling contact enemy.",
-            "Starter role: crawl/slime/insect hazard. Projectile ability starts OFF.",
-            canFireProjectiles: false,
-            animationSourceId: "tgc-green-crawler"
-        );
-        enemies.AddChild(ButtonRow(redContact, greenContact));
-
-        Button greenSnake = Button("Green Snake");
-        greenSnake.TooltipText = "Lower TGC snake/crawl animation split out as its own contact enemy.";
-        greenSnake.Pressed += () => AddEnemyCharacter(
-            "Green Snake",
-            SpriteAnimationSet.TryLoadTgcGreenSnake(),
-            "Green Snake added as a crawling/snake contact enemy.",
-            "Starter role: low snake hazard, future Snake/Maze candidate. Projectile ability starts OFF.",
-            canFireProjectiles: false,
-            animationSourceId: "tgc-green-snake"
-        );
-        enemies.AddChild(greenSnake);
-
-        enemies.AddChild(CockpitHeading("GROUND SHOOTERS / GUARDS"));
-        Button orangeShooter = Button("Orange Shooter");
-        orangeShooter.TooltipText = "Ground shooter/worker. Uses the Orange Worker art with projectile ability on.";
-        orangeShooter.Pressed += () => AddEnemyCharacter(
-            "Orange Shooter",
-            SpriteAnimationSet.TryLoadTgcOrangeWorker(),
-            "Orange Worker art added as a ground shooter.",
-            "Starter role: ground shooter/guard. Projectile ability starts ON.",
-            canFireProjectiles: true,
-            animationSourceId: "tgc-orange-worker"
-        );
-
-        Button blueGuard = Button("Blue Guard");
-        blueGuard.TooltipText = "Ground guard/shooter candidate. Projectile ability on for guard tests.";
-        blueGuard.Pressed += () => AddEnemyCharacter(
-            "Blue Guard",
-            SpriteAnimationSet.TryLoadTgcBlueGuard(),
-            "Blue Guard added as a ground shooter/guard.",
-            "Starter role: guard/shooter. Projectile ability starts ON.",
-            canFireProjectiles: true,
-            animationSourceId: "tgc-blue-guard"
-        );
-        enemies.AddChild(ButtonRow(orangeShooter, blueGuard));
-
-        enemies.AddChild(CockpitHeading("FLYERS / SPACE SHIPS"));
-        Button sunnyDragon = Button("Sunny Dragon");
-        sunnyDragon.TooltipText = "Animated flying enemy. Good across platformer, Brickbat, pinball, and side/overhead modes.";
-        sunnyDragon.Pressed += () =>
-        {
-            LoadSunnyDragonEditorDefaults();
-            SetEnemyCharacter("Sunny Dragon", SpriteAnimationSet.TryLoadSunnyDragon(), "Sunny Dragon added as a flying shooter enemy.");
-        };
-
-        Button fleet = Button("Shooter Fleet");
-        fleet.TooltipText = "Ship/fleet source for overhead, space, bullet hell, and invasion modes.";
-        fleet.Pressed += () => AddEnemyCharacter(
-            "Shooter Fleet",
-            SpriteAnimationSet.TryLoadTgcShooterFleet(),
-            "TGC Shooter Fleet added as a flyer/space enemy.",
-            "Starter role: ship/fleet shooter. This remains a rough atlas import until per-ship slicing is refined.",
-            canFireProjectiles: true,
-            animationSourceId: "tgc-shooter-fleet"
-        );
-        enemies.AddChild(ButtonRow(sunnyDragon, fleet));
-
-        enemies.AddChild(CockpitHeading("TANKS / VEHICLES"));
-        enemies.AddChild(CockpitNote("Tank/vehicle import buttons come next. Starter behavior: ground drive, turret/projectile package, text-aware obstacle handling, possible defend/patrol logic."));
-
-        enemies.AddChild(CockpitHeading("BOSSES / LARGE HAZARDS"));
-        Button boss = Button("Shooter Boss");
-        boss.TooltipText = "Large shooter/boss/pinball toy candidate.";
-        boss.Pressed += () => AddEnemyCharacter(
-            "Shooter Boss",
-            SpriteAnimationSet.TryLoadTgcShooterBoss(),
-            "TGC Shooter Boss added as a large hazard/boss.",
-            "Starter role: boss shooter or large pinball/Brickbat target. Projectile ability starts ON.",
-            canFireProjectiles: true,
-            animationSourceId: "tgc-shooter-boss"
-        );
-        enemies.AddChild(boss);
+        CardShelf enemyShelf = CreateCardShelf("Enemy Cards", EnemyCardDefinitions(), definition => ActivateEnemyCard(definition.EffectiveId, null));
+        enemies.AddChild(enemyShelf);
 
         enemies.AddChild(CockpitHeading("BEHAVIOR STARTERS"));
         Button enemyAi = Button(_enemyAiEnabled ? "AI: On" : "AI: Off");
@@ -2231,13 +2533,220 @@ public partial class Main : Control
         return panel;
     }
 
+    private CardShelf CreateCardShelf(string title, IEnumerable<CardDefinition> definitions, Action<CardDefinition> activate)
+    {
+        CardShelf shelf = new(title, definitions);
+        shelf.Activated += activate;
+        shelf.Forked += fork =>
+        {
+            MarkSessionDirty($"Forked card {fork.Title}");
+            _inspectorText.Text = $"{fork.Title} created as a project-local card. It still uses the source definition until its bindings are edited in the Builder.";
+        };
+        return shelf;
+    }
+
+    private static CardDefinition Card(
+        string kind,
+        string id,
+        string title,
+        string subtitle,
+        string details,
+        string category,
+        string provenance,
+        string license,
+        string exportStatus,
+        string action,
+        params string[] tags)
+    {
+        return new CardDefinition(kind, id, title, subtitle, details, category, provenance, license, exportStatus, tags, PrimaryAction: action);
+    }
+
+    private static CardDefinition[] PlayerCardDefinitions() =>
+    [
+        Card("player-character", "stickman-v0.2", "Stickman 2.0", "Fuller action scout", "Idle, Run, Jump, Melee/Punch, and Death sheets.", "Stick Figures", "OctoPyte Stickman Pack", "Commercial use cleared", "Project-cleared", "Apply", "side-view", "melee", "animated"),
+        Card("player-character", "stickman-v0.1", "Classic Stickman", "Original thin scout", "Classic compatibility baseline and live sprite-pad subject.", "Stick Figures", "OctoPyte Stickman Pack", "Commercial use cleared", "Project-cleared", "Apply", "side-view", "minimal", "animated"),
+        Card("player-character", "tgc-player", "TGC Player", "Imported platformer body", "Human-scale platformer strip used to test editable animation labels.", "Platformer", "The Game Creator's Pack", "User-owned license", "Project-cleared", "Apply", "side-view", "shooter", "animated"),
+        Card("player-character", "8-bit-dungeon-runner", "Dungeon Runner", "8-bit climber / rope scout", "Idle, Run, Fall, Rope, and two-frame Climb animation.", "Platformer", "Jamie Cross dungeon tiles", "CC0", "Hub-safe", "Apply", "climb", "8-bit", "animated"),
+        Card("player-character", "knight-player", "Knight", "Melee / shield platformer", "Idle, Run, Jump/Fall, Roll, Attack, Shield, and Death strips.", "Platformer", "Knight asset pack", "License recorded", "Project-cleared", "Apply", "melee", "shield", "animated"),
+        Card("player-character", "battle-fleet-red-ship-01", "Battle Ship Player", "Overhead / space pilot", "Heading-bin ship frames for Combat, space, and Lunar Lander experiments.", "Overhead", "Legacy Collection", "License recorded", "Review on export", "Apply", "space", "vehicle", "heading-frames")
+    ];
+
+    private static CardDefinition[] EnemyCardDefinitions() =>
+    [
+        Card("enemy-character", "tgc-red-runner", "Red Runner", "Fast ground contact", "Patrol/chase blocker with projectile ability off by default.", "Ground Contact", "The Game Creator's Pack", "User-owned license", "Project-cleared", "Place", "grounded", "contact", "fast"),
+        Card("enemy-character", "tgc-green-crawler", "Green Crawler", "Low crawling hazard", "Slime/insect-style contact enemy with projectile ability off.", "Ground Contact", "The Game Creator's Pack", "User-owned license", "Project-cleared", "Place", "grounded", "crawl", "contact"),
+        Card("enemy-character", "tgc-green-snake", "Green Snake", "Low snake hazard", "Crawling contact enemy and future Snake/Maze candidate.", "Ground Contact", "The Game Creator's Pack", "User-owned license", "Project-cleared", "Place", "grounded", "snake", "contact"),
+        Card("enemy-character", "tgc-orange-worker", "Orange Shooter", "Ground shooter / guard", "Ground patrol with projectile ability on by default.", "Ground Shooters", "The Game Creator's Pack", "User-owned license", "Project-cleared", "Place", "grounded", "shooter", "guard"),
+        Card("enemy-character", "tgc-blue-guard", "Blue Guard", "Ground guard / defender", "Ground defender with projectile ability and medium radar.", "Ground Shooters", "The Game Creator's Pack", "User-owned license", "Project-cleared", "Place", "grounded", "shooter", "defend"),
+        Card("enemy-character", "sunny-dragon-fly", "Sunny Dragon", "Flying shooter", "Cross-family flyer for Side View, Paddle, Ball/Table, and Overhead.", "Flyers / Ships", "Legacy Collection", "License recorded", "Review on export", "Place", "flying", "shooter", "animated"),
+        Card("enemy-character", "tgc-shooter-fleet", "Shooter Fleet", "Space / bullet-hell group", "Rough fleet atlas used for overhead and invasion tests.", "Flyers / Ships", "The Game Creator's Pack", "User-owned license", "Project-cleared", "Place", "flying", "space", "shooter"),
+        Card("enemy-character", "tgc-shooter-boss", "Shooter Boss", "Large shooter / table target", "Boss hazard usable as a shooter or large Pinball/Brickbat target.", "Bosses", "The Game Creator's Pack", "User-owned license", "Project-cleared", "Place", "boss", "shooter", "large")
+    ];
+
+    private static CardDefinition[] ObjectCardDefinitions() =>
+    [
+        Card("world-object", "coin", "Coin", "Score pickup", "Reusable score pickup placeholder.", "Pickups", "DACK procedural object", "Project-owned", "Hub-safe", "Place", "pickup", "score"),
+        Card("world-object", "gem", "Gem", "Rare pickup / resource", "Bonus, key, fuel, spell-word, or rare target placeholder.", "Pickups", "DACK procedural object", "Project-owned", "Hub-safe", "Place", "pickup", "resource"),
+        Card("world-object", "barricade", "Barricade", "Solid cover", "Draggable/scalable obstacle and standable side-view surface.", "Solids / Cover", "DACK procedural object", "Project-owned", "Hub-safe", "Place", "solid", "cover"),
+        Card("world-object", "dungeon-coin", "Dungeon Coin", "8-bit collection role", "Coin behavior prepared for Dungeon Runner levels.", "Dungeon", "Jamie Cross role mapping", "CC0 reference", "Hub-safe", "Place", "pickup", "8-bit"),
+        Card("world-object", "dungeon-jewel", "Dungeon Jewel", "Treasure role", "Gem behavior prepared for Lode Runner-style collection loops.", "Dungeon", "Jamie Cross role mapping", "CC0 reference", "Hub-safe", "Place", "pickup", "treasure"),
+        Card("world-object", "dungeon-door", "Dungeon Door", "Visible goal / exit", "Goal marker behavior prepared for dungeon exits.", "Dungeon", "Jamie Cross role mapping", "CC0 reference", "Hub-safe", "Place", "goal", "door"),
+        Card("world-object", "dungeon-spike", "Dungeon Spike", "Solid hazard role", "Barricade behavior prepared for a later damage binding.", "Dungeon", "Jamie Cross role mapping", "CC0 reference", "Hub-safe", "Place", "hazard", "solid")
+    ];
+
+    private static CardDefinition[] SideViewConstructionCardDefinitions() =>
+    [
+        Card("world-object", "ladder", "Ladder", "Vertical climb volume", "Drag endpoints to set height; width stays near actor scale.", "Traversal", "DACK procedural object", "Project-owned", "Hub-safe", "Place", "climb", "vertical"),
+        Card("world-object", "ramp", "Ramp", "Static angled platform", "Standable paragraph-slant surface for Donkey Kong-style layouts.", "Traversal", "DACK procedural object", "Project-owned", "Hub-safe", "Place", "platform", "angled"),
+        Card("world-object", "slide", "Slide", "Downhill acceleration", "Pushes actors toward the lower endpoint.", "Motion", "DACK procedural object", "Project-owned", "Hub-safe", "Place", "downhill", "motion"),
+        Card("world-object", "conveyor", "Conveyor", "Powered reversible surface", "Strong directional surface with editable speed and direction.", "Motion", "DACK procedural object", "Project-owned", "Hub-safe", "Place", "powered", "reversible"),
+        Card("world-object", "elevator", "Elevator", "Moving platform", "Editable travel range, direction, phase, and speed.", "Motion", "DACK procedural object", "Project-owned", "Hub-safe", "Place", "moving-platform", "range")
+    ];
+
+    private static CardDefinition[] MarkerCardDefinitions() =>
+    [
+        Card("marker", "start", "Start", "Player spawn marker", "Editor-visible and hidden during play.", "Route", "DACK logic primitive", "Project-owned", "Hub-safe", "Place", "spawn", "editor-only"),
+        Card("marker", "checkpoint", "Checkpoint", "Mid-route marker", "Visible midpoint/checkpoint role with future respawn binding.", "Route", "DACK logic primitive", "Project-owned", "Hub-safe", "Place", "checkpoint", "visible"),
+        Card("marker", "goal", "Goal", "Level objective", "Visible endpoint used by the current completion rule.", "Route", "DACK logic primitive", "Project-owned", "Hub-safe", "Place", "goal", "objective"),
+        Card("marker", "hidden-switch", "Hidden Switch", "Invisible trigger", "Visible in Build and hidden from the player.", "Logic", "DACK logic primitive", "Project-owned", "Hub-safe", "Place", "trigger", "editor-only"),
+        Card("marker", "enemy-spawn", "Enemy Spawn", "Configurable spawn flag", "Future binding includes enemy card, interval, burst, count, speed, and behavior.", "Logic", "DACK logic primitive", "Project-owned", "Hub-safe", "Place", "spawn", "enemy", "editor-only")
+    ];
+
+    private static CardDefinition[] PinballConstructionCardDefinitions() =>
+    [
+        Card("world-object", "pinball-plunger", "Plunger", "Ball launch lane", "Endpoints define lane and launch direction.", "Player", "DACK pinball primitive", "Project-owned", "Hub-safe", "Place", "launch", "pinball"),
+        Card("world-object", "pinball-flipper", "Flipper", "Pivoting bat", "Endpoints define pivot, length, and resting angle.", "Table Parts", "DACK pinball primitive", "Project-owned", "Hub-safe", "Place", "flipper", "physics"),
+        Card("world-object", "pinball-bumper", "Bumper", "Pop bumper", "Circular impulse/scoring part scaled from its endpoints.", "Table Parts", "DACK pinball primitive", "Project-owned", "Hub-safe", "Place", "bumper", "score"),
+        Card("world-object", "pinball-drain", "Drain", "Ball loss region", "Endpoints define drain/outlane width.", "Table Parts", "DACK pinball primitive", "Project-owned", "Hub-safe", "Place", "drain", "loss"),
+        Card("marker", "pinball-rollover", "Rollover", "Scoring insert", "Small lit scoring/logic strip.", "Logic", "DACK pinball primitive", "Project-owned", "Hub-safe", "Place", "switch", "score"),
+        Card("marker", "pinball-gate", "Gate", "One-way table gate", "Endpoint direction indicates allowed travel.", "Logic", "DACK pinball primitive", "Project-owned", "Hub-safe", "Place", "gate", "one-way")
+    ];
+
+    private static CardDefinition[] ProjectileCardDefinitions() =>
+    [
+        Card("projectile", "player-basic-shot", "Player Basic Shot", "Reusable straight projectile", "Enables the player weapon and current Run Shoot / Jump Shoot hooks.", "Projectiles", "DACK runtime primitive", "Project-owned", "Hub-safe", "Apply", "player", "straight", "text-damage"),
+        Card("projectile", "enemy-fireball", "Enemy Fireball", "Aimed enemy projectile", "Binds projectile ability to the selected enemy; global Enemy Shots must also be enabled.", "Projectiles", "DACK runtime + cleared explosion strip", "License recorded", "Project-cleared", "Apply", "enemy", "aimed", "explosive"),
+        Card("effect", "explosion-pack-b", "Explosion B", "Projectile impact / blast", "Projectile frame plus impact/explosion frames and optional letter shrapnel.", "Effects", "Itch explosion pack", "User-cleared license", "Project-cleared", "Apply", "explosion", "impact", "letter-shrapnel"),
+        Card("effect", "psychedelic-word-burst", "Word Burst", "Procedural literary FX", "Solid-color word/letter burst with rotation, vector/spline motion, and fading.", "Effects", "DACK procedural effect", "Project-owned", "Hub-safe", "Apply", "word", "procedural", "psychedelic")
+    ];
+
+    private void ActivateEnemyCard(string cardId, Vector2? dropPosition)
+    {
+        (string name, SpriteAnimationSet? animation, bool shoots, string role) = cardId switch
+        {
+            "tgc-red-runner" => ("Red Runner", SpriteAnimationSet.TryLoadTgcRedRunner(), false, "fast ground contact / patrol"),
+            "tgc-green-crawler" => ("Green Crawler", SpriteAnimationSet.TryLoadTgcGreenCrawler(), false, "low crawling contact hazard"),
+            "tgc-green-snake" => ("Green Snake", SpriteAnimationSet.TryLoadTgcGreenSnake(), false, "snake / crawling contact hazard"),
+            "tgc-orange-worker" => ("Orange Shooter", SpriteAnimationSet.TryLoadTgcOrangeWorker(), true, "ground shooter / guard"),
+            "tgc-blue-guard" => ("Blue Guard", SpriteAnimationSet.TryLoadTgcBlueGuard(), true, "defender / ground shooter"),
+            "sunny-dragon-fly" => ("Sunny Dragon", SpriteAnimationSet.TryLoadSunnyDragon(), true, "flying shooter"),
+            "tgc-shooter-fleet" => ("Shooter Fleet", SpriteAnimationSet.TryLoadTgcShooterFleet(), true, "space / bullet-hell shooter"),
+            "tgc-shooter-boss" => ("Shooter Boss", SpriteAnimationSet.TryLoadTgcShooterBoss(), true, "large shooter / boss"),
+            _ => ("", null, false, "")
+        };
+
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            _inspectorText.Text = $"Unknown enemy card: {cardId}";
+            return;
+        }
+
+        AddEnemyCharacter(
+            name,
+            animation,
+            $"{name} placed from its reusable Enemy Card.",
+            $"Starter role: {role}. Repeated Apply, Duplicate, or drag/drop creates another independent instance.",
+            shoots,
+            cardId,
+            dropPosition
+        );
+        MarkSessionDirty($"Placed enemy card {name}");
+    }
+
+    private void ActivateProjectileCard(string cardId)
+    {
+        switch (cardId)
+        {
+            case "player-basic-shot":
+                _gunEnabled = true;
+                ClearPlayerShots();
+                _inspectorText.Text = "Player Basic Shot applied. The player weapon and Run Shoot / Jump Shoot hooks are enabled.";
+                break;
+            case "enemy-fireball":
+                if (_selectedActor is null || _selectedActor.IsPlayable)
+                {
+                    _inspectorText.Text = "Select an enemy before applying the Enemy Fireball card.";
+                    return;
+                }
+                _selectedActor.CanFireProjectiles = true;
+                _enemyProjectilesEnabled = true;
+                _inspectorText.Text = $"Enemy Fireball applied to {_selectedActor.ActorName}. Global enemy shots are enabled.";
+                break;
+            case "explosion-pack-b":
+                _explosionsDamageText = true;
+                _inspectorText.Text = "Explosion B applied as the current impact profile. Blast-letter shrapnel is enabled.";
+                break;
+            case "psychedelic-word-burst":
+                _inspectorText.Text = "Procedural Word Burst selected for the current effects vocabulary.";
+                break;
+            default:
+                _inspectorText.Text = $"Unknown projectile/effect card: {cardId}";
+                return;
+        }
+
+        MarkSessionDirty($"Applied projectile/effect card {cardId}");
+        RefreshCharacterWorkbenchStatus();
+    }
+
+    private void ActivateWorldObjectCard(string cardId, Vector2? dropPosition)
+    {
+        WorldObjectKind? kind = cardId switch
+        {
+            "ladder" => WorldObjectKind.Ladder,
+            "ramp" => WorldObjectKind.Ramp,
+            "slide" => WorldObjectKind.Slide,
+            "conveyor" => WorldObjectKind.Conveyor,
+            "elevator" => WorldObjectKind.Elevator,
+            "start" => WorldObjectKind.StartPoint,
+            "checkpoint" => WorldObjectKind.Checkpoint,
+            "goal" => WorldObjectKind.GoalPoint,
+            "hidden-switch" => WorldObjectKind.HiddenSwitch,
+            "enemy-spawn" => WorldObjectKind.EnemySpawnPoint,
+            "pinball-flipper" => WorldObjectKind.PinballFlipper,
+            "pinball-bumper" => WorldObjectKind.PinballBumper,
+            "pinball-plunger" => WorldObjectKind.PinballPlunger,
+            "pinball-drain" => WorldObjectKind.PinballDrain,
+            "pinball-rollover" => WorldObjectKind.PinballRollover,
+            "pinball-gate" => WorldObjectKind.PinballGate,
+            "coin" or "dungeon-coin" => WorldObjectKind.Coin,
+            "gem" or "dungeon-jewel" => WorldObjectKind.Gem,
+            "dungeon-door" => WorldObjectKind.GoalPoint,
+            "barricade" or "dungeon-spike" => WorldObjectKind.Barricade,
+            _ => null
+        };
+
+        if (!kind.HasValue)
+        {
+            _inspectorText.Text = $"Unknown world/logic card: {cardId}";
+            return;
+        }
+
+        _playfield.AddPlacedObject(kind.Value, dropPosition);
+        MarkSessionDirty($"Placed {cardId} card");
+        SyncEditorModeToScene();
+        _inspectorText.Text = $"{cardId} placed as an independent instance. Duplicate or drag the card again to place another.";
+    }
+
     private Control BuildProjectilesPanel()
     {
         PanelContainer panel = CockpitPanel(260);
         VBoxContainer projectiles = PanelVBox(panel);
         projectiles.AddChild(CockpitHeading("PROJECTILES"));
         projectiles.AddChild(CockpitNote("Shared projectile and explosion rules for players, enemies, Brickbat-like modes, pinball toys, and future overhead/space games."));
+        CardShelf projectileShelf = CreateCardShelf("Projectile / Effect Cards", ProjectileCardDefinitions(), definition => ActivateProjectileCard(definition.EffectiveId));
+        projectiles.AddChild(projectileShelf);
 
+        projectiles.AddChild(CockpitHeading("GLOBAL RULES"));
         Button playerGun = Button(_gunEnabled ? "Player Gun: On" : "Player Gun: Off");
         playerGun.Pressed += () =>
         {
@@ -2322,24 +2831,8 @@ public partial class Main : Control
         objects.AddChild(CockpitHeading("OBJECTS"));
         objects.AddChild(CockpitNote("Level furniture and pickups: gems, coins, barricades, keys, doors, office junk, bonus icons, and future text-bound rewards."));
 
-        objects.AddChild(CockpitHeading("PICKUPS"));
-        objects.AddChild(ButtonRow(
-            ObjectShelfButton("Coin", WorldObjectKind.Coin, "Score pickup placeholder. Drag/scale it now; collection/scoring rules come next."),
-            ObjectShelfButton("Gem", WorldObjectKind.Gem, "Higher-value pickup placeholder. Good for bonuses, keys, fuel, spell words, and rare targets.")));
-
-        objects.AddChild(CockpitHeading("SOLIDS / COVER"));
-        objects.AddChild(ObjectShelfButton("Barricade", WorldObjectKind.Barricade, "Chunky line obstacle. It is draggable/scalable and already acts like a simple standable top surface in side-view tests."));
-
-        objects.AddChild(CockpitHeading("DUNGEON PLAYSET"));
-        objects.AddChild(ButtonRow(
-            ObjectShelfButton("Dungeon Coin", WorldObjectKind.Coin, "8-Bit Dungeon coin/pickup role. Sprite thumbnail binding comes next; behavior starts as a coin."),
-            ObjectShelfButton("Dungeon Jewel", WorldObjectKind.Gem, "8-Bit Dungeon jewel/treasure role. Good for Lode Runner collection loops.")));
-        objects.AddChild(ButtonRow(
-            ObjectShelfButton("Dungeon Key", WorldObjectKind.Gem, "8-Bit Dungeon key role. Starts as a collectible gem-type object until lock/key rules are wired."),
-            ObjectShelfButton("Dungeon Door", WorldObjectKind.GoalPoint, "8-Bit Dungeon door/exit role. Starts as a visible goal marker.")));
-        objects.AddChild(ButtonRow(
-            ObjectShelfButton("Dungeon Spike", WorldObjectKind.Barricade, "8-Bit Dungeon spike/hazard role. Starts as a solid/hazard-like barricade placeholder."),
-            ObjectShelfButton("Dungeon Chest", WorldObjectKind.Gem, "8-Bit Dungeon chest/treasure role. Starts as a high-value pickup placeholder.")));
+        CardShelf objectShelf = CreateCardShelf("Object Cards", ObjectCardDefinitions(), definition => ActivateWorldObjectCard(definition.EffectiveId, null));
+        objects.AddChild(objectShelf);
 
         objects.AddChild(CockpitHeading("FUTURE OBJECT SET"));
         objects.AddChild(CockpitNote(
@@ -2365,43 +2858,8 @@ public partial class Main : Control
         _characterWorkbenchStatus = CockpitNote("No actor selected yet.");
         player.AddChild(_characterWorkbenchStatus);
 
-        player.AddChild(CockpitHeading("PLAYER CARDS"));
-        player.AddChild(PlayerCharacterCard(
-            "stickman-v0.2",
-            "Stickman 2.0",
-            "Fuller action scout",
-            "OctoPyte v0.2 stick figure with Idle, Run, Jump, Melee/Punch, and Death sheets. This is the new default stickfigure player."
-        ));
-        player.AddChild(PlayerCharacterCard(
-            "stickman-v0.1",
-            "Classic Stickman",
-            "Original thin scout",
-            "OctoPyte v0.1 thin stick figure. Kept as the classic look and compatibility baseline."
-        ));
-        player.AddChild(PlayerCharacterCard(
-            "tgc-player",
-            "TGC Player",
-            "Imported platformer body",
-            "The Game Creator's Pack player strip. Good for testing imported animation labels and human-scale platformer motion."
-        ));
-        player.AddChild(PlayerCharacterCard(
-            "8-bit-dungeon-runner",
-            "Dungeon Runner",
-            "8-bit climber / rope scout",
-            "Jamie Cross CC0 dungeon player with Idle, Run, Fall, Rope, and real two-frame Climb animation. Very Lode Runner / office-dungeon friendly."
-        ));
-        player.AddChild(PlayerCharacterCard(
-            "knight-player",
-            "Knight",
-            "Melee / shield platformer",
-            "Transparent discrete strips with Idle, Run, Jump/Fall, Roll, Attack, Shield, and Death. Attack supplies the current Melee/Punch hooks; Roll supplies text-crawl until a dedicated dodge rule is wired."
-        ));
-        player.AddChild(PlayerCharacterCard(
-            "battle-fleet-red-ship-01",
-            "Battle Ship Player",
-            "Overhead / space pilot card",
-            "Legacy top-down shooter ship. Its frames are heading bins, not walk frames; useful for Overhead, Combat, space, and Lunar Lander experiments."
-        ));
+        CardShelf playerShelf = CreateCardShelf("Player Cards", PlayerCardDefinitions(), definition => ActivatePlayerCharacterCard(definition.EffectiveId, null));
+        player.AddChild(playerShelf);
 
         player.AddChild(CockpitHeading("PLAYER TOOLS"));
         Button selectPlayer = Button("Select Player");
@@ -2528,19 +2986,29 @@ public partial class Main : Control
         return panel;
     }
 
-    private BuilderCard PlayerCharacterCard(string cardId, string title, string subtitle, string details)
-    {
-        BuilderCard card = new("player-character", cardId, title, subtitle, details);
-        card.Activated += activated => ActivatePlayerCharacterCard(activated.CardId, null);
-        return card;
-    }
-
     private void OnPlayfieldCardDropped(Godot.Collections.Dictionary card, Vector2 position)
     {
         string kind = card.ContainsKey("dackCardKind") ? card["dackCardKind"].AsString() : "";
-        string cardId = card.ContainsKey("dackCardId") ? card["dackCardId"].AsString() : "";
-        if (kind == "player-character")
-            ActivatePlayerCharacterCard(cardId, position);
+        string cardId = card.ContainsKey("dackCardSourceId")
+            ? card["dackCardSourceId"].AsString()
+            : card.ContainsKey("dackCardId") ? card["dackCardId"].AsString() : "";
+        switch (kind)
+        {
+            case "player-character":
+                ActivatePlayerCharacterCard(cardId, position);
+                break;
+            case "enemy-character":
+                ActivateEnemyCard(cardId, position);
+                break;
+            case "world-object":
+            case "marker":
+                ActivateWorldObjectCard(cardId, position);
+                break;
+            case "projectile":
+            case "effect":
+                ActivateProjectileCard(cardId);
+                break;
+        }
     }
 
     private void ActivatePlayerCharacterCard(string cardId, Vector2? dropPosition)
@@ -2608,6 +3076,8 @@ public partial class Main : Control
 
         if (dropPosition.HasValue)
             PlacePlayerFromCardDrop(dropPosition.Value);
+
+        MarkSessionDirty($"Player card changed to {_player.ActorName}");
     }
 
     private void PlacePlayerFromCardDrop(Vector2 playfieldPosition)
@@ -2647,25 +3117,15 @@ public partial class Main : Control
             _inspectorText.Text = $"{PlaysetModeLabel(mode)} toolkit selected.";
         };
 
-        Button play = Button(_editorMode ? "Enter Play Mode" : "Return to Editor");
-        play.Pressed += () =>
+        page.AddChild(enter);
+        Label transportHint = new()
         {
-            SetEditorMode(!_editorMode);
-            PlaySound("ui-toggle");
+            Text = "Use the shared File / Transport bar above for Open, Save, Snapshot, Reset, Run, Freeze, Stop, and Desktop.",
+            AutowrapMode = TextServer.AutowrapMode.WordSmart
         };
-        _editorPlayButtons.Add(play);
-
-        page.AddChild(ButtonRow(enter, play));
-
-        Button reset = Button("Reset This Game");
-        reset.Pressed += () => ResetCurrentPlayset(mode);
-        page.AddChild(reset);
-
-        Button saveLevel = Button("Save Level");
-        saveLevel.Pressed += SaveLevel;
-        Button loadLevel = Button("Load Level");
-        loadLevel.Pressed += LoadLevel;
-        page.AddChild(ButtonRow(saveLevel, loadLevel));
+        transportHint.AddThemeColorOverride("font_color", new Color("#5D6975"));
+        transportHint.AddThemeFontSizeOverride("font_size", 11);
+        page.AddChild(transportHint);
     }
 
     private void ResetCurrentPlayset(PlaysetMode requestedMode)
@@ -3049,6 +3509,12 @@ public partial class Main : Control
             return;
 
         _launchScreenActive = false;
+        if (_desktopParked)
+        {
+            _desktopParked = false;
+            if (_workspace is not null)
+                _workspace.Visible = true;
+        }
         if (_launchScreen is not null)
             _launchScreen.Visible = false;
         if (_playsetToolbar is not null)
@@ -3274,7 +3740,7 @@ public partial class Main : Control
         AddEnemyCharacter(actorName, animationSet, note, "TGC shelf import: treated as an enemy for now. Drag, scale, save, and later assign behavior/projectiles.", canFire, GuessAnimationSourceId(actorName, playable: false));
     }
 
-    private void AddEnemyCharacter(string actorName, SpriteAnimationSet? animationSet, string note, string footer, bool canFireProjectiles, string animationSourceId = "")
+    private void AddEnemyCharacter(string actorName, SpriteAnimationSet? animationSet, string note, string footer, bool canFireProjectiles, string animationSourceId = "", Vector2? dropPosition = null)
     {
         if (animationSet is null)
         {
@@ -3298,7 +3764,9 @@ public partial class Main : Control
         int slotIndex = _actors.IndexOf(enemy);
         enemy.Size = EnemyDefaultSize();
         enemy.CustomMinimumSize = enemy.Size;
-        enemy.Position = EnemySpawnPosition(slotIndex, enemy.Size);
+        enemy.Position = dropPosition.HasValue
+            ? ClampActorToPlayfield(dropPosition.Value - enemy.Size * 0.5f, enemy.Size)
+            : EnemySpawnPosition(slotIndex, enemy.Size);
         enemy.HomePosition = enemy.Position;
         enemy.TooltipText = $"Select {actorName}";
         SelectActor(enemy);
@@ -3336,6 +3804,15 @@ public partial class Main : Control
     {
         float height = Mathf.Max(_textUnitPixels * 7f, 52f);
         return new Vector2(height, height);
+    }
+
+    private Vector2 ClampActorToPlayfield(Vector2 position, Vector2 size)
+    {
+        Rect2 bounds = _playfield.PlayBounds;
+        return new Vector2(
+            Mathf.Clamp(position.X, bounds.Position.X, Mathf.Max(bounds.Position.X, bounds.End.X - size.X)),
+            Mathf.Clamp(position.Y, bounds.Position.Y, Mathf.Max(bounds.Position.Y, bounds.End.Y - size.Y))
+        );
     }
 
     private Vector2 EnemySpawnPosition(int slotIndex, Vector2 size)
@@ -4145,6 +4622,7 @@ public partial class Main : Control
 
         JsonSerializerOptions options = new() { WriteIndented = true };
         File.WriteAllText(outputPath, JsonSerializer.Serialize(manifest, options));
+        MarkSessionClean();
         _inspectorText.Text = $"Level saved.\n\n{outputPath}\n\nThis first .dacklevel pass stores placed toolkit objects, route markers, visible actors, player/gameplay toggles, and the current playset settings. Snapshot image packaging comes next.";
     }
 
@@ -4218,6 +4696,7 @@ public partial class Main : Control
 
         SyncEditorModeToScene();
         RefreshMotionText();
+        MarkSessionClean();
         RefreshCockpitStatus();
         _inspectorText.Text = $"Level loaded.\n\n{inputPath}\n\nRestored {manifest.worldObjects.Count} placed objects and {manifest.actors.Count} actors.";
     }
@@ -4278,6 +4757,17 @@ public partial class Main : Control
     {
         string projectRoot = ProjectSettings.GlobalizePath("res://");
         return Path.GetFullPath(Path.Combine(projectRoot, "levels", "rad-test.dacklevel.json"));
+    }
+
+    private static string GetDefaultSnapshotPath()
+    {
+        return Path.Combine(GetSnapshotDirectory(), "rad-snapshot-latest.png");
+    }
+
+    private static string GetSnapshotDirectory()
+    {
+        string projectRoot = ProjectSettings.GlobalizePath("res://");
+        return Path.GetFullPath(Path.Combine(projectRoot, "snapshots"));
     }
 
     private AnimationFrameRange FindTgcClipRange(AnimationFrameRange fallback, params string[] names)
@@ -4788,6 +5278,7 @@ public partial class Main : Control
         if (_editorMode)
         {
             _resumePlayWhenCockpitCloses = false;
+            _simulationStopped = false;
             SetEditorMode(false);
             return;
         }
@@ -4805,6 +5296,13 @@ public partial class Main : Control
 
     private void ToggleSimulationFreeze()
     {
+        if (_simulationStopped)
+        {
+            _inspectorText.Text = "Simulation is stopped. Press F6 to return to Play mode.";
+            RefreshCockpitStatus();
+            return;
+        }
+
         if (_editorMode)
         {
             _simulationFrozen = true;
@@ -4822,6 +5320,89 @@ public partial class Main : Control
         RefreshCockpitStatus();
         RefreshPlatformerHud();
         UpdateCursorMode();
+    }
+
+    private void StopSimulation()
+    {
+        SetEditorMode(true);
+        _simulationStopped = true;
+        _cockpit.Visible = true;
+        FitCockpitToViewport();
+        _brickbatOverlay.HudEditable = true;
+        _inspectorText.Text = "Simulation stopped. Build mode is active and the current level remains intact. Press F6 to run it again.";
+        SyncEditorModeToScene();
+        RefreshCockpitStatus();
+        UpdateCursorMode();
+    }
+
+    private void ReturnToDesktop()
+    {
+        DismissLaunchScreen();
+        StopAllAudio();
+        _simulationFrozen = true;
+        _desktopParked = true;
+        _cockpit.Visible = false;
+        _sidebar.Visible = false;
+        _playfieldFrame.Visible = true;
+        _brickbatOverlay.HudEditable = false;
+        _workspace.Visible = false;
+        _launchScreenActive = true;
+        _launchScreen.Visible = true;
+        _launchHint.Text = "DACK parked — press Esc, F6, or F7 to return to your desktop game session";
+        SyncEditorModeToScene();
+        UpdateCursorMode();
+    }
+
+    private void ResetSession()
+    {
+        SetEditorMode(true);
+        _simulationStopped = false;
+        _playfield.ResetDocumentImage();
+        ClearPlayerShots();
+        ClearEnemyShots();
+        _impactEffects.Clear();
+        ResetCurrentPlayset(_playsetMode);
+        _inspectorText.Text = $"{PlaysetModeLabel(_playsetMode)} reset. The working clone returned to its captured Snapshot; placed cards and level structure remain.";
+        SyncEditorModeToScene();
+        RefreshCockpitStatus();
+        RefreshPlatformerHud();
+    }
+
+    private void SaveSnapshot()
+    {
+        string directory = GetSnapshotDirectory();
+        Directory.CreateDirectory(directory);
+        string stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
+        string outputPath = Path.Combine(directory, $"rad-snapshot-{stamp}.png");
+        int collision = 2;
+        while (File.Exists(outputPath))
+            outputPath = Path.Combine(directory, $"rad-snapshot-{stamp}-{collision++}.png");
+
+        if (!_playfield.TrySaveWorkingSnapshot(outputPath))
+        {
+            _inspectorText.Text = "Snapshot could not be saved because no captured playfield is available.";
+            return;
+        }
+
+        DackSnapshotManifest manifest = new()
+        {
+            format = "dacksnapshot",
+            version = 1,
+            imagePath = Path.GetRelativePath(ProjectSettings.GlobalizePath("res://"), outputPath).Replace('\\', '/'),
+            sourceName = _playfield.CapturedPageSourceName,
+            playsetMode = _playsetMode.ToString(),
+            nativeWidth = _playfield.CapturedPageSize.X,
+            nativeHeight = _playfield.CapturedPageSize.Y
+        };
+        string metadataPath = Path.ChangeExtension(outputPath, ".json");
+        File.WriteAllText(metadataPath, JsonSerializer.Serialize(manifest, new JsonSerializerOptions { WriteIndented = true }));
+        string latestPath = GetDefaultSnapshotPath();
+        File.Copy(outputPath, latestPath, true);
+        File.Copy(metadataPath, Path.ChangeExtension(latestPath, ".json"), true);
+        _simulationFrozen = true;
+        SyncEditorModeToScene();
+        _inspectorText.Text = $"Snapshot saved.\n\n{outputPath}\n\nThe original source remains untouched; this native-resolution working clone is now the level's reusable Snapshot.";
+        RefreshCockpitStatus();
     }
 
     private void FitCockpitToViewport()
@@ -4847,6 +5428,7 @@ public partial class Main : Control
     {
         _editorMode = enabled;
         _simulationFrozen = enabled;
+        _simulationStopped = false;
         SyncEditorModeToScene();
         if (_editorMode)
         {
@@ -4920,9 +5502,11 @@ public partial class Main : Control
                 ? DackOwnedSurface.Cockpit
                 : DackOwnedSurface.Canvas;
 
-        DackSimulationState simulation = _simulationFrozen
-            ? DackSimulationState.Frozen
-            : DackSimulationState.Running;
+        DackSimulationState simulation = _simulationStopped
+            ? DackSimulationState.Stopped
+            : _simulationFrozen
+                ? DackSimulationState.Frozen
+                : DackSimulationState.Running;
 
         _uiState.Set(
             simulation,
@@ -4960,8 +5544,20 @@ public partial class Main : Control
             return;
 
         string mode = PlaysetModeLabel(_playsetMode);
-        string authority = _editorMode ? "EDIT" : "PLAY";
-        _cockpitStatus.Text = $"{authority}  â€¢  {mode}  â€¢  {_playfield.Ocr.StatusText}  â€¢  contextual shelves  â€¢  Esc toggles cockpit";
+        string authority = _editorMode ? "BUILD" : "PLAY";
+        string simulation = _simulationStopped ? "STOPPED" : _editorMode || _simulationFrozen ? "FROZEN" : "RUNNING";
+        string dirty = _sessionDirty ? "DIRTY" : "SAVED";
+        _cockpitStatus.Text = $"{authority}  â€¢  {simulation}  â€¢  {mode}  â€¢  {dirty}  â€¢  {_playfield.Ocr.StatusText}  â€¢  F6 build/play  â€¢  F7 freeze  â€¢  Esc cockpit";
+
+        if (_transportModeButton is not null)
+            _transportModeButton.Text = _editorMode ? "Run (F6)" : "Build (F6)";
+        if (_transportFreezeButton is not null)
+        {
+            _transportFreezeButton.Text = _simulationFrozen ? "Resume (F7)" : "Freeze (F7)";
+            _transportFreezeButton.Disabled = _editorMode || _simulationStopped;
+        }
+        if (_transportStopButton is not null)
+            _transportStopButton.Disabled = _editorMode && _simulationStopped;
     }
 
     private void RefreshSessionModeUi()
@@ -4980,10 +5576,10 @@ public partial class Main : Control
 
         string target = _playsetMode switch
         {
-            PlaysetMode.Brickbat => "Brickbat",
-            PlaysetMode.Pinball => "Pinball",
+            PlaysetMode.Brickbat => "Paddle",
+            PlaysetMode.Pinball => "Ball / Table",
             PlaysetMode.Overhead => "Overhead",
-            _ => "Platformer"
+            _ => "Side View"
         };
 
         SelectCockpitTab(target);
@@ -6723,6 +7319,7 @@ public partial class Main : Control
         {
             SetPlaysetMode(PlaysetMode.Platformer);
             _playfield.AddPlacedObject(kind);
+            MarkSessionDirty($"Placed {text}");
             SyncEditorModeToScene();
             _inspectorText.Text = $"{text} placed.\n\n{description}\n\nDrag either A/B endpoint handle on the playfield to move, scale, or angle it.";
             RefreshCockpitStatus();
@@ -6738,6 +7335,7 @@ public partial class Main : Control
         {
             SetPlaysetMode(PlaysetMode.Pinball);
             _playfield.AddPlacedObject(kind);
+            MarkSessionDirty($"Placed {text}");
             _inspectorText.Text = $"{text} placed.\n\n{description}\n\nThis is a pinball construction placeholder: draggable now, physics binding later.";
             RefreshCockpitStatus();
         };
@@ -6751,6 +7349,7 @@ public partial class Main : Control
         button.Pressed += () =>
         {
             _playfield.AddPlacedObject(kind);
+            MarkSessionDirty($"Placed {text}");
             SyncEditorModeToScene();
             _inspectorText.Text = $"{text} placed.\n\n{description}\n\nObjects are shared level furniture: they can belong to platformer, pinball, Brickbat, overhead, text quests, or later builder presets.";
             RefreshCockpitStatus();
@@ -6968,6 +7567,17 @@ public partial class Main : Control
         public float textUnitPixels { get; set; }
         public List<LevelWorldObject> worldObjects { get; set; } = [];
         public List<LevelActor> actors { get; set; } = [];
+    }
+
+    private sealed class DackSnapshotManifest
+    {
+        public string format { get; set; } = "dacksnapshot";
+        public int version { get; set; } = 1;
+        public string imagePath { get; set; } = "";
+        public string sourceName { get; set; } = "";
+        public string playsetMode { get; set; } = "";
+        public int nativeWidth { get; set; }
+        public int nativeHeight { get; set; }
     }
 
     private sealed class LevelWorldObject

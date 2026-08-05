@@ -88,6 +88,8 @@ public partial class ActorView : Control
         }
     }
 
+    public bool AnimationPaused { get; set; }
+
     public event Action<ActorView>? SelectionRequested;
 
     public override void _Ready()
@@ -101,7 +103,8 @@ public partial class ActorView : Control
         if (AnimationSet is null)
             return;
 
-        AnimationClock += delta;
+        if (!AnimationPaused)
+            AnimationClock += delta;
         QueueRedraw();
     }
 

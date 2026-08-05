@@ -32,6 +32,7 @@ public partial class BrickbatOverlay : Control
 
     public PlayfieldSurface Playfield { get; set; } = null!;
     public IReadOnlyList<ActorView> Actors { get; set; } = Array.Empty<ActorView>();
+    public bool Paused { get; set; } = true;
     public bool SidePaddle { get; set; }
     public TextObjectGranularity BrickGranularity { get; set; } = TextObjectGranularity.Letter;
     public TextCollisionMode TextCollisionMode { get; set; } = TextCollisionMode.Bounce;
@@ -94,7 +95,7 @@ public partial class BrickbatOverlay : Control
 
     public override void _Process(double delta)
     {
-        if (!Visible || Playfield is null)
+        if (!Visible || Playfield is null || Paused)
             return;
 
         if (!_initialized)

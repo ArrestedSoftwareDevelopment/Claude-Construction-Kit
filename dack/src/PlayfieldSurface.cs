@@ -28,8 +28,11 @@ public partial class PlayfieldSurface : Control
     public PlatformerMode Mode { get; set; } = PlatformerMode.Horizontal;
     public LazyOcrService Ocr { get; } = new();
     public bool HasCapturedPage => _capturedPage is not null;
+    public string CapturedPageSourceName => _capturedPage?.SourceName ?? string.Empty;
+    public Vector2I CapturedPageSize => _capturedPage?.PixelSize ?? Vector2I.Zero;
     public bool ShowEditorOnlyObjects { get; set; }
     public bool EditorMode { get; set; } = true;
+    public bool SimulationPaused { get; set; } = true;
     public bool TextCrawlEnabled { get; set; } = true;
     public Rect2 PlayBounds => _capturedPage is not null ? GetCapturedPageDrawRect(_capturedPage) : new Rect2(Vector2.Zero, Size);
     public event Action<string>? WorldObjectSelectionChanged;
@@ -78,7 +81,8 @@ public partial class PlayfieldSurface : Control
 
     public override void _Process(double delta)
     {
-        _letterEffects.Update((float)delta);
+        if (!SimulationPaused)
+            _letterEffects.Update((float)delta);
         if (_letterEffects.HasActiveEffects)
             QueueRedraw();
     }
@@ -308,6 +312,15 @@ public partial class PlayfieldSurface : Control
         QueueRedraw();
     }
 
+    public bool TrySaveWorkingSnapshot(string outputPath)
+    {
+        if (_capturedPage is null || string.IsNullOrWhiteSpace(outputPath))
+            return false;
+
+        Error result = _capturedPage.Image.SavePng(outputPath);
+        return result == Error.Ok;
+    }
+
     public void SetPlayerShotPositions(IReadOnlyList<Vector2> positions)
     {
         if (positions.Count == 0)
@@ -359,11 +372,13 @@ public partial class PlayfieldSurface : Control
         QueueRedraw();
     }
 
-    public void AddPlacedObject(WorldObjectKind kind)
+    public void AddPlacedObject(WorldObjectKind kind, Vector2? preferredCenter = null)
     {
         Rect2 bounds = PlayBounds;
         float unit = TextUnitPixels;
-        Vector2 center = GetRandomPlacementCenter(kind, bounds, unit);
+        Vector2 center = preferredCenter.HasValue
+            ? ClampPlacementCenter(preferredCenter.Value, kind, bounds, unit)
+            : GetRandomPlacementCenter(kind, bounds, unit);
 
         WorldObject placed = kind switch
         {
@@ -393,6 +408,16 @@ public partial class PlayfieldSurface : Control
         _selectedWorldObjectIndex = _placedWorldObjects.Count - 1;
         PublishWorldObjectSelection();
         QueueRedraw();
+    }
+
+    private static Vector2 ClampPlacementCenter(Vector2 center, WorldObjectKind kind, Rect2 bounds, float unit)
+    {
+        float horizontalMargin = unit * (kind == WorldObjectKind.PinballPlunger ? 20f : 3f);
+        float verticalMargin = unit * (kind is WorldObjectKind.PinballPlunger or WorldObjectKind.PinballDrain ? 20f : 3f);
+        return new Vector2(
+            Mathf.Clamp(center.X, bounds.Position.X + horizontalMargin, Mathf.Max(bounds.Position.X + horizontalMargin, bounds.End.X - horizontalMargin)),
+            Mathf.Clamp(center.Y, bounds.Position.Y + verticalMargin, Mathf.Max(bounds.Position.Y + verticalMargin, bounds.End.Y - verticalMargin))
+        );
     }
 
     private Vector2 GetRandomPlacementCenter(WorldObjectKind kind, Rect2 bounds, float unit)

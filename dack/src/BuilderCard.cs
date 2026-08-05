@@ -1,25 +1,35 @@
 using Godot;
 using Godot.Collections;
 using System;
+using System.Linq;
 
 namespace Dack;
 
 public partial class BuilderCard : PanelContainer
 {
+    public CardDefinition Definition { get; }
     public string CardKind { get; }
     public string CardId { get; }
     public string CardTitle { get; }
     public string CardSubtitle { get; }
 
     public event Action<BuilderCard>? Activated;
+    public event Action<BuilderCard>? DuplicateRequested;
+    public event Action<BuilderCard>? ForkRequested;
 
     public BuilderCard(string cardKind, string cardId, string title, string subtitle, string details)
+        : this(new CardDefinition(cardKind, cardId, title, subtitle, details, "Cards", "Project catalog", "Review", "Local", [], PrimaryAction: "Apply"))
     {
-        CardKind = cardKind;
-        CardId = cardId;
-        CardTitle = title;
-        CardSubtitle = subtitle;
-        TooltipText = details;
+    }
+
+    public BuilderCard(CardDefinition definition)
+    {
+        Definition = definition;
+        CardKind = definition.Kind;
+        CardId = definition.Id;
+        CardTitle = definition.Title;
+        CardSubtitle = definition.Subtitle;
+        TooltipText = definition.Details;
         MouseFilter = MouseFilterEnum.Stop;
         SizeFlagsHorizontal = SizeFlags.ExpandFill;
         AddThemeStyleboxOverride("panel", CardStyle("#FFF8E8", "#5CB8A7"));
@@ -41,17 +51,17 @@ public partial class BuilderCard : PanelContainer
         top.AddThemeConstantOverride("separation", 6);
         root.AddChild(top);
 
-        Label badge = Text("CARD", "#202A34", 10);
+        Label badge = Text(definition.Kind.Replace('-', ' ').ToUpperInvariant(), "#202A34", 9);
         badge.AddThemeColorOverride("font_color", new Color("#FF5C35"));
         top.AddChild(badge);
 
-        Label titleLabel = Text(title, "#202A34", 13);
+        Label titleLabel = Text(definition.Title, "#202A34", 13);
         titleLabel.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         top.AddChild(titleLabel);
 
         Button use = new()
         {
-            Text = "Use",
+            Text = definition.PrimaryAction,
             FocusMode = FocusModeEnum.None,
             CustomMinimumSize = new Vector2(54, 26),
             SizeFlagsHorizontal = SizeFlags.ShrinkBegin
@@ -59,12 +69,33 @@ public partial class BuilderCard : PanelContainer
         use.Pressed += () => Activated?.Invoke(this);
         top.AddChild(use);
 
-        Label subtitleLabel = Text(subtitle, "#46515C", 11);
+        Label subtitleLabel = Text(definition.Subtitle, "#46515C", 11);
         root.AddChild(subtitleLabel);
 
-        Label detailsLabel = Text(details, "#6C7782", 10);
+        Label provenance = Text($"{definition.Provenance}  |  {definition.License}  |  {definition.ExportStatus}", "#5A6570", 9);
+        provenance.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+        root.AddChild(provenance);
+
+        if (definition.Tags.Length > 0)
+            root.AddChild(Text(string.Join("  ", definition.Tags.Select(tag => $"#{tag}")), "#3D6F6A", 9));
+
+        Label detailsLabel = Text(definition.Details, "#6C7782", 10);
         detailsLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         root.AddChild(detailsLabel);
+
+        HBoxContainer actions = new();
+        actions.AddThemeConstantOverride("separation", 5);
+        root.AddChild(actions);
+
+        Button duplicate = SmallButton("Duplicate");
+        duplicate.TooltipText = "Create another independent instance from this definition.";
+        duplicate.Pressed += () => DuplicateRequested?.Invoke(this);
+        actions.AddChild(duplicate);
+
+        Button fork = SmallButton(definition.IsFork ? "Fork Again" : "Fork");
+        fork.TooltipText = "Create a project-local editable card while preserving the shared source definition.";
+        fork.Pressed += () => ForkRequested?.Invoke(this);
+        actions.AddChild(fork);
     }
 
     public override Variant _GetDragData(Vector2 atPosition)
@@ -87,9 +118,21 @@ public partial class BuilderCard : PanelContainer
         {
             ["dackCardKind"] = CardKind,
             ["dackCardId"] = CardId,
+            ["dackCardSourceId"] = Definition.EffectiveId,
             ["dackCardTitle"] = CardTitle
         };
         return data;
+    }
+
+    private static Button SmallButton(string text)
+    {
+        return new Button
+        {
+            Text = text,
+            FocusMode = FocusModeEnum.None,
+            CustomMinimumSize = new Vector2(0, 26),
+            SizeFlagsHorizontal = SizeFlags.ShrinkBegin
+        };
     }
 
     private static Label Text(string value, string color, int size)
